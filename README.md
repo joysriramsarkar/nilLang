@@ -119,7 +119,7 @@ let user = {"name": "জয়শ্রীরাম", "role": "Developer"};
 ### স্ট্রিং ইন্টারপোলেশন (String Interpolation)
 
 ```nil
-let author = "Joyshriram Sarkar";
+let author = "Joysriram Sarkar";
 let release = "1.0.0";
 puts("Nilang v\(release) created by \(author)!");
 ```
@@ -247,4 +247,4 @@ go test ./...
 ## 📜 লাইসেন্স (License)
 
 Nilang Programming Language is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
-Created with passion by Joyshriram Sarkar for **Alap Framework** & **Onuron OS**.
+Created with passion by Joysriram Sarkar for **Alap Framework** & **Onuron OS**.

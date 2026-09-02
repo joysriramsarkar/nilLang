@@ -1,10 +1,13 @@
 {
   "name": "ui-counter",
   "version": "1.0.0",
-  "author": "Joyshriram Sarkar",
+  "author": "Joysriram Sarkar",
   "description": "Interactive counter app demonstrating Alap UI and state management in Nilang",
   "entry": "src/main.nil",
-  "targets": ["onuron", "linux"],
+  "targets": [
+    "onuron",
+    "linux"
+  ],
   "build": {
     "output_dir": "build",
     "optimize": true,

@@ -194,7 +194,7 @@ const (
 {
   "name": "hello-onuron",
   "version": "1.0.0",
-  "author": "Joyshriram Sarkar",
+  "author": "Joysriram Sarkar",
   "entry": "src/main.nil",
   "targets": ["onuron", "linux"],
   "resources": ["resources/*"],
@@ -303,5 +303,5 @@ Onuron OS কার্নেল ও ড্রাইভার লেভেলে�
 ## ১১. লাইসেন্স (License)
 
 নীলাং (Nilang) প্রোগ্রামিং ভাষাটি সম্পূর্ণ ওপেন-সোর্স এবং **GNU Affero General Public License v3.0 (AGPL-3.0)**-এর অধীনে প্রকাশিত।
-Copyright (C) 2026 Joyshriram Sarkar.
+Copyright (C) 2026 Joysriram Sarkar.
 Alap Framework & Onuron OS Ecosystem.

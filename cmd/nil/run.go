@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
@@ -14,15 +16,51 @@ import (
 	"github.com/joysriramsarkar/nilLang/pkg/config"
 )
 
+func runProjectScript(scriptName string) bool {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil || cfg.Scripts == nil {
+		return false
+	}
+	cmdLine, ok := cfg.Scripts[scriptName]
+	if !ok {
+		return false
+	}
+	runShellCommand(cmdLine)
+	return true
+}
+
+func runShellCommand(cmdLine string) {
+	fmt.Printf("➜ নীলাং স্ক্রিপ্ট: %s\n", cmdLine)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", cmdLine)
+	} else {
+		cmd = exec.Command("sh", "-c", cmdLine)
+	}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		os.Exit(1)
+	}
+}
+
 func cmdRun() {
 	useVM := false
 	var targetFile string
+	var scriptName string
 
 	for _, arg := range os.Args[2:] {
 		if arg == "-vm" || arg == "--vm" {
 			useVM = true
 		} else if strings.HasSuffix(arg, ".nil") || strings.HasSuffix(arg, ".nilax") {
 			targetFile = arg
+		} else if scriptName == "" && !strings.HasPrefix(arg, "-") {
+			scriptName = arg
 		}
 	}
 
@@ -43,6 +81,14 @@ func cmdRun() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %s\n", err)
 		os.Exit(1)
+	}
+
+	// Check if scriptName matches a script in nil.json
+	if scriptName != "" && cfg.Scripts != nil {
+		if cmdStr, ok := cfg.Scripts[scriptName]; ok {
+			runShellCommand(cmdStr)
+			return
+		}
 	}
 
 	entryPath := cfg.GetEntryPath(projectDir)

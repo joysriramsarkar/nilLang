@@ -19,6 +19,7 @@ type ProjectConfig struct {
 	Dependencies map[string]string `json:"dependencies,omitempty"`
 	Build        BuildConfig       `json:"build,omitempty"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
+	Scripts      map[string]string `json:"scripts,omitempty"`
 }
 
 type BuildConfig struct {
@@ -34,7 +35,7 @@ func DefaultConfig(name string) *ProjectConfig {
 	return &ProjectConfig{
 		Name:      name,
 		Version:   "0.1.0",
-		Author:    "Joyshriram Sarkar",
+		Author:    "Joysriram Sarkar",
 		Entry:     "src/main.nil",
 		Targets:   []string{"onuron", "linux"},
 		Resources: []string{"resources/*"},
@@ -42,6 +43,11 @@ func DefaultConfig(name string) *ProjectConfig {
 			OutputDir: "build",
 			Optimize:  true,
 			Debug:     false,
+		},
+		Scripts: map[string]string{
+			"start": "nil run",
+			"dev":   "nil run src/main.nil",
+			"build": "nil build",
 		},
 	}
 }

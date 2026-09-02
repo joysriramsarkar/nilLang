@@ -60,6 +60,9 @@ func main() {
 	case "help", "-h", "--help":
 		printUsage()
 	default:
+		if runProjectScript(command) {
+			return
+		}
 		fmt.Fprintf(os.Stderr, "❌ অজানা কমান্ড: %s\n\n", command)
 		printUsage()
 		os.Exit(1)

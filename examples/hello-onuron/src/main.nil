@@ -3,11 +3,11 @@
 
 let appName = "Hello Onuron";
 let version = "1.0.0";
-let author = "Joyshriram Sarkar";
+let author = "Joysriram Sarkar";
 
 puts("╔══════════════════════════════════════╗");
-puts("║     \(appName) v\(version)            ║");
-puts("║     by \(author)                    ║");
+puts("║     \(appName) v\(version)              ║");
+puts("║     by \(author)              ║");
 puts("╚══════════════════════════════════════╝");
 puts("");
 

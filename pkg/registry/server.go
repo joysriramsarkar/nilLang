@@ -458,7 +458,7 @@ const webUITemplate = `<!DOCTYPE html>
 
         <footer>
             <p>Nilang Registry v0.1.0 • Powered by Onuron OS</p>
-            <p>© 2026 Joyshriram Sarkar</p>
+            <p>© 2026 Joysriram Sarkar</p>
         </footer>
     </div>
 

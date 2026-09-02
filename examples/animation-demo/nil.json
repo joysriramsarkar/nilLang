@@ -1,8 +1,11 @@
 {
   "name": "animation-demo",
   "version": "1.0.0",
-  "author": "Joyshriram Sarkar",
+  "author": "Joysriram Sarkar",
   "description": "Smooth physics and easing curves on Onuron OS GPU pipeline",
   "entry": "src/main.nil",
-  "targets": ["onuron", "linux"]
+  "targets": [
+    "onuron",
+    "linux"
+  ]
 }

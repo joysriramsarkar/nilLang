@@ -1,8 +1,11 @@
 {
   "name": "softbus-chat",
   "version": "1.0.0",
-  "author": "Joyshriram Sarkar",
+  "author": "Joysriram Sarkar",
   "description": "Cross-device communication demonstration over SoftBus protocol",
   "entry": "src/main.nil",
-  "targets": ["onuron", "linux"]
+  "targets": [
+    "onuron",
+    "linux"
+  ]
 }
