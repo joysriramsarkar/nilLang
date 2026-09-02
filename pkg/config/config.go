@@ -9,34 +9,34 @@ import (
 
 // ProjectConfig represents the nil.json configuration file
 type ProjectConfig struct {
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Author      string            `json:"author,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Entry       string            `json:"entry"`
-	Targets     []string          `json:"targets"`
-	Resources   []string          `json:"resources,omitempty"`
+	Name         string            `json:"name"`
+	Version      string            `json:"version"`
+	Author       string            `json:"author,omitempty"`
+	Description  string            `json:"description,omitempty"`
+	Entry        string            `json:"entry"`
+	Targets      []string          `json:"targets"`
+	Resources    []string          `json:"resources,omitempty"`
 	Dependencies map[string]string `json:"dependencies,omitempty"`
-	Build       BuildConfig       `json:"build,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Build        BuildConfig       `json:"build,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 type BuildConfig struct {
-	OutputDir   string `json:"output_dir,omitempty"`
-	Optimize    bool   `json:"optimize,omitempty"`
-	Debug       bool   `json:"debug,omitempty"`
-	Minify      bool   `json:"minify,omitempty"`
-	StripDebug  bool   `json:"strip_debug,omitempty"`
+	OutputDir  string `json:"output_dir,omitempty"`
+	Optimize   bool   `json:"optimize,omitempty"`
+	Debug      bool   `json:"debug,omitempty"`
+	Minify     bool   `json:"minify,omitempty"`
+	StripDebug bool   `json:"strip_debug,omitempty"`
 }
 
 // DefaultConfig returns a default project configuration
 func DefaultConfig(name string) *ProjectConfig {
 	return &ProjectConfig{
-		Name:    name,
-		Version: "0.1.0",
-		Author:  "Joyshriram Sarkar",
-		Entry:   "src/main.nil",
-		Targets: []string{"onuron", "linux"},
+		Name:      name,
+		Version:   "0.1.0",
+		Author:    "Joyshriram Sarkar",
+		Entry:     "src/main.nil",
+		Targets:   []string{"onuron", "linux"},
 		Resources: []string{"resources/*"},
 		Build: BuildConfig{
 			OutputDir: "build",

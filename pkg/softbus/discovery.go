@@ -8,22 +8,22 @@ import (
 )
 
 const (
-	MDNSPort      = 5353
-	MDNSAddress   = "224.0.0.251"
-	ServiceType   = "_nilang-softbus._tcp.local."
+	MDNSPort          = 5353
+	MDNSAddress       = "224.0.0.251"
+	ServiceType       = "_nilang-softbus._tcp.local."
 	DiscoveryInterval = 5 * time.Second
 )
 
 // Discovery handles device discovery via mDNS-SD
 type Discovery struct {
-	mu          sync.RWMutex
-	deviceID    string
-	deviceName  string
-	deviceType  string
-	devices     map[string]*DeviceInfo
-	listeners   []chan *DeviceInfo
-	running     bool
-	stopChan    chan struct{}
+	mu         sync.RWMutex
+	deviceID   string
+	deviceName string
+	deviceType string
+	devices    map[string]*DeviceInfo
+	listeners  []chan *DeviceInfo
+	running    bool
+	stopChan   chan struct{}
 }
 
 // NewDiscovery creates a new discovery service

@@ -36,14 +36,14 @@ const (
 
 // Texture represents a GPU texture
 type Texture struct {
-	ID       uint32
-	Width    int
-	Height   int
-	Format   TextureFormat
-	Filter   TextureFilter
-	Wrap     TextureWrap
-	Mipmaps  int
-	Data     []byte
+	ID      uint32
+	Width   int
+	Height  int
+	Format  TextureFormat
+	Filter  TextureFilter
+	Wrap    TextureWrap
+	Mipmaps int
+	Data    []byte
 }
 
 // TextureManager manages textures

@@ -48,19 +48,19 @@ const (
 	RBRACKET = "]"
 
 	// Keywords
-	LET       = "LET"
-	CONST     = "CONST"
-	FN        = "FN"
-	TRUE      = "TRUE"
-	FALSE     = "FALSE"
-	NULL      = "NULL"
-	IF        = "IF"
-	ELSE      = "ELSE"
-	RETURN    = "RETURN"
-	WHILE     = "WHILE"
-	FOR       = "FOR"
-	IMPORT    = "IMPORT"
-	EXPORT    = "EXPORT"
+	LET    = "LET"
+	CONST  = "CONST"
+	FN     = "FN"
+	TRUE   = "TRUE"
+	FALSE  = "FALSE"
+	NULL   = "NULL"
+	IF     = "IF"
+	ELSE   = "ELSE"
+	RETURN = "RETURN"
+	WHILE  = "WHILE"
+	FOR    = "FOR"
+	IMPORT = "IMPORT"
+	EXPORT = "EXPORT"
 
 	// UI & Declarative Keywords
 	COMPONENT = "COMPONENT" // component

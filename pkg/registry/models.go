@@ -6,26 +6,26 @@ import (
 
 // PackageInfo represents a package in the registry
 type PackageInfo struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Description string            `json:"description,omitempty"`
-	Author      string            `json:"author"`
-	AuthorEmail string            `json:"author_email,omitempty"`
-	License     string            `json:"license,omitempty"`
-	Homepage    string            `json:"homepage,omitempty"`
-	Repository  string            `json:"repository,omitempty"`
-	DownloadURL string            `json:"download_url"`
-	Checksum    string            `json:"checksum"`
-	Size        int64             `json:"size_bytes"`
-	Targets     []string          `json:"targets"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Version      string            `json:"version"`
+	Description  string            `json:"description,omitempty"`
+	Author       string            `json:"author"`
+	AuthorEmail  string            `json:"author_email,omitempty"`
+	License      string            `json:"license,omitempty"`
+	Homepage     string            `json:"homepage,omitempty"`
+	Repository   string            `json:"repository,omitempty"`
+	DownloadURL  string            `json:"download_url"`
+	Checksum     string            `json:"checksum"`
+	Size         int64             `json:"size_bytes"`
+	Targets      []string          `json:"targets"`
 	Dependencies map[string]string `json:"dependencies,omitempty"`
-	Keywords    []string          `json:"keywords,omitempty"`
-	PublishedAt time.Time         `json:"published_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
-	Downloads   int64             `json:"downloads"`
-	Deprecated  bool              `json:"deprecated"`
-	Signature   string            `json:"signature,omitempty"`
+	Keywords     []string          `json:"keywords,omitempty"`
+	PublishedAt  time.Time         `json:"published_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+	Downloads    int64             `json:"downloads"`
+	Deprecated   bool              `json:"deprecated"`
+	Signature    string            `json:"signature,omitempty"`
 }
 
 // PackageListResponse represents the response for listing packages
@@ -39,29 +39,29 @@ type PackageListResponse struct {
 
 // PackageSearchRequest represents search parameters
 type PackageSearchRequest struct {
-	Query    string   `json:"query"`
-	Targets  []string `json:"targets,omitempty"`
-	Author   string   `json:"author,omitempty"`
-	Keyword  string   `json:"keyword,omitempty"`
-	Page     int      `json:"page"`
-	PerPage  int      `json:"per_page"`
-	SortBy   string   `json:"sort_by"`
-	Order    string   `json:"order"`
+	Query   string   `json:"query"`
+	Targets []string `json:"targets,omitempty"`
+	Author  string   `json:"author,omitempty"`
+	Keyword string   `json:"keyword,omitempty"`
+	Page    int      `json:"page"`
+	PerPage int      `json:"per_page"`
+	SortBy  string   `json:"sort_by"`
+	Order   string   `json:"order"`
 }
 
 // PublishRequest represents a package publish request
 type PublishRequest struct {
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Description string            `json:"description"`
-	Author      string            `json:"author"`
-	AuthorEmail string            `json:"author_email"`
-	License     string            `json:"license"`
-	Targets     []string          `json:"targets"`
+	Name         string            `json:"name"`
+	Version      string            `json:"version"`
+	Description  string            `json:"description"`
+	Author       string            `json:"author"`
+	AuthorEmail  string            `json:"author_email"`
+	License      string            `json:"license"`
+	Targets      []string          `json:"targets"`
 	Dependencies map[string]string `json:"dependencies"`
-	Keywords    []string          `json:"keywords"`
-	Checksum    string            `json:"checksum"`
-	Signature   string            `json:"signature,omitempty"`
+	Keywords     []string          `json:"keywords"`
+	Checksum     string            `json:"checksum"`
+	Signature    string            `json:"signature,omitempty"`
 }
 
 // PublishResponse represents the response after publishing

@@ -35,15 +35,15 @@ func (s SessionState) String() string {
 
 // Session represents a communication session between devices
 type Session struct {
-	ID           string
-	SourceDevice string
-	DestDevice   string
-	State        SessionState
-	CreatedAt    time.Time
-	LastActive   time.Time
-	SequenceNum  uint64
+	ID            string
+	SourceDevice  string
+	DestDevice    string
+	State         SessionState
+	CreatedAt     time.Time
+	LastActive    time.Time
+	SequenceNum   uint64
 	EncryptionKey []byte
-	Metadata     map[string]string
+	Metadata      map[string]string
 }
 
 // SessionManager manages sessions

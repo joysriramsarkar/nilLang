@@ -213,21 +213,21 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 
 	// Create package info
 	pkg := &PackageInfo{
-		Name:        publishReq.Name,
-		Version:     publishReq.Version,
-		Description: publishReq.Description,
-		Author:      publishReq.Author,
-		AuthorEmail: publishReq.AuthorEmail,
-		License:     publishReq.License,
-		DownloadURL: fmt.Sprintf("/api/v1/download/%s/%s", publishReq.Name, publishReq.Version),
-		Checksum:    publishReq.Checksum,
-		Size:        written,
-		Targets:     publishReq.Targets,
+		Name:         publishReq.Name,
+		Version:      publishReq.Version,
+		Description:  publishReq.Description,
+		Author:       publishReq.Author,
+		AuthorEmail:  publishReq.AuthorEmail,
+		License:      publishReq.License,
+		DownloadURL:  fmt.Sprintf("/api/v1/download/%s/%s", publishReq.Name, publishReq.Version),
+		Checksum:     publishReq.Checksum,
+		Size:         written,
+		Targets:      publishReq.Targets,
 		Dependencies: publishReq.Dependencies,
-		Keywords:    publishReq.Keywords,
-		PublishedAt: time.Now(),
-		UpdatedAt:   time.Now(),
-		Signature:   publishReq.Signature,
+		Keywords:     publishReq.Keywords,
+		PublishedAt:  time.Now(),
+		UpdatedAt:    time.Now(),
+		Signature:    publishReq.Signature,
 	}
 
 	if err := s.storage.AddPackage(pkg); err != nil {

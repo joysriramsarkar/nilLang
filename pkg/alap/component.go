@@ -7,13 +7,13 @@ import (
 
 // Component represents a UI component in the Alap framework
 type Component struct {
-	Name       string
-	Properties map[string]interface{}
-	State      map[string]interface{}
-	Children   []*Component
-	Parent     *Component
+	Name          string
+	Properties    map[string]interface{}
+	State         map[string]interface{}
+	Children      []*Component
+	Parent        *Component
 	EventHandlers map[string]func(args ...interface{})
-	RenderFunc func() *UIElement
+	RenderFunc    func() *UIElement
 }
 
 // NewComponent creates a new component

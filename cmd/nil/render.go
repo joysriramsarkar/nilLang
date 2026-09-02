@@ -39,7 +39,7 @@ func cmdRender() {
 	fmt.Println()
 	fmt.Println("=== HTML Render ===")
 	html := renderer.RenderToHTML()
-	
+
 	// Save HTML to file
 	outputPath := "build/preview.html"
 	os.MkdirAll("build", 0755)

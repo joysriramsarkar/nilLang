@@ -18,14 +18,14 @@ const (
 
 // Config represents nilpkg configuration
 type Config struct {
-	RootDir       string   `json:"root_dir"`
-	PackagesDir   string   `json:"packages_dir"`
-	RegistryDir   string   `json:"registry_dir"`
-	CacheDir      string   `json:"cache_dir"`
-	Repositories  []string `json:"repositories"`
-	AutoUpdate    bool     `json:"auto_update"`
-	VerifySignatures bool  `json:"verify_signatures"`
-	ParallelJobs  int      `json:"parallel_jobs"`
+	RootDir          string   `json:"root_dir"`
+	PackagesDir      string   `json:"packages_dir"`
+	RegistryDir      string   `json:"registry_dir"`
+	CacheDir         string   `json:"cache_dir"`
+	Repositories     []string `json:"repositories"`
+	AutoUpdate       bool     `json:"auto_update"`
+	VerifySignatures bool     `json:"verify_signatures"`
+	ParallelJobs     int      `json:"parallel_jobs"`
 }
 
 // DefaultConfig returns the default configuration

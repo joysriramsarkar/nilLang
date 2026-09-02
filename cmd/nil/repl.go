@@ -3,12 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
-	"os"
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"io"
+	"os"
 )
 
 const NIL_PROMPT = "নীলাং >> "

@@ -7,9 +7,9 @@ import (
 
 // Renderer handles UI rendering
 type Renderer struct {
-	theme     *Theme
-	root      *UIElement
-	dirty     bool
+	theme *Theme
+	root  *UIElement
+	dirty bool
 }
 
 // NewRenderer creates a new renderer

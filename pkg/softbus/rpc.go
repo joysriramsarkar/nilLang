@@ -9,17 +9,17 @@ import (
 
 // RPCRequest represents a remote procedure call request
 type RPCRequest struct {
-	ID        string          `json:"id"`
-	Method    string          `json:"method"`
-	Params    json.RawMessage `json:"params,omitempty"`
-	Timeout   time.Duration   `json:"timeout,omitempty"`
+	ID      string          `json:"id"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Timeout time.Duration   `json:"timeout,omitempty"`
 }
 
 // RPCResponse represents a remote procedure call response
 type RPCResponse struct {
-	ID      string          `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *RPCError       `json:"error,omitempty"`
+	ID     string          `json:"id"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *RPCError       `json:"error,omitempty"`
 }
 
 // RPCError represents an RPC error

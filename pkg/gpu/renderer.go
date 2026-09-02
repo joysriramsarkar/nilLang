@@ -62,14 +62,14 @@ type Renderer interface {
 
 // Capabilities represents GPU capabilities
 type Capabilities struct {
-	MaxTextureSize    int
-	MaxRenderTargets  int
-	SupportsCompute   bool
+	MaxTextureSize       int
+	MaxRenderTargets     int
+	SupportsCompute      bool
 	SupportsTessellation bool
-	SupportsGeometry  bool
-	APIVersion        string
-	DeviceName        string
-	VendorName        string
+	SupportsGeometry     bool
+	APIVersion           string
+	DeviceName           string
+	VendorName           string
 }
 
 // Color represents an RGBA color
@@ -93,13 +93,13 @@ func ColorFromHex(hex string) Color {
 }
 
 var (
-	ColorWhite   = Color{1, 1, 1, 1}
-	ColorBlack   = Color{0, 0, 0, 1}
-	ColorRed     = Color{1, 0, 0, 1}
-	ColorGreen   = Color{0, 1, 0, 1}
-	ColorBlue    = Color{0, 0, 1, 1}
-	ColorNilang  = Color{0, 0.83, 1, 1} // #00d4ff
-	ColorOnuron  = Color{0, 0.35, 0.61, 1} // #005A9C
+	ColorWhite  = Color{1, 1, 1, 1}
+	ColorBlack  = Color{0, 0, 0, 1}
+	ColorRed    = Color{1, 0, 0, 1}
+	ColorGreen  = Color{0, 1, 0, 1}
+	ColorBlue   = Color{0, 0, 1, 1}
+	ColorNilang = Color{0, 0.83, 1, 1}    // #00d4ff
+	ColorOnuron = Color{0, 0.35, 0.61, 1} // #005A9C
 )
 
 // CreateRenderer creates a renderer with the best available backend

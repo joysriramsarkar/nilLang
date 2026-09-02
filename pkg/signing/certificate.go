@@ -10,18 +10,18 @@ import (
 
 // Certificate represents a signing certificate
 type Certificate struct {
-	Version     int       `json:"version"`
-	SerialNumber string   `json:"serial_number"`
-	Issuer      string    `json:"issuer"`
-	Subject     string    `json:"subject"`
-	PublicKey   string    `json:"public_key"`
-	KeyID       string    `json:"key_id"`
-	Algorithm   string    `json:"algorithm"`
-	ValidFrom   time.Time `json:"valid_from"`
-	ValidTo     time.Time `json:"valid_to"`
-	Signature   string    `json:"signature"`
-	Extensions  map[string]string `json:"extensions,omitempty"`
-	IsCA        bool      `json:"is_ca"`
+	Version      int               `json:"version"`
+	SerialNumber string            `json:"serial_number"`
+	Issuer       string            `json:"issuer"`
+	Subject      string            `json:"subject"`
+	PublicKey    string            `json:"public_key"`
+	KeyID        string            `json:"key_id"`
+	Algorithm    string            `json:"algorithm"`
+	ValidFrom    time.Time         `json:"valid_from"`
+	ValidTo      time.Time         `json:"valid_to"`
+	Signature    string            `json:"signature"`
+	Extensions   map[string]string `json:"extensions,omitempty"`
+	IsCA         bool              `json:"is_ca"`
 }
 
 // CertificateChain represents a chain of certificates

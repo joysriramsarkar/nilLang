@@ -21,19 +21,19 @@ const (
 
 // Buffer represents a GPU buffer
 type Buffer struct {
-	ID       uint32
-	Type     BufferType
-	Usage    BufferUsage
-	Size     int
-	Data     []byte
-	Mapped   bool
+	ID     uint32
+	Type   BufferType
+	Usage  BufferUsage
+	Size   int
+	Data   []byte
+	Mapped bool
 }
 
 // Vertex represents a vertex for rendering
 type Vertex struct {
-	Position   Vec2
-	Color      Color
-	TexCoord   Vec2
+	Position     Vec2
+	Color        Color
+	TexCoord     Vec2
 	BorderRadius float32
 }
 

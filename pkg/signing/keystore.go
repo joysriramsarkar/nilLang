@@ -15,21 +15,21 @@ import (
 
 // KeyStore manages encrypted key storage
 type KeyStore struct {
-	path      string
-	password  string
-	keys      map[string]*StoredKey
+	path     string
+	password string
+	keys     map[string]*StoredKey
 }
 
 // StoredKey represents an encrypted key in the keystore
 type StoredKey struct {
-	KeyID           string    `json:"key_id"`
-	EncryptedPrivKey string  `json:"encrypted_private_key"`
-	PublicKey       string    `json:"public_key"`
-	Algorithm       string    `json:"algorithm"`
-	Owner           string    `json:"owner"`
-	Purpose         string    `json:"purpose"`
-	Salt            string    `json:"salt"`
-	Nonce           string    `json:"nonce"`
+	KeyID            string `json:"key_id"`
+	EncryptedPrivKey string `json:"encrypted_private_key"`
+	PublicKey        string `json:"public_key"`
+	Algorithm        string `json:"algorithm"`
+	Owner            string `json:"owner"`
+	Purpose          string `json:"purpose"`
+	Salt             string `json:"salt"`
+	Nonce            string `json:"nonce"`
 }
 
 // NewKeyStore creates or opens a keystore
@@ -171,9 +171,9 @@ func (ks *KeyStore) ListKeys() []*KeyInfo {
 	result := make([]*KeyInfo, 0, len(ks.keys))
 	for _, storedKey := range ks.keys {
 		result = append(result, &KeyInfo{
-			KeyID:   storedKey.KeyID,
-			Owner:   storedKey.Owner,
-			Purpose: storedKey.Purpose,
+			KeyID:     storedKey.KeyID,
+			Owner:     storedKey.Owner,
+			Purpose:   storedKey.Purpose,
 			Algorithm: storedKey.Algorithm,
 		})
 	}

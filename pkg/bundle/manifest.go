@@ -7,19 +7,19 @@ import (
 
 // Manifest represents the metadata inside a .nilax bundle
 type Manifest struct {
-	FormatVersion int               `json:"format_version"`
-	AppName       string            `json:"app_name"`
-	AppVersion    string            `json:"app_version"`
-	Author        string            `json:"author,omitempty"`
-	Description   string            `json:"description,omitempty"`
-	EntryBytecode string            `json:"entry_bytecode"`
-	Targets       []string          `json:"targets"`
-	CreatedAt     time.Time         `json:"created_at"`
-	CompilerVersion string          `json:"compiler_version"`
-	Dependencies  map[string]string `json:"dependencies,omitempty"`
-	Permissions   []string          `json:"permissions,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	Signature     string            `json:"signature,omitempty"`
+	FormatVersion   int               `json:"format_version"`
+	AppName         string            `json:"app_name"`
+	AppVersion      string            `json:"app_version"`
+	Author          string            `json:"author,omitempty"`
+	Description     string            `json:"description,omitempty"`
+	EntryBytecode   string            `json:"entry_bytecode"`
+	Targets         []string          `json:"targets"`
+	CreatedAt       time.Time         `json:"created_at"`
+	CompilerVersion string            `json:"compiler_version"`
+	Dependencies    map[string]string `json:"dependencies,omitempty"`
+	Permissions     []string          `json:"permissions,omitempty"`
+	Metadata        map[string]string `json:"metadata,omitempty"`
+	Signature       string            `json:"signature,omitempty"`
 }
 
 // NewManifest creates a new manifest with default values

@@ -7,12 +7,12 @@ import (
 
 // Engine is the main animation engine
 type Engine struct {
-	mu         sync.RWMutex
-	timelines  map[string]*Timeline
-	sprites    map[string]*Sprite
-	fps        int
-	isRunning  bool
-	stopChan   chan struct{}
+	mu        sync.RWMutex
+	timelines map[string]*Timeline
+	sprites   map[string]*Sprite
+	fps       int
+	isRunning bool
+	stopChan  chan struct{}
 }
 
 // NewEngine creates a new animation engine

@@ -44,14 +44,14 @@ type Transport struct {
 
 // Connection represents a connection to another device
 type Connection struct {
-	DeviceID    string
-	Address     string
-	Conn        net.Conn
-	SessionID   string
-	Connected   bool
-	LastActive  time.Time
-	BytesSent   int64
-	BytesRecv   int64
+	DeviceID     string
+	Address      string
+	Conn         net.Conn
+	SessionID    string
+	Connected    bool
+	LastActive   time.Time
+	BytesSent    int64
+	BytesRecv    int64
 	MessagesSent uint64
 	MessagesRecv uint64
 }

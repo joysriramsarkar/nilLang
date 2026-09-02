@@ -56,14 +56,14 @@ func (mt MessageType) String() string {
 
 // Message represents a SoftBus protocol message
 type Message struct {
-	Version     uint8       `json:"version"`
-	Type        MessageType `json:"type"`
-	SourceID    string      `json:"source_id"`
-	DestID      string      `json:"dest_id"`
-	SessionID   string      `json:"session_id,omitempty"`
-	SequenceNum uint64      `json:"seq"`
-	Timestamp   int64       `json:"ts"`
-	Payload     []byte      `json:"payload,omitempty"`
+	Version     uint8             `json:"version"`
+	Type        MessageType       `json:"type"`
+	SourceID    string            `json:"source_id"`
+	DestID      string            `json:"dest_id"`
+	SessionID   string            `json:"session_id,omitempty"`
+	SequenceNum uint64            `json:"seq"`
+	Timestamp   int64             `json:"ts"`
+	Payload     []byte            `json:"payload,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
@@ -110,16 +110,16 @@ func DeserializeMessage(data []byte) (*Message, error) {
 
 // DeviceInfo represents information about a device
 type DeviceInfo struct {
-	DeviceID    string   `json:"device_id"`
-	DeviceName  string   `json:"device_name"`
-	DeviceType  string   `json:"device_type"` // "phone", "tablet", "desktop", "watch"
-	OSName      string   `json:"os_name"`
-	OSVersion   string   `json:"os_version"`
-	IPAddress   string   `json:"ip_address"`
-	Port        int      `json:"port"`
+	DeviceID     string   `json:"device_id"`
+	DeviceName   string   `json:"device_name"`
+	DeviceType   string   `json:"device_type"` // "phone", "tablet", "desktop", "watch"
+	OSName       string   `json:"os_name"`
+	OSVersion    string   `json:"os_version"`
+	IPAddress    string   `json:"ip_address"`
+	Port         int      `json:"port"`
 	Capabilities []string `json:"capabilities"`
-	PublicKey   string   `json:"public_key"`
-	LastSeen    int64    `json:"last_seen"`
+	PublicKey    string   `json:"public_key"`
+	LastSeen     int64    `json:"last_seen"`
 }
 
 // DiscoveryRequest represents a device discovery request
@@ -146,19 +146,19 @@ type ConnectRequest struct {
 
 // ConnectResponse represents a connection response
 type ConnectResponse struct {
-	Accepted    bool   `json:"accepted"`
-	SessionID   string `json:"session_id"`
-	PublicKey   string `json:"public_key"`
-	Challenge   string `json:"challenge"`
-	Error       string `json:"error,omitempty"`
+	Accepted  bool   `json:"accepted"`
+	SessionID string `json:"session_id"`
+	PublicKey string `json:"public_key"`
+	Challenge string `json:"challenge"`
+	Error     string `json:"error,omitempty"`
 }
 
 // Heartbeat represents a heartbeat message
 type Heartbeat struct {
-	DeviceID  string `json:"device_id"`
-	Timestamp int64  `json:"timestamp"`
+	DeviceID  string  `json:"device_id"`
+	Timestamp int64   `json:"timestamp"`
 	Load      float64 `json:"load"` // 0.0 - 1.0
-	Battery   int    `json:"battery"`
+	Battery   int     `json:"battery"`
 }
 
 // ErrorPayload represents an error message

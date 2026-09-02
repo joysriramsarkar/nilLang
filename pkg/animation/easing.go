@@ -69,7 +69,7 @@ var (
 		if t == 0 || t == 1 {
 			return t
 		}
-		return math.Pow(2, -10*t) * math.Sin((t-0.1)*5*math.Pi) + 1
+		return math.Pow(2, -10*t)*math.Sin((t-0.1)*5*math.Pi) + 1
 	}
 	EaseInOutElastic EasingFunc = func(t float64) float64 {
 		if t == 0 || t == 1 {
@@ -183,34 +183,34 @@ var (
 // GetEasingByName returns an easing function by name
 func GetEasingByName(name string) EasingFunc {
 	easings := map[string]EasingFunc{
-		"linear":         Linear,
-		"easeInQuad":     EaseInQuad,
-		"easeOutQuad":    EaseOutQuad,
-		"easeInOutQuad":  EaseInOutQuad,
-		"easeInCubic":    EaseInCubic,
-		"easeOutCubic":   EaseOutCubic,
-		"easeInOutCubic": EaseInOutCubic,
-		"easeInQuart":    EaseInQuart,
-		"easeOutQuart":   EaseOutQuart,
-		"easeInOutQuart": EaseInOutQuart,
-		"easeInElastic":  EaseInElastic,
-		"easeOutElastic": EaseOutElastic,
+		"linear":           Linear,
+		"easeInQuad":       EaseInQuad,
+		"easeOutQuad":      EaseOutQuad,
+		"easeInOutQuad":    EaseInOutQuad,
+		"easeInCubic":      EaseInCubic,
+		"easeOutCubic":     EaseOutCubic,
+		"easeInOutCubic":   EaseInOutCubic,
+		"easeInQuart":      EaseInQuart,
+		"easeOutQuart":     EaseOutQuart,
+		"easeInOutQuart":   EaseInOutQuart,
+		"easeInElastic":    EaseInElastic,
+		"easeOutElastic":   EaseOutElastic,
 		"easeInOutElastic": EaseInOutElastic,
-		"easeInBounce":   EaseInBounce,
-		"easeOutBounce":  EaseOutBounce,
-		"easeInOutBounce": EaseInOutBounce,
-		"easeInBack":     EaseInBack,
-		"easeOutBack":    EaseOutBack,
-		"easeInOutBack":  EaseInOutBack,
-		"easeInSine":     EaseInSine,
-		"easeOutSine":    EaseOutSine,
-		"easeInOutSine":  EaseInOutSine,
-		"easeInExpo":     EaseInExpo,
-		"easeOutExpo":    EaseOutExpo,
-		"easeInOutExpo":  EaseInOutExpo,
-		"easeInCirc":     EaseInCirc,
-		"easeOutCirc":    EaseOutCirc,
-		"easeInOutCirc":  EaseInOutCirc,
+		"easeInBounce":     EaseInBounce,
+		"easeOutBounce":    EaseOutBounce,
+		"easeInOutBounce":  EaseInOutBounce,
+		"easeInBack":       EaseInBack,
+		"easeOutBack":      EaseOutBack,
+		"easeInOutBack":    EaseInOutBack,
+		"easeInSine":       EaseInSine,
+		"easeOutSine":      EaseOutSine,
+		"easeInOutSine":    EaseInOutSine,
+		"easeInExpo":       EaseInExpo,
+		"easeOutExpo":      EaseOutExpo,
+		"easeInOutExpo":    EaseInOutExpo,
+		"easeInCirc":       EaseInCirc,
+		"easeOutCirc":      EaseOutCirc,
+		"easeInOutCirc":    EaseInOutCirc,
 	}
 
 	if fn, ok := easings[name]; ok {

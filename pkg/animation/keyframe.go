@@ -2,15 +2,15 @@ package animation
 
 // Keyframe represents a single keyframe in an animation
 type Keyframe struct {
-	Time      float64               // Time in seconds (0.0 - 1.0 normalized)
-	Values    map[string]float64    // Property values at this keyframe
-	Easing    EasingFunc            // Easing to use until next keyframe
+	Time   float64            // Time in seconds (0.0 - 1.0 normalized)
+	Values map[string]float64 // Property values at this keyframe
+	Easing EasingFunc         // Easing to use until next keyframe
 }
 
 // KeyframeTrack represents a sequence of keyframes for a property
 type KeyframeTrack struct {
-	Property   string
-	Keyframes  []*Keyframe
+	Property  string
+	Keyframes []*Keyframe
 }
 
 // NewKeyframe creates a new keyframe
@@ -104,7 +104,7 @@ type Animation struct {
 	Duration   float64 // Duration in seconds
 	Delay      float64 // Delay before start
 	Loop       bool
-	LoopCount  int     // -1 for infinite
+	LoopCount  int // -1 for infinite
 	Tracks     []*KeyframeTrack
 	OnComplete func()
 	OnUpdate   func(progress float64)

@@ -107,9 +107,9 @@ func (r *OpenGLRenderer) SetScissor(x, y, w, h int) {
 	r.uniformBuffer.Scissor = Vec4{float32(x), float32(y), float32(w), float32(h)}
 }
 
-func (r *OpenGLRenderer) GetBackend() BackendType { return BackendOpenGLES }
+func (r *OpenGLRenderer) GetBackend() BackendType        { return BackendOpenGLES }
 func (r *OpenGLRenderer) GetCapabilities() *Capabilities { return r.capabilities }
-func (r *OpenGLRenderer) IsInitialized() bool { return r.initialized }
+func (r *OpenGLRenderer) IsInitialized() bool            { return r.initialized }
 
 // SoftwareRenderer is a CPU-based fallback renderer
 type SoftwareRenderer struct {
@@ -131,50 +131,50 @@ func (r *SoftwareRenderer) Init(width, height int) error {
 	return nil
 }
 
-func (r *SoftwareRenderer) Destroy() error { r.initialized = false; return nil }
+func (r *SoftwareRenderer) Destroy() error    { r.initialized = false; return nil }
 func (r *SoftwareRenderer) BeginFrame() error { return nil }
-func (r *SoftwareRenderer) EndFrame() error { return nil }
-func (r *SoftwareRenderer) Present() error { return nil }
+func (r *SoftwareRenderer) EndFrame() error   { return nil }
+func (r *SoftwareRenderer) Present() error    { return nil }
 func (r *SoftwareRenderer) Clear(red, g, b, a float32) {
 	color := Color{red, g, b, a}
 	for i := range r.framebuffer {
 		r.framebuffer[i] = color
 	}
 }
-func (r *SoftwareRenderer) DrawRect(x, y, w, h float32, color Color) {}
-func (r *SoftwareRenderer) DrawRoundedRect(x, y, w, h, radius float32, color Color) {}
-func (r *SoftwareRenderer) DrawCircle(cx, cy, radius float32, color Color) {}
-func (r *SoftwareRenderer) DrawLine(x1, y1, x2, y2 float32, color Color, thickness float32) {}
+func (r *SoftwareRenderer) DrawRect(x, y, w, h float32, color Color)                          {}
+func (r *SoftwareRenderer) DrawRoundedRect(x, y, w, h, radius float32, color Color)           {}
+func (r *SoftwareRenderer) DrawCircle(cx, cy, radius float32, color Color)                    {}
+func (r *SoftwareRenderer) DrawLine(x1, y1, x2, y2 float32, color Color, thickness float32)   {}
 func (r *SoftwareRenderer) DrawText(text string, x, y float32, fontSize float32, color Color) {}
-func (r *SoftwareRenderer) DrawImage(texture *Texture, x, y, w, h float32) {}
-func (r *SoftwareRenderer) PushTransform(transform Mat4) {}
-func (r *SoftwareRenderer) PopTransform() {}
-func (r *SoftwareRenderer) SetScissor(x, y, w, h int) {}
-func (r *SoftwareRenderer) GetBackend() BackendType { return BackendSoftware }
-func (r *SoftwareRenderer) GetCapabilities() *Capabilities { return &Capabilities{} }
-func (r *SoftwareRenderer) IsInitialized() bool { return r.initialized }
+func (r *SoftwareRenderer) DrawImage(texture *Texture, x, y, w, h float32)                    {}
+func (r *SoftwareRenderer) PushTransform(transform Mat4)                                      {}
+func (r *SoftwareRenderer) PopTransform()                                                     {}
+func (r *SoftwareRenderer) SetScissor(x, y, w, h int)                                         {}
+func (r *SoftwareRenderer) GetBackend() BackendType                                           { return BackendSoftware }
+func (r *SoftwareRenderer) GetCapabilities() *Capabilities                                    { return &Capabilities{} }
+func (r *SoftwareRenderer) IsInitialized() bool                                               { return r.initialized }
 
 // MetalRenderer placeholder for iOS
 type MetalRenderer struct {
 	initialized bool
 }
 
-func NewMetalRenderer() *MetalRenderer { return &MetalRenderer{} }
-func (r *MetalRenderer) Init(width, height int) error { r.initialized = true; return nil }
-func (r *MetalRenderer) Destroy() error { return nil }
-func (r *MetalRenderer) BeginFrame() error { return nil }
-func (r *MetalRenderer) EndFrame() error { return nil }
-func (r *MetalRenderer) Present() error { return nil }
-func (r *MetalRenderer) Clear(red, g, b, a float32) {}
-func (r *MetalRenderer) DrawRect(x, y, w, h float32, color Color) {}
-func (r *MetalRenderer) DrawRoundedRect(x, y, w, h, radius float32, color Color) {}
-func (r *MetalRenderer) DrawCircle(cx, cy, radius float32, color Color) {}
-func (r *MetalRenderer) DrawLine(x1, y1, x2, y2 float32, color Color, thickness float32) {}
+func NewMetalRenderer() *MetalRenderer                                                     { return &MetalRenderer{} }
+func (r *MetalRenderer) Init(width, height int) error                                      { r.initialized = true; return nil }
+func (r *MetalRenderer) Destroy() error                                                    { return nil }
+func (r *MetalRenderer) BeginFrame() error                                                 { return nil }
+func (r *MetalRenderer) EndFrame() error                                                   { return nil }
+func (r *MetalRenderer) Present() error                                                    { return nil }
+func (r *MetalRenderer) Clear(red, g, b, a float32)                                        {}
+func (r *MetalRenderer) DrawRect(x, y, w, h float32, color Color)                          {}
+func (r *MetalRenderer) DrawRoundedRect(x, y, w, h, radius float32, color Color)           {}
+func (r *MetalRenderer) DrawCircle(cx, cy, radius float32, color Color)                    {}
+func (r *MetalRenderer) DrawLine(x1, y1, x2, y2 float32, color Color, thickness float32)   {}
 func (r *MetalRenderer) DrawText(text string, x, y float32, fontSize float32, color Color) {}
-func (r *MetalRenderer) DrawImage(texture *Texture, x, y, w, h float32) {}
-func (r *MetalRenderer) PushTransform(transform Mat4) {}
-func (r *MetalRenderer) PopTransform() {}
-func (r *MetalRenderer) SetScissor(x, y, w, h int) {}
-func (r *MetalRenderer) GetBackend() BackendType { return BackendMetal }
-func (r *MetalRenderer) GetCapabilities() *Capabilities { return &Capabilities{} }
-func (r *MetalRenderer) IsInitialized() bool { return r.initialized }
+func (r *MetalRenderer) DrawImage(texture *Texture, x, y, w, h float32)                    {}
+func (r *MetalRenderer) PushTransform(transform Mat4)                                      {}
+func (r *MetalRenderer) PopTransform()                                                     {}
+func (r *MetalRenderer) SetScissor(x, y, w, h int)                                         {}
+func (r *MetalRenderer) GetBackend() BackendType                                           { return BackendMetal }
+func (r *MetalRenderer) GetCapabilities() *Capabilities                                    { return &Capabilities{} }
+func (r *MetalRenderer) IsInitialized() bool                                               { return r.initialized }

@@ -25,21 +25,21 @@ const (
 )
 
 var precedences = map[token.TokenType]int{
-	token.OR:          OR,
-	token.AND:         AND,
-	token.EQ:          EQUALS,
-	token.NOT_EQ:      EQUALS,
-	token.LT:          LESSGREATER,
-	token.GT:          LESSGREATER,
-	token.LTE:         LESSGREATER,
-	token.GTE:         LESSGREATER,
-	token.PLUS:        SUM,
-	token.MINUS:       SUM,
-	token.SLASH:       PRODUCT,
-	token.ASTERISK:    PRODUCT,
-	token.MODULO:      PRODUCT,
-	token.LPAREN:      CALL,
-	token.LBRACKET:    INDEX,
+	token.OR:       OR,
+	token.AND:      AND,
+	token.EQ:       EQUALS,
+	token.NOT_EQ:   EQUALS,
+	token.LT:       LESSGREATER,
+	token.GT:       LESSGREATER,
+	token.LTE:      LESSGREATER,
+	token.GTE:      LESSGREATER,
+	token.PLUS:     SUM,
+	token.MINUS:    SUM,
+	token.SLASH:    PRODUCT,
+	token.ASTERISK: PRODUCT,
+	token.MODULO:   PRODUCT,
+	token.LPAREN:   CALL,
+	token.LBRACKET: INDEX,
 }
 
 type (

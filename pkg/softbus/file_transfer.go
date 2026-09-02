@@ -42,10 +42,10 @@ type FileTransfer struct {
 
 // FileTransferManager manages file transfers
 type FileTransferManager struct {
-	mu         sync.RWMutex
-	transfers  map[string]*FileTransfer
-	transport  *Transport
-	deviceID   string
+	mu          sync.RWMutex
+	transfers   map[string]*FileTransfer
+	transport   *Transport
+	deviceID    string
 	downloadDir string
 }
 

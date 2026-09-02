@@ -11,14 +11,14 @@ import (
 
 // PackageSignature represents a signed package
 type PackageSignature struct {
-	PackageName    string    `json:"package_name"`
-	PackageVersion string    `json:"package_version"`
-	Checksum       string    `json:"checksum"`       // SHA-256 of the package file
-	Signature      string    `json:"signature"`      // Ed25519 signature (hex)
-	SignerKeyID    string    `json:"signer_key_id"`
-	SignerName     string    `json:"signer_name"`
-	Algorithm      string    `json:"algorithm"`
-	SignedAt       time.Time `json:"signed_at"`
+	PackageName    string       `json:"package_name"`
+	PackageVersion string       `json:"package_version"`
+	Checksum       string       `json:"checksum"`  // SHA-256 of the package file
+	Signature      string       `json:"signature"` // Ed25519 signature (hex)
+	SignerKeyID    string       `json:"signer_key_id"`
+	SignerName     string       `json:"signer_name"`
+	Algorithm      string       `json:"algorithm"`
+	SignedAt       time.Time    `json:"signed_at"`
 	Certificate    *Certificate `json:"certificate,omitempty"`
 }
 

@@ -10,22 +10,22 @@ import (
 
 // RegistryPackage represents a package in the registry
 type RegistryPackage struct {
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Description string   `json:"description"`
-	Author      string   `json:"author"`
-	DownloadURL string   `json:"download_url"`
-	Checksum    string   `json:"checksum"`
-	Size        int64    `json:"size_bytes"`
-	Targets     []string `json:"targets"`
+	Name        string    `json:"name"`
+	Version     string    `json:"version"`
+	Description string    `json:"description"`
+	Author      string    `json:"author"`
+	DownloadURL string    `json:"download_url"`
+	Checksum    string    `json:"checksum"`
+	Size        int64     `json:"size_bytes"`
+	Targets     []string  `json:"targets"`
 	PublishedAt time.Time `json:"published_at"`
-	Downloads   int64    `json:"downloads"`
+	Downloads   int64     `json:"downloads"`
 }
 
 // Registry manages the package registry
 type Registry struct {
-	config   *Config
-	index    map[string]*RegistryPackage
+	config    *Config
+	index     map[string]*RegistryPackage
 	indexPath string
 }
 

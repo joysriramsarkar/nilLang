@@ -3,7 +3,7 @@ package bundle
 import (
 	"archive/zip"
 	"fmt"
-		"os"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -12,10 +12,10 @@ import (
 
 // Builder creates .nilax bundles
 type Builder struct {
-	config    *config.ProjectConfig
+	config     *config.ProjectConfig
 	projectDir string
-	manifest  *Manifest
-	files     map[string][]byte // path in bundle -> content
+	manifest   *Manifest
+	files      map[string][]byte // path in bundle -> content
 }
 
 // NewBuilder creates a new bundle builder

@@ -2,11 +2,11 @@ package animation
 
 // AnimatableProperty defines a property that can be animated
 type AnimatableProperty struct {
-	Name        string
-	MinValue    float64
-	MaxValue    float64
+	Name         string
+	MinValue     float64
+	MaxValue     float64
 	DefaultValue float64
-	Unit        string
+	Unit         string
 }
 
 // Standard animatable properties
