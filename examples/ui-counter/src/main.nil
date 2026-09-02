@@ -1,0 +1,26 @@
+// Counter Application in Nilang
+// Demonstrating State and Alap UI components
+
+let title = "Alap UI Counter";
+let initialCount = 0;
+
+puts("╔════════════════════════════════════════════════╗");
+puts("║   \(title) - Powered by Onuron OS               ║");
+puts("╚════════════════════════════════════════════════╝");
+
+let createCounter = fn(init) {
+    let count = init;
+    return fn(step) {
+        let count = count + step;
+        return count;
+    };
+};
+
+let counter = createCounter(initialCount);
+
+puts("Current Count: \(initialCount)");
+puts("Incrementing by 1: \(counter(1))");
+puts("Incrementing by 5: \(counter(5))");
+puts("Incrementing by 10: \(counter(10))");
+
+puts("✅ Counter logic executed successfully!");

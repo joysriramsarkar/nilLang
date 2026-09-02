@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Run unit tests
+        run: go test -v -race ./...
+        if: matrix.os != 'windows-latest'
+
+      - name: Run unit tests (Windows)
+        run: go test -v ./...
+        if: matrix.os == 'windows-latest'
+
+  build:
+    name: Build & Verify Examples (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Build all binaries (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p bin
+          go build -o bin/nil ./cmd/nil
+          go build -o bin/nilc ./cmd/nilc
+          go build -o bin/nilpkg ./cmd/nilpkg
+          go build -o bin/nilpkg-server ./cmd/nilpkg-server
+          go build -o bin/nilkey ./cmd/nilkey
+          go build -o bin/softbusd ./cmd/softbusd
+
+      - name: Build all binaries (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir bin -ErrorAction SilentlyContinue
+          go build -o bin/nil.exe ./cmd/nil
+          go build -o bin/nilc.exe ./cmd/nilc
+          go build -o bin/nilpkg.exe ./cmd/nilpkg
+          go build -o bin/nilpkg-server.exe ./cmd/nilpkg-server
+          go build -o bin/nilkey.exe ./cmd/nilkey
+          go build -o bin/softbusd.exe ./cmd/softbusd
+
+      - name: Verify CLI version
+        run: |
+          ./bin/nil version || .\bin\nil.exe version
+
+      - name: Test Running Hello Onuron
+        run: |
+          ./bin/nil run examples/hello-onuron/src/main.nil || .\bin\nil.exe run examples/hello-onuron/src/main.nil
+
+      - name: Test Declarative UI Render
+        run: |
+          ./bin/nil render || .\bin\nil.exe render

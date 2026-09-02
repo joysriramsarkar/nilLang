@@ -1,0 +1,17 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Build outputs
+build/
+dist/
+*.nilax
+*.sig
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+[package]
+name = "nilang-native"
+version = "0.1.0"
+edition = "2021"
+authors = ["Joyshriram Sarkar"]
+description = "Native runtime library for Nilang on Onuron OS"
+
+[lib]
+name = "nilang_native"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

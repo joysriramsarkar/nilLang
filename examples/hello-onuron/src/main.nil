@@ -1,0 +1,46 @@
+// Hello Onuron - Nilang Application
+// Powered by Alap Framework & Onuron OS
+
+let appName = "Hello Onuron";
+let version = "1.0.0";
+let author = "Joyshriram Sarkar";
+
+puts("╔══════════════════════════════════════╗");
+puts("║     \(appName) v\(version)            ║");
+puts("║     by \(author)                    ║");
+puts("╚══════════════════════════════════════╝");
+puts("");
+
+// Fibonacci sequence
+let fibonacci = fn(n) {
+    if (n == 0) {
+        return 0;
+    }
+    if (n == 1) {
+        return 1;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+};
+
+puts("📐 Fibonacci Sequence:");
+let i = 0;
+while (i < 10) {
+    let val = fibonacci(i);
+    puts("  fib(\(i)) = \(val)");
+    let i = i + 1;
+}
+
+puts("");
+
+// String operations
+let greeting = "Hello";
+let target = "Onuron OS";
+let message = "\(greeting), \(target)! 🎉";
+puts("💬 \(message)");
+
+// Array operations
+let numbers = [5, 3, 8, 1, 9, 2];
+puts("📊 Numbers: \(numbers)");
+
+puts("");
+puts("✅ \(appName) completed successfully!");

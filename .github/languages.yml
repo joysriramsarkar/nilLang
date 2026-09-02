@@ -1,0 +1,11 @@
+Nilang:
+  type: programming
+  color: "#005A9C"
+  extensions:
+    - ".nil"
+  ace_mode: text
+  codemirror_mode: nilang
+  codemirror_mime_type: text/x-nilang
+  aliases:
+    - "nil"
+    - "nilang"

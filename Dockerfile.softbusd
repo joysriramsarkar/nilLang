@@ -1,0 +1,18 @@
+# Multi-stage Dockerfile for softbusd daemon
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/softbusd ./cmd/softbusd
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
+WORKDIR /root/
+COPY --from=builder /bin/softbusd /usr/local/bin/softbusd
+
+EXPOSE 9000 9001/udp
+
+ENTRYPOINT ["/usr/local/bin/softbusd"]

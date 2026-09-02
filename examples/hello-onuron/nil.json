@@ -1,0 +1,19 @@
+{
+  "name": "hello-onuron",
+  "version": "1.0.0",
+  "author": "Joyshriram Sarkar",
+  "description": "Hello World application for Onuron OS",
+  "entry": "src/main.nil",
+  "targets": ["onuron", "linux"],
+  "resources": ["resources/*"],
+  "dependencies": {},
+  "build": {
+    "output_dir": "build",
+    "optimize": true,
+    "debug": false
+  },
+  "metadata": {
+    "icon": "resources/icon.png",
+    "category": "utility"
+  }
+}

@@ -1,0 +1,10 @@
+{
+    "go.buildFlags": [
+        "-tags=onuron"
+    ],
+    "gopls": {
+        "build.buildFlags": [
+            "-tags=onuron"
+        ]
+    }
+}

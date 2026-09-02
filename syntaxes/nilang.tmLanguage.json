@@ -1,0 +1,58 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Nilang",
+  "scopeName": "source.nil",
+  "fileTypes": ["nil", "nilax"],
+  "patterns": [
+    {
+      "name": "keyword.control.nilang",
+      "match": "\\b(let|const|fn|if|else|return|while|component|state|render|emit|on|build|style|import|struct|type|match)\\b"
+    },
+    {
+      "name": "storage.type.nilang",
+      "match": "\\b(String|Int|Bool|Float|Array|Hash|Any|Void|Component)\\b"
+    },
+    {
+      "name": "constant.language.nilang",
+      "match": "\\b(true|false|null)\\b"
+    },
+    {
+      "name": "support.function.builtin.nilang",
+      "match": "\\b(print|println|puts|len|first|last|rest|push|type|str|int|time|assert|input|exit)\\b"
+    },
+    {
+      "name": "constant.numeric.nilang",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+    {
+      "name": "string.quoted.double.nilang",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.nilang",
+          "match": "\\\\[\\\\\"nrt]"
+        },
+        {
+          "name": "meta.interpolation.nilang",
+          "begin": "\\\\\\(",
+          "end": "\\)",
+          "patterns": [
+            {
+              "include": "$self"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "comment.line.double-slash.nilang",
+      "match": "//.*$"
+    },
+    {
+      "name": "comment.block.nilang",
+      "begin": "/\\*",
+      "end": "\\*/"
+    }
+  ]
+}

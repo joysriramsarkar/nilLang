@@ -1,0 +1,19 @@
+# Multi-stage Dockerfile for nilpkg-server
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/nilpkg-server ./cmd/nilpkg-server
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
+WORKDIR /root/
+COPY --from=builder /bin/nilpkg-server /usr/local/bin/nilpkg-server
+
+EXPOSE 8080
+VOLUME ["/root/.nilang-registry"]
+
+ENTRYPOINT ["/usr/local/bin/nilpkg-server"]
