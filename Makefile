@@ -17,18 +17,8 @@ all: build
 
 build:
 	@mkdir -p $(BIN_DIR)
-	@echo "Building nil..."
-	$(GO) build -o $(BIN_DIR)/nil ./cmd/nil
-	@echo "Building nilc..."
-	$(GO) build -o $(BIN_DIR)/nilc ./cmd/nilc
-	@echo "Building nilpkg..."
-	$(GO) build -o $(BIN_DIR)/nilpkg ./cmd/nilpkg
-	@echo "Building nilpkg-server..."
-	$(GO) build -o $(BIN_DIR)/nilpkg-server ./cmd/nilpkg-server
-	@echo "Building nilkey..."
-	$(GO) build -o $(BIN_DIR)/nilkey ./cmd/nilkey
-	@echo "Building softbusd..."
-	$(GO) build -o $(BIN_DIR)/softbusd ./cmd/softbusd
+	@echo "Building all Nilang binaries into $(BIN_DIR)/..."
+	$(GO) build -o $(BIN_DIR)/ ./cmd/...
 	@echo "✅ All binaries built into $(BIN_DIR)/"
 
 test:

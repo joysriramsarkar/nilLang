@@ -78,27 +78,54 @@ nilLang/
 
 ### ১. বাইনারি কম্পাইল করুন
 
+সবগুলো বাইনারি (`nil`, `nilc`, `nilpkg`, `nilpkg-server`, `nilkey`, `softbusd`) একবারে কম্পাইল করার জন্য:
+
+#### অপশন ১: লোকাল `bin/` ফোল্ডারে বিল্ড (এক কমান্ডেই সব)
 ```bash
-# সব CLI টুল তৈরি করুন
-go build -o bin/nil.exe ./cmd/nil
-go build -o bin/nilc.exe ./cmd/nilc
-go build -o bin/nilpkg.exe ./cmd/nilpkg
-go build -o bin/nilpkg-server.exe ./cmd/nilpkg-server
-go build -o bin/nilkey.exe ./cmd/nilkey
-go build -o bin/softbusd.exe ./cmd/softbusd
+# সব CLI টুল এক কমান্ডে তৈরি করুন
+go build -o bin/ ./cmd/...
+
+# অথবা উইন্ডোজে সরাসরি বিল্ড স্ক্রিপ্ট চালান:
+.\build.bat
+
+# অথবা Linux/macOS-এ:
+make
 ```
+
+#### অপশন ২ (প্রস্তাবিত): গ্লোবাল ইনস্টলেশন
+যাতে টার্মিনালের যেকোনো জায়গা থেকে সরাসরি `nil`, `nilc` ইত্যাদি রান করতে পারেন:
+```bash
+go install ./cmd/...
+```
+*(এটি সরাসরি Go-এর বিন ডিরেক্টরিতে সব টুল ইনস্টল করে দেবে, ফলে কোনো পাথ উল্লেখ ছাড়াই সরাসরি কমান্ডগুলো কাজ করবে)*
+
+---
 
 ### ২. প্রথম নীলাং প্রোগ্রাম চালান
 
+**যদি `go install` (গ্লোবাল) করে থাকেন:**
 ```bash
-# সরাসরি স্ক্রিপ্ট রান করুন (ট্রি-ওয়াকিং ইন্টারপ্রেটার)
-./bin/nil.exe run examples/hello-onuron/src/main.nil
+# সরাসরি স্ক্রিপ্ট রান করুন (ট্রি-ওয়াকিং ইন্টারপ্রেটার)
+nil run examples/hello-onuron/src/main.nil
 
-# হাই-স্পিড বাইটকোড ভার্চুয়াল মেশিনে রান করুন
-./bin/nil.exe run examples/hello-onuron/src/main.nil -vm
+# হাই-স্পিড বাইটকোড ভার্চুয়াল মেশিনে রান করুন
+nil run examples/hello-onuron/src/main.nil -vm
 
 # ইন্টারঅ্যাক্টিভ REPL চালু করুন
-./bin/nil.exe repl
+nil repl
+```
+
+**অথবা লোকাল `bin/` থেকে চালাতে:**
+```bash
+# Windows (PowerShell / CMD):
+.\bin\nil.exe run examples/hello-onuron/src/main.nil
+.\bin\nil.exe run examples/hello-onuron/src/main.nil -vm
+.\bin\nil.exe repl
+
+# Linux / macOS:
+./bin/nil run examples/hello-onuron/src/main.nil
+./bin/nil run examples/hello-onuron/src/main.nil -vm
+./bin/nil repl
 ```
 
 ---
