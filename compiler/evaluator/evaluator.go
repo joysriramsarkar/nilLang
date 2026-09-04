@@ -34,6 +34,13 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return val
 		}
 		env.Set(node.Name.Value, val)
+	case *ast.AssignStatement:
+		val := Eval(node.Value, env)
+		if isError(val) {
+			return val
+		}
+		env.Assign(node.Name.Value, val)
+		return val
 	case *ast.WhileStatement:
 		return evalWhileStatement(node, env)
 
@@ -550,11 +557,23 @@ func evalIndexExpression(left, index object.Object) object.Object {
 	switch {
 	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
 		return evalArrayIndexExpression(left, index)
+	case left.Type() == object.STRING_OBJ && index.Type() == object.INTEGER_OBJ:
+		return evalStringIndexExpression(left, index)
 	case left.Type() == object.HASH_OBJ:
 		return evalHashIndexExpression(left, index)
 	default:
 		return newError("index operator not supported: %s[%s]", left.Type(), index.Type())
 	}
+}
+
+func evalStringIndexExpression(str, index object.Object) object.Object {
+	strObj := str.(*object.String)
+	idx := index.(*object.Integer).Value
+	runes := []rune(strObj.Value)
+	if idx < 0 || idx >= int64(len(runes)) {
+		return NULL
+	}
+	return &object.String{Value: string(runes[idx])}
 }
 
 func evalArrayIndexExpression(array, index object.Object) object.Object {

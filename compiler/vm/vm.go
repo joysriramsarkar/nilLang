@@ -155,6 +155,24 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpAnd:
+			right := vm.pop()
+			left := vm.pop()
+			if isTruthy(left) && isTruthy(right) {
+				_ = vm.push(True)
+			} else {
+				_ = vm.push(False)
+			}
+
+		case code.OpOr:
+			right := vm.pop()
+			left := vm.pop()
+			if isTruthy(left) || isTruthy(right) {
+				_ = vm.push(True)
+			} else {
+				_ = vm.push(False)
+			}
+
 		case code.OpBang:
 			err := vm.executeBangOperator()
 			if err != nil {

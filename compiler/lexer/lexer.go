@@ -16,6 +16,7 @@ type Lexer struct {
 }
 
 func New(input string) *Lexer {
+	input = strings.TrimPrefix(input, "\xef\xbb\xbf")
 	l := &Lexer{input: input, line: 1, col: 0}
 	l.readChar()
 	return l

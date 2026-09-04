@@ -225,6 +225,18 @@ func (e *Environment) Set(name string, val Object) Object {
 	return val
 }
 
+func (e *Environment) Assign(name string, val Object) bool {
+	if _, ok := e.store[name]; ok {
+		e.store[name] = val
+		return true
+	}
+	if e.outer != nil {
+		return e.outer.Assign(name, val)
+	}
+	e.store[name] = val
+	return false
+}
+
 func (e *Environment) Store() map[string]Object {
 	return e.store
 }

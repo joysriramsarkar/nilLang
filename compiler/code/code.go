@@ -87,6 +87,8 @@ const (
 	OpToString
 	OpStringConcat
 	OpNativeCall
+	OpAnd
+	OpOr
 )
 
 type Definition struct {
@@ -130,6 +132,8 @@ var definitions = map[Opcode]*Definition{
 	OpToString:         {"OpToString", []int{}},
 	OpStringConcat:     {"OpStringConcat", []int{}},
 	OpNativeCall:       {"OpNativeCall", []int{2, 1}},
+	OpAnd:              {"OpAnd", []int{}},
+	OpOr:               {"OpOr", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {

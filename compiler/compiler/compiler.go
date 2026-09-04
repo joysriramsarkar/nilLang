@@ -139,6 +139,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpEqual)
 		case "!=":
 			c.emit(code.OpNotEqual)
+		case "&&":
+			c.emit(code.OpAnd)
+		case "||":
+			c.emit(code.OpOr)
 		default:
 			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
@@ -274,6 +278,21 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
+		if symbol.Scope == GlobalScope {
+			c.emit(code.OpSetGlobal, symbol.Index)
+		} else {
+			c.emit(code.OpSetLocal, symbol.Index)
+		}
+
+	case *ast.AssignStatement:
+		err := c.Compile(node.Value)
+		if err != nil {
+			return err
+		}
+		symbol, ok := c.symbolTable.Resolve(node.Name.Value)
+		if !ok {
+			symbol = c.symbolTable.Define(node.Name.Value)
+		}
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
 		} else {
