@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -11,7 +12,7 @@ import (
 
 // Reader reads .nilax bundles
 type Reader struct {
-	zipReader *zip.ReadCloser
+	zipReader io.Closer
 	manifest  *Manifest
 	files     map[string][]byte
 }
@@ -65,9 +66,56 @@ func OpenBundle(path string) (*Reader, error) {
 	return reader, nil
 }
 
+// OpenBundleBytes opens a .nilax bundle directly from memory bytes
+func OpenBundleBytes(data []byte) (*Reader, error) {
+	bytesReader := bytes.NewReader(data)
+	zipReader, err := zip.NewReader(bytesReader, int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open bundle from memory: %w", err)
+	}
+
+	reader := &Reader{
+		zipReader: nil,
+		files:     make(map[string][]byte),
+	}
+
+	for _, file := range zipReader.File {
+		rc, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open %s in bundle: %w", file.Name, err)
+		}
+
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read %s in bundle: %w", file.Name, err)
+		}
+
+		cleanName := filepath.ToSlash(file.Name)
+		reader.files[cleanName] = content
+
+		if cleanName == "manifest.json" {
+			manifest, err := FromJSON(content)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse manifest: %w", err)
+			}
+			reader.manifest = manifest
+		}
+	}
+
+	if reader.manifest == nil {
+		return nil, ErrInvalidBundle
+	}
+
+	return reader, nil
+}
+
 // Close closes the bundle reader
 func (r *Reader) Close() error {
-	return r.zipReader.Close()
+	if r.zipReader != nil {
+		return r.zipReader.Close()
+	}
+	return nil
 }
 
 // GetManifest returns the bundle manifest

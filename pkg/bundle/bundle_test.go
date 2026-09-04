@@ -54,3 +54,61 @@ func TestBundleBuildAndRead(t *testing.T) {
 		t.Errorf("wrong bytecode content: %v", bc)
 	}
 }
+
+func TestAppendedBundleRead(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "nilang_append_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := &config.ProjectConfig{
+		Name:    "appended-app",
+		Version: "1.0.0",
+		Targets: []string{"linux", "windows"},
+	}
+
+	builder := NewBuilder(cfg, tempDir)
+	builder.AddFile("src/main.nil", []byte("puts(\"hello appended\");"))
+
+	bundlePath := filepath.Join(tempDir, "app.nilax")
+	if err := builder.Build(bundlePath); err != nil {
+		t.Fatalf("failed to build: %v", err)
+	}
+
+	bundleBytes, err := os.ReadFile(bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a "mock executable" with 100KB of dummy binary code prepended to bundle
+	mockExePath := filepath.Join(tempDir, "app.exe")
+	dummyBinary := make([]byte, 1024*100)
+	for i := range dummyBinary {
+		dummyBinary[i] = 0x90 // NOP
+	}
+
+	appendedData := append(dummyBinary, bundleBytes...)
+	if err := os.WriteFile(mockExePath, appendedData, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try reading the bundle from the mock executable
+	reader, err := OpenBundle(mockExePath)
+	if err != nil {
+		t.Fatalf("failed to open appended bundle: %v", err)
+	}
+	defer reader.Close()
+
+	if reader.GetManifest().AppName != "appended-app" {
+		t.Fatalf("expected name 'appended-app', got %s", reader.GetManifest().AppName)
+	}
+
+	src, err := reader.GetFile("src/main.nil")
+	if err != nil {
+		t.Fatalf("failed to get src/main.nil: %v", err)
+	}
+	if string(src) != "puts(\"hello appended\");" {
+		t.Fatalf("wrong src content: %s", string(src))
+	}
+}
