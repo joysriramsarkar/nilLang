@@ -14,6 +14,8 @@ import (
 )
 
 func main() {
+	defer checkExplorerExit()
+
 	exePath, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error finding executable path: %v\n", err)

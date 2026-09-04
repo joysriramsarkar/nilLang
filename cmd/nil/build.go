@@ -12,6 +12,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	"github.com/joysriramsarkar/nilLang/pkg/compiler"
 	"github.com/joysriramsarkar/nilLang/pkg/config"
+	"github.com/joysriramsarkar/nilLang/pkg/mobile/android"
 )
 
 type PlatformTarget struct {
@@ -22,6 +23,7 @@ type PlatformTarget struct {
 	DisplayName string
 	RunnerName  string
 	FileSuffix  string
+	IsMobile    bool
 }
 
 var allPlatforms = []PlatformTarget{
@@ -72,12 +74,13 @@ var allPlatforms = []PlatformTarget{
 	},
 	{
 		ID:          "android",
-		OS:          "linux",
+		OS:          "android",
 		Arch:        "arm64",
-		Ext:         "",
-		DisplayName: "Android (AArch64 / ARM64 CLI)",
+		Ext:         ".apk",
+		DisplayName: "Android (APK Package)",
 		RunnerName:  "nil-runner-android-arm64",
-		FileSuffix:  "-android-arm64",
+		FileSuffix:  ".apk",
+		IsMobile:    true,
 	},
 }
 
@@ -255,9 +258,35 @@ func cmdBuild() {
 
 	if len(selectedPlatforms) > 0 {
 		fmt.Println()
-		fmt.Printf("🚀 নেটিভ স্ট্যান্ডঅ্যালোন এক্সেকিউটেবল তৈরি হচ্ছে (%d টি ওএস টার্গেট)...\n", len(selectedPlatforms))
+		fmt.Printf("🚀 টার্গেট প্ল্যাটফর্ম আর্টিফ্যাক্ট তৈরি হচ্ছে (%d টি টার্গেট)...\n", len(selectedPlatforms))
 
 		for _, plat := range selectedPlatforms {
+			if plat.IsMobile {
+				// Mobile target: Build real Android APK package
+				apkName := fmt.Sprintf("%s.apk", cfg.Name)
+				apkPath := filepath.Join(outputDir, apkName)
+				res, err := android.BuildAPK(cfg, projectDir, apkPath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "   ⚠️ %s প্যাকেজ তৈরি করতে সমস্যা: %v\n", plat.DisplayName, err)
+					continue
+				}
+
+				signLabel := "Unsigned"
+				if res.Signed {
+					signLabel = "Signed Debug"
+				}
+
+				artifacts = append(artifacts, BuiltArtifact{
+					Name: fmt.Sprintf("%s [%s]", plat.DisplayName, signLabel),
+					Path: res.Path,
+					Size: res.Size,
+					Type: "Android APK",
+				})
+				fmt.Printf("   ✅ %-30s -> %s (%s) [%s]\n", plat.DisplayName, apkName, formatSize(res.Size), signLabel)
+				continue
+			}
+
+			// Desktop / Server standalone binary
 			runnerBytes, err := getOrBuildRunner(plat, projectDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "   ⚠️ %s এক্সেকিউটেবল স্কিপ: %v\n", plat.DisplayName, err)
@@ -269,7 +298,19 @@ func cmdBuild() {
 			copy(exeBytes, runnerBytes)
 			copy(exeBytes[len(runnerBytes):], bundleBytes)
 
-			binaryName := fmt.Sprintf("%s%s", cfg.Name, plat.FileSuffix)
+			var binaryName string
+			if len(selectedPlatforms) == 1 {
+				// Single target: use clean target name without arch duplication
+				if plat.ID == "windows" {
+					binaryName = fmt.Sprintf("%s.exe", cfg.Name)
+				} else {
+					binaryName = cfg.Name
+				}
+			} else {
+				// Multi-target: use explicit architecture suffix
+				binaryName = fmt.Sprintf("%s%s", cfg.Name, plat.FileSuffix)
+			}
+
 			binaryPath := filepath.Join(outputDir, binaryName)
 
 			if err := os.WriteFile(binaryPath, exeBytes, 0755); err != nil {
@@ -277,19 +318,22 @@ func cmdBuild() {
 				continue
 			}
 
-			// If single target or host OS, also create default short name
-			if len(selectedPlatforms) == 1 {
-				shortName := fmt.Sprintf("%s%s", cfg.Name, plat.Ext)
-				if shortName != binaryName {
-					_ = os.WriteFile(filepath.Join(outputDir, shortName), exeBytes, 0755)
-				}
+			artType := "Desktop Binary"
+			if plat.ID == "windows" {
+				artType = "Windows Executable"
+			} else if plat.ID == "linux" {
+				artType = "Linux Executable"
+			} else if plat.ID == "onuron" {
+				artType = "Onuron OS"
+			} else if strings.HasPrefix(plat.ID, "darwin") {
+				artType = "macOS"
 			}
 
 			artifacts = append(artifacts, BuiltArtifact{
 				Name: plat.DisplayName,
 				Path: binaryPath,
 				Size: int64(len(exeBytes)),
-				Type: "Standalone Executable",
+				Type: artType,
 			})
 			fmt.Printf("   ✅ %-30s -> %s (%s)\n", plat.DisplayName, binaryName, formatSize(int64(len(exeBytes))))
 		}
@@ -302,22 +346,34 @@ func cmdBuild() {
 	fmt.Printf("🎉 বিল্ড সফল! মোট %d টি আর্টিফ্যাক্ট প্রস্তুত হয়েছে (সময়: %v)\n", len(artifacts), elapsed.Round(time.Millisecond))
 	fmt.Println("───────────────────────────────────────────────────────────────────")
 	for _, art := range artifacts {
-		fmt.Printf("  • %-32s [%s]\n    📄 %s\n", art.Name, formatSize(art.Size), art.Path)
+		fmt.Printf("  • %-36s [%s]\n    📄 %s\n", art.Name, formatSize(art.Size), art.Path)
 	}
 	fmt.Println("═══════════════════════════════════════════════════════════════════")
 	fmt.Println()
-	fmt.Println("💡 কীভাবে চালাবেন (How to run standalone binaries):")
-	fmt.Printf("  • Windows : .\\%s\\%s-windows-amd64.exe\n", cfg.Build.OutputDir, cfg.Name)
-	fmt.Printf("  • Linux   : ./%s/%s-linux-amd64\n", cfg.Build.OutputDir, cfg.Name)
-	fmt.Printf("  • Onuron  : ./%s/%s-onuron-x86_64\n", cfg.Build.OutputDir, cfg.Name)
-	fmt.Printf("  • macOS   : ./%s/%s-darwin-arm64\n", cfg.Build.OutputDir, cfg.Name)
-	fmt.Printf("  • অথবা    : nil run %s\n", outputPath)
+	fmt.Println("💡 কীভাবে চালাবেন (How to run):")
+	for _, art := range artifacts {
+		relPath := filepath.Join(cfg.Build.OutputDir, filepath.Base(art.Path))
+		switch art.Type {
+		case "Android APK":
+			fmt.Printf("  • Android Device : adb install %s (অথবা ফোনে ট্রান্সফার করে সরাসরি ইনস্টল করুন)\n", relPath)
+		case "Windows Executable":
+			fmt.Printf("  • Windows PS     : .\\%s (PowerShell-এ .\\ দিয়ে চালান)\n", relPath)
+			fmt.Printf("  • Windows CMD    : %s\n", relPath)
+		case "Linux Executable":
+			fmt.Printf("  • Linux          : ./%s\n", filepath.ToSlash(relPath))
+		case "Onuron OS":
+			fmt.Printf("  • Onuron OS      : ./%s\n", filepath.ToSlash(relPath))
+		case "macOS":
+			fmt.Printf("  • macOS          : ./%s\n", filepath.ToSlash(relPath))
+		}
+	}
+	fmt.Printf("  • সর্বজনীন বান্ডিল: nil run %s\n", outputPath)
 }
 
 func resolveTargetPlatforms(target string) []PlatformTarget {
 	t := strings.ToLower(strings.TrimSpace(target))
 	switch t {
-	case "windows", "win", "win64", "windows-amd64":
+	case "windows", "win", "win64", "windows-amd64", "exe":
 		return []PlatformTarget{allPlatforms[0]}
 	case "linux", "linux64", "linux-amd64":
 		return []PlatformTarget{allPlatforms[1]}
@@ -329,7 +385,7 @@ func resolveTargetPlatforms(target string) []PlatformTarget {
 		return []PlatformTarget{allPlatforms[3]}
 	case "onuron", "os":
 		return []PlatformTarget{allPlatforms[4]}
-	case "android", "android-arm64":
+	case "android", "apk", "mobile":
 		return []PlatformTarget{allPlatforms[5]}
 	case "all", "-allos", "--all", "allos":
 		return allPlatforms
