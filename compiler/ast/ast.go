@@ -165,6 +165,14 @@ func (b *Boolean) expressionNode()      {}
 func (b *Boolean) TokenLiteral() string { return b.Token.Literal }
 func (b *Boolean) String() string       { return b.Token.Literal }
 
+type NullLiteral struct {
+	Token token.Token
+}
+
+func (nl *NullLiteral) expressionNode()      {}
+func (nl *NullLiteral) TokenLiteral() string { return nl.Token.Literal }
+func (nl *NullLiteral) String() string       { return nl.Token.Literal }
+
 type StringLiteral struct {
 	Token token.Token
 	Value string
@@ -345,6 +353,18 @@ func (ie *IndexExpression) String() string {
 	out.WriteString(ie.Index.String())
 	out.WriteString("])")
 	return out.String()
+}
+
+type DotExpression struct {
+	Token  token.Token // token.DOT
+	Left   Expression
+	Member *Identifier
+}
+
+func (de *DotExpression) expressionNode()      {}
+func (de *DotExpression) TokenLiteral() string { return de.Token.Literal }
+func (de *DotExpression) String() string {
+	return de.Left.String() + "." + de.Member.String()
 }
 
 type HashLiteral struct {

@@ -1,0 +1,26 @@
+{
+  "name": "todo-alap",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Cross-platform Todo application demonstrating NilLang language primitives + Alap application architecture (refactor.md Section 6)",
+  "entry": "src/main.nil",
+  "profile": "web",
+  "capabilities": [
+    "Network",
+    "Crypto",
+    "AI"
+  ],
+  "targets": [
+    "wasm",
+    "web",
+    "onuron"
+  ],
+  "dependencies": {
+    "alap/ui": "^0.2.0",
+    "alap/web": "^0.2.0"
+  },
+  "build": {
+    "output_dir": "build",
+    "optimize": true
+  }
+}

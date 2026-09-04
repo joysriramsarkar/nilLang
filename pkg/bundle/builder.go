@@ -35,7 +35,7 @@ func NewBuilder(cfg *config.ProjectConfig, projectDir string) *Builder {
 
 // AddFile adds a file to the bundle
 func (b *Builder) AddFile(bundlePath string, content []byte) {
-	b.files[bundlePath] = content
+	b.files[filepath.ToSlash(bundlePath)] = content
 }
 
 // AddFileFromDisk adds a file from the filesystem to the bundle
@@ -44,7 +44,7 @@ func (b *Builder) AddFileFromDisk(bundlePath, diskPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", diskPath, err)
 	}
-	b.files[bundlePath] = data
+	b.files[filepath.ToSlash(bundlePath)] = data
 	return nil
 }
 
@@ -64,8 +64,9 @@ func (b *Builder) AddDirectory(bundlePrefix, diskPath string) error {
 			return err
 		}
 
-		bundlePath := filepath.Join(bundlePrefix, filepath.ToSlash(relPath))
+		bundlePath := filepath.ToSlash(filepath.Join(bundlePrefix, relPath))
 		return b.AddFileFromDisk(bundlePath, path)
+
 	})
 }
 

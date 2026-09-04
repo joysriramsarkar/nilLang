@@ -1,0 +1,26 @@
+{
+  "name": "unified-entity",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Unified Application Model demonstrating entity User & Post schema generation (refactor.md Section 8)",
+  "entry": "src/main.nil",
+  "profile": "server",
+  "capabilities": [
+    "Database",
+    "Network",
+    "Filesystem"
+  ],
+  "targets": [
+    "server",
+    "linux",
+    "web"
+  ],
+  "dependencies": {
+    "alap/entity": "^0.2.0"
+  },
+  "build": {
+    "output_dir": "build",
+    "optimize": true,
+    "debug": false
+  }
+}

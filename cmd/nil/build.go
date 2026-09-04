@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
@@ -33,9 +34,23 @@ func cmdBuild() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("🔨 বিল্ড শুরু: %s v%s\n", cfg.Name, cfg.Version)
+	// Validate capabilities against profile
+	if valRes, valErr := cfg.ValidateCapabilities(); valErr != nil || !valRes.Valid {
+		fmt.Fprintf(os.Stderr, "❌ ক্যাপাবিলিটি ভায়োলেশন (প্রোফাইল: %s):\n", cfg.Profile)
+		if valRes != nil {
+			for _, v := range valRes.Violations {
+				fmt.Fprintf(os.Stderr, "   • %s\n", v)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "   • %v\n", valErr)
+		}
+		os.Exit(1)
+	}
+
+	fmt.Printf("🔨 বিল্ড শুরু: %s v%s [Profile: %s]\n", cfg.Name, cfg.Version, cfg.Profile)
 	fmt.Printf("   এন্ট্রি: %s\n", cfg.Entry)
 	fmt.Printf("   টার্গেট: %v\n", cfg.Targets)
+	fmt.Printf("   ক্যাপাবিলিটিস: %v\n", cfg.Capabilities)
 	fmt.Println()
 
 	// Step 1: Compile source code
@@ -53,9 +68,15 @@ func cmdBuild() {
 	fmt.Print("   [2/4] বান্ডিল তৈরি হচ্ছে... ")
 	builder := bundle.NewBuilder(cfg, projectDir)
 
-	// Add compiled bytecode
+	// Add compiled bytecode and source
 	bytecodeBytes := pipeline.GetBytecodeBytes()
 	builder.AddFile("bytecode/main.nabc", bytecodeBytes)
+	srcDir := filepath.Join(projectDir, "src")
+	if info, err := os.Stat(srcDir); err == nil && info.IsDir() {
+		_ = builder.AddDirectory("src", srcDir)
+	} else if _, err := os.Stat(entryPath); err == nil {
+		_ = builder.AddFileFromDisk("src/main.nil", entryPath)
+	}
 	fmt.Println("✅")
 
 	// Step 3: Add resources

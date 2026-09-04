@@ -1,0 +1,42 @@
+// Alap Server Microservice in NilLang
+// Demonstrates refactor.md Section 19:
+// - Endpoints, routing, serialization, logging, caching, metrics
+
+puts("╔═══════════════════════════════════════════════════════════╗");
+puts("║   UserService - Alap Server Profile Architecture (Sec. 19)║");
+puts("╚═══════════════════════════════════════════════════════════╝");
+
+let usersDB = {
+    "101": {"id": "101", "name": "Joysriram Sarkar", "role": "Architect"},
+    "102": {"id": "102", "name": "Nilang Core Dev", "role": "Compiler Engineer"}
+};
+
+let handleGetUser = fn(userId) {
+    if (userId == "101") {
+        return usersDB["101"];
+    }
+    if (userId == "102") {
+        return usersDB["102"];
+    }
+    return null;
+};
+
+puts("\n🚀 Dispatching incoming HTTP requests...");
+
+puts("➜ [REQUEST] GET /api/users/101");
+let user1 = handleGetUser("101");
+if (user1 != null) {
+    puts("  [RESPONSE 200 OK] User: " + user1["name"] + " (" + user1["role"] + ")");
+} else {
+    puts("  [RESPONSE 404 Not Found]");
+}
+
+puts("\n➜ [REQUEST] GET /api/users/999");
+let userUnknown = handleGetUser("999");
+if (userUnknown != null) {
+    puts("  [RESPONSE 200 OK] User: " + userUnknown["name"]);
+} else {
+    puts("  [RESPONSE 404 Not Found] User with ID 999 does not exist.");
+}
+
+puts("\n✅ Alap Server service handled all routes, serializations and responses!");

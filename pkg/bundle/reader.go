@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Reader reads .nilax bundles
@@ -42,10 +43,11 @@ func OpenBundle(path string) (*Reader, error) {
 			return nil, fmt.Errorf("failed to read %s in bundle: %w", file.Name, err)
 		}
 
-		reader.files[file.Name] = data
+		cleanName := filepath.ToSlash(file.Name)
+		reader.files[cleanName] = data
 
 		// Parse manifest
-		if file.Name == "manifest.json" {
+		if cleanName == "manifest.json" {
 			manifest, err := FromJSON(data)
 			if err != nil {
 				zipReader.Close()
@@ -75,8 +77,14 @@ func (r *Reader) GetManifest() *Manifest {
 
 // GetFile returns the content of a file in the bundle
 func (r *Reader) GetFile(path string) ([]byte, error) {
-	data, ok := r.files[path]
+	norm := filepath.ToSlash(path)
+	data, ok := r.files[norm]
 	if !ok {
+		for k, v := range r.files {
+			if filepath.ToSlash(k) == norm || strings.TrimPrefix(filepath.ToSlash(k), "/") == strings.TrimPrefix(norm, "/") {
+				return v, nil
+			}
+		}
 		return nil, fmt.Errorf("file not found in bundle: %s", path)
 	}
 	return data, nil

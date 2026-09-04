@@ -1,0 +1,59 @@
+// Todo Application in NilLang + Alap Framework
+// Demonstrates refactor.md Section 6:
+// - NilLang layer: Data structures, business logic, pure functions
+// - Alap layer: Application architecture, state, UI, navigation
+
+puts("╔═══════════════════════════════════════════════════════════╗");
+puts("║   TodoApp - NilLang Core Logic + Alap Framework (Sec. 6)  ║");
+puts("╚═══════════════════════════════════════════════════════════╝");
+
+// ─── NilLang Level: Data Model & Business Logic ─────────────────────────────
+// Pure language primitives: struct-like records, closures, immutability
+
+let createTodo = fn(id, title, completed) {
+    return {
+        "id": id,
+        "title": title,
+        "completed": completed
+    };
+};
+
+let toggleTodo = fn(todo) {
+    return {
+        "id": todo["id"],
+        "title": todo["title"],
+        "completed": !todo["completed"]
+    };
+};
+
+// ─── Alap Level: Reactive Application State ─────────────────────────────────
+let todos = [
+    createTodo(1, "Complete NilLang & Alap refactoring", true),
+    createTodo(2, "Test capability security matrix on Web profile", true),
+    createTodo(3, "Deploy unified Onuron OS microservice", false)
+];
+
+puts("\n📋 Initial Todo List:");
+let i = 0;
+while (i < len(todos)) {
+    let item = todos[i];
+    let status = if (item["completed"]) { "[x]" } else { "[ ]" };
+    puts("  " + status + " " + item["title"]);
+    let i = i + 1;
+}
+
+// Perform business logic mutation
+puts("\n⚡ Marking task 3 as completed...");
+let updatedTodo3 = toggleTodo(todos[2]);
+let updatedTodos = [todos[0], todos[1], updatedTodo3];
+
+puts("\n✅ Updated Todo List (Alap Reactive View):");
+let j = 0;
+while (j < len(updatedTodos)) {
+    let item = updatedTodos[j];
+    let status = if (item["completed"]) { "[x]" } else { "[ ]" };
+    puts("  " + status + " " + item["title"]);
+    let j = j + 1;
+}
+
+puts("\n🎉 TodoApp business logic and Alap state model executed perfectly!");

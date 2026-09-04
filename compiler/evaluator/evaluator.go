@@ -44,6 +44,8 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return &object.Float{Value: node.Value}
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
+	case *ast.NullLiteral:
+		return NULL
 	case *ast.StringLiteral:
 		return &object.String{Value: node.Value}
 	case *ast.StringTemplate:
@@ -102,6 +104,12 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return index
 		}
 		return evalIndexExpression(left, index)
+	case *ast.DotExpression:
+		left := Eval(node.Left, env)
+		if isError(left) {
+			return left
+		}
+		return evalDotExpression(left, node.Member.Value, env)
 	case *ast.HashLiteral:
 		return evalHashLiteral(node, env)
 	case *ast.ComponentLiteral:
@@ -239,6 +247,17 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return evalFloatInfixExpression(operator, left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
 		return evalStringInfixExpression(operator, left, right)
+	case left.Type() == object.STRING_OBJ || right.Type() == object.STRING_OBJ:
+		if operator == "+" {
+			return &object.String{Value: left.Inspect() + right.Inspect()}
+		}
+		if operator == "==" {
+			return nativeBoolToBooleanObject(left.Inspect() == right.Inspect())
+		}
+		if operator == "!=" {
+			return nativeBoolToBooleanObject(left.Inspect() != right.Inspect())
+		}
+		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	case operator == "==":
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
@@ -376,11 +395,82 @@ func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object
 		return val
 	}
 
+	if node.Value == "ui" {
+		return makeUINamespace()
+	}
+
 	if builtin, ok := Builtins[node.Value]; ok {
 		return builtin
 	}
 
 	return newError("identifier not found: %s", node.Value)
+}
+
+func makeUINamespace() *object.Hash {
+	return MakeHashObj(map[string]object.Object{
+		"NewPage": &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				title := "Page"
+				if len(args) > 0 {
+					title = args[0].Inspect()
+				}
+				return MakeHashObj(map[string]object.Object{
+					"type":    &object.String{Value: "Page"},
+					"title":   &object.String{Value: title},
+					"content": &object.Array{Elements: []object.Object{}},
+				})
+			},
+		},
+		"NewNavigation": &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				brand := "App"
+				if len(args) > 0 {
+					brand = args[0].Inspect()
+				}
+				return MakeHashObj(map[string]object.Object{
+					"type":  &object.String{Value: "Navigation"},
+					"brand": &object.String{Value: brand},
+					"items": &object.Array{Elements: []object.Object{}},
+				})
+			},
+		},
+		"NewDashboard": &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				title := "Dashboard"
+				if len(args) > 0 {
+					title = args[0].Inspect()
+				}
+				return MakeHashObj(map[string]object.Object{
+					"type":    &object.String{Value: "Dashboard"},
+					"title":   &object.String{Value: title},
+					"metrics": &object.Array{Elements: []object.Object{}},
+				})
+			},
+		},
+		"NewTable": &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				headers := &object.Array{Elements: args}
+				return MakeHashObj(map[string]object.Object{
+					"type":    &object.String{Value: "Table"},
+					"headers": headers,
+					"rows":    &object.Array{Elements: []object.Object{}},
+				})
+			},
+		},
+		"NewForm": &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				title := "Form"
+				if len(args) > 0 {
+					title = args[0].Inspect()
+				}
+				return MakeHashObj(map[string]object.Object{
+					"type":   &object.String{Value: "Form"},
+					"title":  &object.String{Value: title},
+					"fields": &object.Array{Elements: []object.Object{}},
+				})
+			},
+		},
+	})
 }
 
 func isTruthy(obj object.Object) bool {
@@ -519,4 +609,144 @@ func evalHashIndexExpression(hash, index object.Object) object.Object {
 	}
 
 	return pair.Value
+}
+
+func evalDotExpression(left object.Object, member string, env *object.Environment) object.Object {
+	switch obj := left.(type) {
+	case *object.Hash:
+		strKey := &object.String{Value: member}
+		if pair, ok := obj.Pairs[strKey.HashKey()]; ok {
+			return pair.Value
+		}
+
+		for _, pair := range obj.Pairs {
+			if strObj, ok := pair.Key.(*object.String); ok {
+				if strings.EqualFold(strObj.Value, member) {
+					return pair.Value
+				}
+			}
+		}
+
+		return getHashMethod(obj, member)
+
+	default:
+		return newError("property access .%s not supported on type %s", member, left.Type())
+	}
+}
+
+func getHashMethod(hash *object.Hash, method string) object.Object {
+	normMethod := strings.ToLower(method)
+	switch normMethod {
+	case "setnav":
+		return &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				if len(args) > 0 {
+					setHashKey(hash, "navigation", args[0])
+				}
+				return hash
+			},
+		}
+	case "add":
+		return &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				if len(args) > 0 {
+					appendHashList(hash, "content", args[0])
+				}
+				return hash
+			},
+		}
+	case "setfooter":
+		return &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				if len(args) > 0 {
+					setHashKey(hash, "footer", args[0])
+				}
+				return hash
+			},
+		}
+	case "additem":
+		return &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				if len(args) >= 2 {
+					item := MakeHashObj(map[string]object.Object{
+						"label": args[0],
+						"path":  args[1],
+					})
+					appendHashList(hash, "items", item)
+				}
+				return hash
+			},
+		}
+	case "addmetric":
+		return &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				if len(args) >= 3 {
+					metric := MakeHashObj(map[string]object.Object{
+						"label": args[0],
+						"value": args[1],
+						"delta": args[2],
+					})
+					appendHashList(hash, "metrics", metric)
+				}
+				return hash
+			},
+		}
+	case "addrow":
+		return &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				row := &object.Array{Elements: args}
+				appendHashList(hash, "rows", row)
+				return hash
+			},
+		}
+	case "addfield":
+		return &object.Builtin{
+			Fn: func(args ...object.Object) object.Object {
+				if len(args) >= 3 {
+					fld := MakeHashObj(map[string]object.Object{
+						"label":       args[0],
+						"name":        args[1],
+						"placeholder": args[2],
+					})
+					appendHashList(hash, "fields", fld)
+				}
+				return hash
+			},
+		}
+	default:
+		return newError("unknown method %s on object", method)
+	}
+}
+
+func setHashKey(hash *object.Hash, key string, val object.Object) {
+	k := &object.String{Value: key}
+	hash.Pairs[k.HashKey()] = object.HashPair{Key: k, Value: val}
+}
+
+func appendHashList(hash *object.Hash, listKey string, item object.Object) {
+	k := &object.String{Value: listKey}
+	hKey := k.HashKey()
+
+	var arr *object.Array
+	if pair, ok := hash.Pairs[hKey]; ok {
+		if a, isArr := pair.Value.(*object.Array); isArr {
+			arr = a
+		}
+	}
+
+	if arr == nil {
+		arr = &object.Array{Elements: []object.Object{}}
+		hash.Pairs[hKey] = object.HashPair{Key: k, Value: arr}
+	}
+
+	arr.Elements = append(arr.Elements, item)
+}
+
+func MakeHashObj(m map[string]object.Object) *object.Hash {
+	pairs := make(map[object.HashKey]object.HashPair)
+	for k, v := range m {
+		keyObj := &object.String{Value: k}
+		pairs[keyObj.HashKey()] = object.HashPair{Key: keyObj, Value: v}
+	}
+	return &object.Hash{Pairs: pairs}
 }

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/joysriramsarkar/nilLang/pkg/capability"
+	"github.com/joysriramsarkar/nilLang/pkg/profile"
 )
 
 // ProjectConfig represents the nil.json configuration file
@@ -14,6 +17,8 @@ type ProjectConfig struct {
 	Author       string            `json:"author,omitempty"`
 	Description  string            `json:"description,omitempty"`
 	Entry        string            `json:"entry"`
+	Profile      string            `json:"profile,omitempty"`
+	Capabilities []string          `json:"capabilities,omitempty"`
 	Targets      []string          `json:"targets"`
 	Resources    []string          `json:"resources,omitempty"`
 	Dependencies map[string]string `json:"dependencies,omitempty"`
@@ -33,12 +38,14 @@ type BuildConfig struct {
 // DefaultConfig returns a default project configuration
 func DefaultConfig(name string) *ProjectConfig {
 	return &ProjectConfig{
-		Name:      name,
-		Version:   "0.1.0",
-		Author:    "Joysriram Sarkar",
-		Entry:     "src/main.nil",
-		Targets:   []string{"onuron", "linux"},
-		Resources: []string{"resources/*"},
+		Name:         name,
+		Version:      "0.1.0",
+		Author:       "Joysriram Sarkar",
+		Entry:        "src/main.nil",
+		Profile:      "os",
+		Capabilities: []string{"Network", "Filesystem"},
+		Targets:      []string{"onuron", "linux"},
+		Resources:    []string{"resources/*"},
 		Build: BuildConfig{
 			OutputDir: "build",
 			Optimize:  true,
@@ -78,6 +85,9 @@ func LoadConfig(dir string) (*ProjectConfig, error) {
 	}
 
 	// Set defaults
+	if config.Profile == "" {
+		config.Profile = "os"
+	}
 	if config.Build.OutputDir == "" {
 		config.Build.OutputDir = "build"
 	}
@@ -130,12 +140,21 @@ func (c *ProjectConfig) Validate(projectDir string) error {
 		"android": true,
 		"ios":     true,
 		"linux":   true,
+		"wasm":    true,
+		"web":     true,
+		"server":  true,
+		"data":    true,
 	}
 	for _, target := range c.Targets {
 		if !validTargets[target] {
-			return fmt.Errorf("invalid target: %s (valid: onuron, android, ios, linux)", target)
+			return fmt.Errorf("invalid target: %s (valid: onuron, android, ios, linux, wasm, web, server, data)", target)
 		}
 	}
 
 	return nil
+}
+
+// ValidateCapabilities checks if declared capabilities match the profile
+func (c *ProjectConfig) ValidateCapabilities() (*capability.VerificationResult, error) {
+	return profile.ValidateProfileCaps(c.Profile, c.Capabilities)
 }

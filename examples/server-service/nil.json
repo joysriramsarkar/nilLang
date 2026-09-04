@@ -1,0 +1,29 @@
+{
+  "name": "server-service",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Alap Server Microservice with endpoints, routing and middleware (refactor.md Section 19)",
+  "entry": "src/main.nil",
+  "profile": "server",
+  "capabilities": [
+    "Network",
+    "Database",
+    "Filesystem",
+    "Process",
+    "Crypto"
+  ],
+  "targets": [
+    "server",
+    "linux",
+    "onuron"
+  ],
+  "dependencies": {
+    "alap/server": "^0.2.0",
+    "alap/auth": "^0.2.0"
+  },
+  "build": {
+    "output_dir": "build",
+    "optimize": true,
+    "debug": false
+  }
+}

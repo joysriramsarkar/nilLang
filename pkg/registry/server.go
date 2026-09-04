@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,8 @@ type Server struct {
 	config  *ServerConfig
 	storage *Storage
 	mux     *http.ServeMux
+	users   map[string]*User
+	userMu  sync.RWMutex
 }
 
 // ServerConfig holds server configuration
@@ -51,6 +54,7 @@ func NewServer(config *ServerConfig) (*Server, error) {
 		config:  config,
 		storage: storage,
 		mux:     http.NewServeMux(),
+		users:   make(map[string]*User),
 	}
 
 	server.setupRoutes()
@@ -328,15 +332,45 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user User
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.errorResponse(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	// TODO: Implement user registration
-	s.jsonResponse(w, http.StatusCreated, map[string]string{
-		"message": "user registration not yet implemented",
+	if req.Username == "" || req.Email == "" {
+		s.errorResponse(w, http.StatusBadRequest, "username and email are required")
+		return
+	}
+
+	s.userMu.Lock()
+	defer s.userMu.Unlock()
+
+	if _, exists := s.users[req.Username]; exists {
+		s.errorResponse(w, http.StatusConflict, "username already taken")
+		return
+	}
+
+	apiKey := fmt.Sprintf("nil_%x", time.Now().UnixNano())
+	user := &User{
+		ID:        fmt.Sprintf("usr-%d", time.Now().UnixMilli()),
+		Username:  req.Username,
+		Email:     req.Email,
+		APIKey:    apiKey,
+		CreatedAt: time.Now(),
+		IsAdmin:   len(s.users) == 0,
+	}
+
+	s.users[req.Username] = user
+
+	s.jsonResponse(w, http.StatusCreated, map[string]interface{}{
+		"message": "user registered successfully",
+		"user":    user,
+		"api_key": apiKey,
 	})
 }
 
@@ -346,9 +380,28 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement user login
-	s.jsonResponse(w, http.StatusOK, map[string]string{
-		"message": "user login not yet implemented",
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.errorResponse(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	s.userMu.RLock()
+	defer s.userMu.RUnlock()
+
+	user, exists := s.users[req.Username]
+	if !exists || (req.Email != "" && user.Email != req.Email) {
+		s.errorResponse(w, http.StatusUnauthorized, "invalid username or email")
+		return
+	}
+
+	s.jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"message": "login successful",
+		"user":    user,
+		"api_key": user.APIKey,
 	})
 }
 

@@ -1,0 +1,28 @@
+{
+  "name": "data-science",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Alap Data Science workflow with datasets, transformations, LinearRegression model and evaluation (refactor.md Section 18)",
+  "entry": "src/main.nil",
+  "profile": "data",
+  "capabilities": [
+    "Filesystem",
+    "Database",
+    "GPU",
+    "AI",
+    "Network"
+  ],
+  "targets": [
+    "data",
+    "linux",
+    "onuron"
+  ],
+  "dependencies": {
+    "alap/data": "^0.2.0"
+  },
+  "build": {
+    "output_dir": "build",
+    "optimize": true,
+    "debug": false
+  }
+}

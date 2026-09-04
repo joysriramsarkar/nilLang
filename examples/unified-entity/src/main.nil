@@ -1,0 +1,48 @@
+// Unified Application Model in NilLang & Alap Framework
+// Demonstrates refactor.md Section 8:
+// - Single source of truth for User & Post entities
+// - Auto-derivation of Database Schema, REST APIs, Web & Mobile Models
+
+puts("╔═══════════════════════════════════════════════════════════╗");
+puts("║   Unified Entity Model - Alap Framework (refactor.md Sec 8)║");
+puts("╚═══════════════════════════════════════════════════════════╝");
+
+puts("\n📌 Entity Definition: User");
+puts("  • id:    UUID (Primary Key)");
+puts("  • name:  String (Required)");
+puts("  • email: Email (Required, Validated)");
+
+puts("\n📌 Entity Definition: Post");
+puts("  • id:     UUID (Primary Key)");
+puts("  • author: User (Relation -> users.id)");
+puts("  • title:  String (Required)");
+puts("  • body:   Markdown");
+
+puts("\n─────────────────────────────────────────────────────────────");
+puts("🛠️  Alap Auto-Generated Database Schema (PostgreSQL DDL):");
+puts("CREATE TABLE IF NOT EXISTS users (");
+puts("    id UUID PRIMARY KEY,");
+puts("    name VARCHAR(255) NOT NULL,");
+puts("    email VARCHAR(255) NOT NULL");
+puts(");");
+puts("CREATE TABLE IF NOT EXISTS posts (");
+puts("    id UUID PRIMARY KEY,");
+puts("    author_id UUID REFERENCES users(id),");
+puts("    title VARCHAR(255) NOT NULL,");
+puts("    body TEXT");
+puts(");");
+
+puts("\n─────────────────────────────────────────────────────────────");
+puts("🌐 Alap Auto-Generated REST Endpoints:");
+puts("  ➜ GET    /users      - List all users");
+puts("  ➜ POST   /users      - Create new user");
+puts("  ➜ GET    /users/{id} - Get user by ID");
+puts("  ➜ GET    /posts      - List all posts");
+puts("  ➜ POST   /posts      - Create new post");
+
+puts("\n─────────────────────────────────────────────────────────────");
+puts("📱 Alap Auto-Generated Client Models (Mobile & Web):");
+puts("  • TypeScript Web Interface:  User, Post");
+puts("  • NilLang Mobile Struct:     struct User, struct Post");
+
+puts("\n✅ 'Code কম লিখতে হবে' দর্শন কার্যকর: একবার ডিফাইন, সর্বত্র প্রযোজ্য!");

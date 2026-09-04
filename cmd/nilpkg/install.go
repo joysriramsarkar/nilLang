@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -64,7 +67,6 @@ func installFromFile(installer *nilpkg.Installer, path string) {
 
 func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nilpkg.Installer, name string) {
 	_ = db
-	_ = installer
 	fmt.Printf("🔍 রেজিস্ট্রিতে খোঁজা হচ্ছে: %s\n", name)
 
 	registry, err := nilpkg.NewRegistry(cfg)
@@ -85,9 +87,50 @@ func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nil
 	fmt.Printf("   লেখক: %s\n", pkg.Author)
 	fmt.Println()
 
-	// TODO: Download from pkg.DownloadURL
-	// For now, show instructions
-	fmt.Println("⚠️  রেজিস্ট্রি থেকে ডাউনলোড এখনো ইমপ্লিমেন্ট হয়নি")
-	fmt.Printf("   ম্যানুয়ালি ডাউনলোড করুন: %s\n", pkg.DownloadURL)
-	fmt.Println("   তারপর: nilpkg install <downloaded-file.nilax>")
+	tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%s.nilax", pkg.Name, pkg.Version))
+
+	if strings.HasPrefix(pkg.DownloadURL, "http://") || strings.HasPrefix(pkg.DownloadURL, "https://") {
+		fmt.Printf("⬇️  ডাউনলোড হচ্ছে: %s\n", pkg.DownloadURL)
+		resp, err := http.Get(pkg.DownloadURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ ডাউনলোড করতে ব্যর্থ: %s\n", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "❌ ডাউনলোড ব্যর্থ (HTTP %d): %s\n", resp.StatusCode, resp.Status)
+			os.Exit(1)
+		}
+
+		out, err := os.Create(tempFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ টেম্প ফাইল তৈরি করতে ব্যর্থ: %s\n", err)
+			os.Exit(1)
+		}
+		defer out.Close()
+
+		if _, err := io.Copy(out, resp.Body); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ ফাইল সেভ করতে ব্যর্থ: %s\n", err)
+			os.Exit(1)
+		}
+		out.Close()
+	} else if strings.HasPrefix(pkg.DownloadURL, "file://") || len(pkg.DownloadURL) > 0 {
+		filePath := strings.TrimPrefix(pkg.DownloadURL, "file://")
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ প্যাকেজ ফাইল পড়তে ব্যর্থ (%s): %s\n", filePath, err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(tempFile, data, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ টেম্প ফাইল সেভ করতে ব্যর্থ: %s\n", err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "❌ প্যাকেজে কোনো ডাউনলোড ইউআরএল নেই\n")
+		os.Exit(1)
+	}
+
+	installFromFile(installer, tempFile)
+	_ = os.Remove(tempFile)
 }
