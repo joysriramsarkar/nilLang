@@ -20,7 +20,7 @@ func cmdCheck() {
 		targetPath = os.Args[2]
 	}
 
-	fmt.Println("🛡️  NilLang & Alap Architectural Verification (refactor.md)")
+	fmt.Println("🛡️  NilLang & Alap Architectural Verification (docs/spec/ARCHITECTURE.md)")
 	fmt.Println("═══════════════════════════════════════════════════════════════")
 
 	// 1. Check if checking a project directory with nil.json
@@ -102,8 +102,8 @@ func cmdCheck() {
 
 	fmt.Printf("📂 মোট %d টি সোর্স ফাইল স্ক্যান করা হচ্ছে...\n", len(filesToCheck))
 
-	var totalErrors []string
-	var totalWarnings []string
+	totalErrors := []string{}
+	totalWarnings := []string{}
 
 	for _, file := range filesToCheck {
 		codeBytes, err := os.ReadFile(file)
@@ -163,8 +163,10 @@ func cmdCheck() {
 		os.Exit(1)
 	}
 
-	for _, w := range totalWarnings {
-		fmt.Printf("   ⚠️ %s\n", w)
+	if len(totalWarnings) > 0 {
+		for _, w := range totalWarnings {
+			fmt.Printf("   ⚠️ %s\n", w)
+		}
 	}
 
 	fmt.Println("   • Language Symbols: Verified")

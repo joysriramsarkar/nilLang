@@ -54,6 +54,12 @@ func main() {
 		cmdCheck()
 	case "verify":
 		cmdVerify()
+	case "oracle":
+		cmdOracle()
+	case "mir":
+		cmdMIR()
+	case "hir":
+		cmdHIR()
 	case "fmt":
 		cmdFmt()
 	case "clean":
@@ -88,7 +94,10 @@ func printUsage() {
 	fmt.Println("  profile [list|inspect]     NilLang রানটাইম প্রোফাইল ও ক্যাপাবিলিটি দেখুন")
 	fmt.Println("  check [path]               ক্যাপাবিলিটি ও AI ওরাকল ভ্যালিডেশন চেক করুন")
 	fmt.Println("  verify [component]         Verified Novelty পাইপলাইন চালান")
-	fmt.Println("  build [target|-allos]      টার্গেট ওএস (linux, windows, macos, onuron, android) বা -allos এর জন্য বিল্ড করুন")
+	fmt.Println("  oracle [subcommand]        AI কম্পাইলার ওরাকল ও গ্রাউন্ড-ট্রুথ (list-types, list-functions, inspect, check)")
+	fmt.Println("  hir [file.nil]             হাই-লেভেল ইন্টারমিডিয়েট রিপ্রেজেন্টেশন (HIR) দেখুন")
+	fmt.Println("  mir [file.nil]             মিড-লেভেল ইন্টারমিডিয়েট রিপ্রেজেন্টেশন (MIR / CFG) দেখুন")
+	fmt.Println("  build [target|-allos]      টার্গেট ওএস (linux, windows, macos, onuron, android, wasm) বা -allos এর জন্য বিল্ড করুন")
 	fmt.Println("  run [file] [-vm]           প্রজেক্ট বা .nil ফাইল রান করুন")
 	fmt.Println("  render [file.nil]          Alap UI পেজ ও ড্যাশবোর্ড রেন্ডার করুন")
 	fmt.Println("  repl                       ইন্টারঅ্যাক্টিভ REPL চালু করুন")
@@ -102,7 +111,9 @@ func printUsage() {
 	fmt.Println("  nil build linux            # Linux 64-bit এক্সেকিউটেবল তৈরি করুন")
 	fmt.Println("  nil build windows          # Windows .exe এক্সেকিউটেবল তৈরি করুন")
 	fmt.Println("  nil build macos            # macOS (Apple Silicon + Intel) এক্সেকিউটেবল তৈরি করুন")
+	fmt.Println("  nil build wasm             # WebAssembly ও ব্রাউজার রানটাইম তৈরি করুন")
 	fmt.Println("  nil build -allos           # সমস্ত অপারেটিং সিস্টেমের জন্য একযোগে এক্সেকিউটেবল তৈরি করুন")
+	fmt.Println("  nil oracle list-functions  # সমস্ত বিল্ট-ইন মেথড ও ইফেক্ট দেখুন")
 	fmt.Println("  nil render")
 	fmt.Println("  nil run")
 }

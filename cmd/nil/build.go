@@ -9,6 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joysriramsarkar/nilLang/compiler/hir"
+	"github.com/joysriramsarkar/nilLang/compiler/lexer"
+	"github.com/joysriramsarkar/nilLang/compiler/mir"
+	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/wasm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	"github.com/joysriramsarkar/nilLang/pkg/compiler"
 	"github.com/joysriramsarkar/nilLang/pkg/config"
@@ -140,6 +145,14 @@ func cmdBuild() {
 		os.Exit(1)
 	}
 
+	// Check if WebAssembly target was requested
+	for _, req := range requestedTargets {
+		if strings.EqualFold(req, "wasm") || strings.EqualFold(req, "web") {
+			buildWASM(cfg, projectDir)
+			return
+		}
+	}
+
 	// Resolve target platforms
 	var selectedPlatforms []PlatformTarget
 	if allOS {
@@ -148,7 +161,7 @@ func cmdBuild() {
 		for _, req := range requestedTargets {
 			matches := resolveTargetPlatforms(req)
 			if len(matches) == 0 {
-				fmt.Fprintf(os.Stderr, "⚠️ অজানা টার্গেট: %s (সাপোর্টেড: linux, windows, macos, darwin, onuron, android, -allos)\n", req)
+				fmt.Fprintf(os.Stderr, "⚠️ অজানা টার্গেট: %s (সাপোর্টেড: linux, windows, macos, darwin, onuron, android, wasm, -allos)\n", req)
 			} else {
 				selectedPlatforms = append(selectedPlatforms, matches...)
 			}
@@ -477,4 +490,54 @@ func formatSize(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func buildWASM(cfg *config.ProjectConfig, projectDir string) {
+	fmt.Printf("🌐 WebAssembly (WASM) বিল্ড শুরু: %s v%s [Profile: %s]\n", cfg.Name, cfg.Version, cfg.Profile)
+	entryPath := cfg.GetEntryPath(projectDir)
+	srcBytes, err := os.ReadFile(entryPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ এন্ট্রি ফাইল পড়তে ব্যর্থ: %v\n", err)
+		os.Exit(1)
+	}
+
+	l := lexer.New(string(srcBytes))
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		fmt.Fprintf(os.Stderr, "❌ সিনট্যাক্স এরর:\n%s\n", strings.Join(p.Errors(), "\n"))
+		os.Exit(1)
+	}
+
+	lowerer := hir.NewLowerer()
+	hProg := lowerer.LowerProgram(prog)
+	opt := hir.NewOptimizer()
+	optProg := opt.Optimize(hProg)
+
+	mirLowerer := mir.NewLowerer()
+	mirProg := mirLowerer.LowerHIR(optProg)
+
+	wasmCompiler := wasm.NewCompiler()
+	mod, err := wasmCompiler.Compile(mirProg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ WASM কম্পাইলেশন ত্রুটি: %v\n", err)
+		os.Exit(1)
+	}
+
+	outDir := filepath.Join(projectDir, "build", "wasm")
+	_ = os.MkdirAll(outDir, 0755)
+
+	wasmFile := filepath.Join(outDir, "app.wasm")
+	watFile := filepath.Join(outDir, "app.wat")
+	htmlFile := filepath.Join(outDir, "index.html")
+
+	_ = os.WriteFile(wasmFile, mod.Binary, 0644)
+	_ = os.WriteFile(watFile, []byte(mod.WAT), 0644)
+	htmlContent := wasm.GenerateBrowserHarness(cfg.Name, "app.wasm")
+	_ = os.WriteFile(htmlFile, []byte(htmlContent), 0644)
+
+	fmt.Println("✅ WebAssembly বিল্ড সফল হয়েছে:")
+	fmt.Printf("  • WASM বাইনারি: %s (%d bytes)\n", wasmFile, len(mod.Binary))
+	fmt.Printf("  • WAT টেক্সট:   %s\n", watFile)
+	fmt.Printf("  • HTML প্রিভিউ:  %s\n", htmlFile)
 }

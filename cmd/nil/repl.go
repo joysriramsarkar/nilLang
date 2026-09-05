@@ -21,6 +21,9 @@ func Start(in io.Reader, out io.Writer) {
 		fmt.Printf(NIL_PROMPT)
 		scanned := scanner.Scan()
 		if !scanned {
+			if err := scanner.Err(); err != nil {
+				fmt.Fprintf(out, "Scanner error: %v\n", err)
+			}
 			return
 		}
 

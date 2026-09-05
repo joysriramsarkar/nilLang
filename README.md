@@ -30,7 +30,8 @@
 ```text
 nilLang/
 ├── cmd/
-│   ├── nil/              # অল-ইন-ওয়ান CLI (build, run, repl, init, fmt, render, clean)
+│   ├── nil/              # অল-ইন-ওয়ান CLI (build, run, repl, init, fmt, render, check, verify, oracle, hir, mir)
+│   ├── nil-runner/       # এমবেডেড বান্ডল রানটাইম ও স্ট্যান্ডঅ্যালন এক্সিকিউটেবল
 │   ├── nilc/             # পিওর বাইটকোড কম্পাইলার ও ডিসঅ্যাসেম্বলার
 │   ├── nilpkg/           # প্যাকেজ ম্যানেজার ক্লায়েন্ট
 │   ├── nilpkg-server/    # প্যাকেজ রেজিস্ট্রি ও ড্যাশবোর্ড সার্ভার
@@ -41,13 +42,22 @@ nilLang/
 │   ├── lexer/            # UTF-8 স্ক্যানার, স্ট্রিং ইন্টারপোলেশন \(...)
 │   ├── ast/              # নোড হায়ারার্কি ও অ্যাবস্ট্রাক্ট সিনট্যাক্স ট্রি
 │   ├── parser/           # Pratt রিকার্সিভ ডিসেন্ট পার্সার
+│   ├── types/            # অ্যাডভান্সড টাইপ সিস্টেম (Generics, Union, Effect, ADT)
+│   ├── typecheck/        # স্ট্যাটিক টাইপচেকার ও ক্যাপাবিলিটি স্যান্ডবক্স
+│   ├── hir/              # High-Level IR ও কনস্ট্যান্ট ফোল্ডিং অপ্টিমাইজার
+│   ├── mir/              # Mid-Level IR (CFG, Basic Blocks, SSA Temporaries)
+│   ├── wasm/             # WebAssembly (WASM binary + WAT text) জেনারেটর
+│   ├── oracle/           # AI Compiler Oracle ও Verified Novelty পাইপলাইন
+│   ├── diagnostics/      # এরর রিপোর্টিং, স্প্যান ও AI কারণ বিশ্লেষণ
 │   ├── object/           # রানটাইম অবজেক্ট মডেল ও এনভায়রনমেন্ট
 │   ├── evaluator/        # ট্রি-ওয়াকিং ইন্টারপ্রেটার ও স্ট্যান্ডার্ড বিল্ট-ইন
 │   ├── code/             # বাইটকোড অপকোড ও ডিসঅ্যাসেম্বলার
-│   ├── compiler/         # AST থেকে বাইটকোড কম্পাইলার ও সিম্বল টেবিল
+│   ├── compiler/         # AST/MIR থেকে বাইটকোড কম্পাইলার ও সিম্বল টেবিল
 │   └── vm/               # হাই-স্পিড স্ট্যাক-ভিত্তিক ভার্চুয়াল মেশিন
+├── docs/
+│   └── spec/             # ফর্মাল আর্কিটেকচার ও ল্যাঙ্গুয়েজ স্পেসিফিকেশন
 ├── pkg/
-│   ├── alap/             # Alap ডিক্লারেটিভ UI ফ্রেমওয়ার্ক ও ANSI/HTML রেন্ডারার
+│   ├── alap/             # Alap ডিক্লারেটিভ UI, রাউটিং, স্টেট, ডাটা ও সার্ভার
 │   ├── animation/        # ৩০+ ইজিং ফাংশন, কি-ফ্রেম ট্র্যাক, টাইমলাইন ইঞ্জিন
 │   ├── gpu/              # ভলকান/ওপেনজিএল জিপিইউ ব্যাকএন্ড ও শেডার পাইপলাইন
 │   ├── bundle/           # .nilax অ্যাপ বান্ডিল বিল্ডার ও রিডার
@@ -63,9 +73,13 @@ nilLang/
 │       └── native/          # হাই-পারফরম্যান্স নেটিভ রাস্ট লাইব্রেরি
 ├── examples/
 │   ├── hello-onuron/     # সম্পূর্ণ .nilax বান্ডিল প্রজেক্ট উদাহরণ
+│   ├── todo-alap/        # Alap স্টেট মডেল ও রিঅ্যাক্টিভ টাস্ক ম্যানেজার
+│   ├── data-science/     # ডেটাসেট ট্রান্সফর্ম ও মেশিন লার্নিং পাইপলাইন
+│   ├── server-service/   # আলট্রা-ফাস্ট রেস্ট মাইক্রোসার্ভিস আর্কিটেকচার
 │   ├── ui-counter/       # Alap UI স্টেট ও কাউন্টার উদাহরণ
 │   ├── animation-demo/   # জিপিইউ ইজিং অ্যানিমেশন উদাহরণ
-│   └── softbus-chat/     # সফটবাস ডিস্ট্রিবিউটেড মেসেজিং উদাহরণ
+│   ├── softbus-chat/     # সফটবাস ডিস্ট্রিবিউটেড মেসেজিং উদাহরণ
+│   └── unified-entity/   # আল্যাপ ইউনিফাইড ডাটাবেস ও এপিআই স্কিমা
 ├── syntaxes/
 │   └── nilang.tmLanguage.json  # VS Code ও টেক্সটমেট সিনট্যাক্স হাইলাইটিং
 └── .github/
@@ -256,6 +270,51 @@ softbusd -id="onuron-pc-01" -port=9000
 ```
 
 সফটবাস ডেমন পিয়ার ডিসকভারি, ফাইল ট্রান্সফার এবং আরপিসি রিকোয়েস্ট পরিচালনা করবে।
+
+## 🧠 AI Compiler Oracle, IR ও WebAssembly টুলচেন
+
+নীলাং কম্পাইলার টুলচেনে যুক্ত হয়েছে আধুনিক ইন্টারমিডিয়েট রিপ্রেজেন্টেশন (IR), এআই ওরাকল এবং ওয়েবাসেম্বলি সাপোর্ট:
+
+### ১. High-Level Intermediate Representation (HIR)
+সিনট্যাক্স ট্রি থেকে টাইপ-ইনফার্ড হাই-লেভেল ইন্টারমিডিয়েট রিপ্রেজেন্টেশন এবং কনস্ট্যান্ট ফোল্ডিং দেখতে:
+```bash
+nil hir examples/hello-onuron/src/main.nil
+```
+
+### ২. Mid-Level Intermediate Representation (MIR / CFG)
+কন্ট্রোল-ফ্লো গ্রাফ (Basic Blocks, Terminating Branches, SSA Temporaries) বিশ্লেষণ করতে:
+```bash
+nil mir examples/hello-onuron/src/main.nil
+```
+
+### ৩. WebAssembly (WASM) ব্রাউজার বিল্ড
+সরাসরি ব্রাউজারে রানযোগ্য `.wasm` বাইনারি, `.wat` টেক্সট রিপ্রেজেন্টেশন এবং আধুনিক HTML টেস্ট-হারনেস তৈরি করতে:
+```bash
+nil build wasm
+```
+
+### ৪. AI ওরাকল ও হ্যালুসিনেশন প্রতিরোধ
+AI মডেল ও ডেভেলপারদের নির্ভুল গ্রাউন্ড-ট্রুথ টাইপ ও সিম্বল রিফ্লেকশন প্রদান করতে:
+```bash
+# সব টাইপ ও বিল্ট-ইন ফাংশন তালিকা দেখুন
+nil oracle list-types
+nil oracle list-functions
+
+# নির্দিষ্ট সিম্বল ও ইফেক্ট পরীক্ষা করুন
+nil oracle inspect puts
+
+# এক্সপ্রেশন স্ট্যাটিক ভ্যালিডেশন চেক করুন
+nil oracle check "let x = 10 + 20;"
+```
+
+### ৫. Verified Novelty ও আর্কিটেকচারাল চেক
+```bash
+# প্রজেক্ট ও ক্যাপাবিলিটি সিকিউরিটি স্যান্ডবক্স চেক করুন
+nil check
+
+# ৬-ধাপের Verified Novelty পাইপলাইন চালান
+nil verify
+```
 
 ---
 

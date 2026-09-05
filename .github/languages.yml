@@ -3,6 +3,7 @@ Nilang:
   color: "#005A9C"
   extensions:
     - ".nil"
+  tm_scope: source.nilang
   ace_mode: text
   codemirror_mode: nilang
   codemirror_mime_type: text/x-nilang

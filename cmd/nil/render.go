@@ -13,7 +13,7 @@ import (
 )
 
 func cmdRender() {
-	fmt.Println("🎨 Alap UI Component Renderer - Onuron OS & Web (refactor.md Section 12)")
+	fmt.Println("🎨 Alap UI Component Renderer - Onuron OS & Web (Alap UI Component Engine)")
 	fmt.Println("═══════════════════════════════════════════════════════════════")
 
 	entryFile := ""

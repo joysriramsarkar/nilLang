@@ -1,3 +1,16 @@
+# Language detection and syntax classification
 *.nil linguist-language=Nilang
 *.nil linguist-detectable=true
 *.nil linguist-documentation=false
+examples/**/*.nil linguist-detectable=true
+examples/**/*.nil linguist-documentation=false
+
+# Generated build artifacts and binaries
+*.nabc linguist-generated=true
+*.wasm linguist-generated=true
+*.wat linguist-generated=true
+*.apk linguist-generated=true
+*.nilax linguist-generated=true
+build/** linguist-generated=true
+dist/** linguist-generated=true
+bin/** linguist-generated=true

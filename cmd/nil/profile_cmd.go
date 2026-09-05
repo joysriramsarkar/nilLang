@@ -18,7 +18,7 @@ func cmdProfile() {
 	action := strings.ToLower(os.Args[2])
 	switch action {
 	case "list":
-		fmt.Println("📋 NilLang Runtime Profiles (refactor.md Section 5):")
+		fmt.Println("📋 NilLang Runtime Profiles (docs/spec/ARCHITECTURE.md Section 2):")
 		fmt.Println("═══════════════════════════════════════════════════════════════")
 		for _, p := range profile.ListAll() {
 			fmt.Printf("  • \033[1;36m%-10s\033[0m %-28s [Target: %s]\n", p.ID, p.Name, p.Target)
