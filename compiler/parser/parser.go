@@ -235,7 +235,6 @@ func (p *Parser) parseStateDeclaration() *ast.StateDeclaration {
 	return stmt
 }
 
-
 func (p *Parser) parseImportStatement() *ast.ImportStatement {
 	stmt := &ast.ImportStatement{Token: p.curToken, Names: []*ast.Identifier{}}
 

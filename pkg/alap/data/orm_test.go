@@ -166,4 +166,3 @@ func TestTableCRUDAndAtomicRollback(t *testing.T) {
 		t.Fatalf("stock should have rolled back to 10, got: %+v", pAfter)
 	}
 }
-

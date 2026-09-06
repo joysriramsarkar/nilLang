@@ -461,7 +461,6 @@ func (sd *StateDeclaration) String() string {
 	return out.String()
 }
 
-
 type RenderMethod struct {
 	Token token.Token
 	Body  *BlockStatement
@@ -547,4 +546,3 @@ func (is *ImportStatement) String() string {
 	out.WriteString(";")
 	return out.String()
 }
-

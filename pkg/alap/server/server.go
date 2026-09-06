@@ -99,14 +99,13 @@ func (j JSResponse) Bytes() ([]byte, error) {
 	return []byte(j.JS), nil
 }
 
-
 // Service represents an Alap Server Service container
 type Service struct {
-	Name        string              `json:"name"`
-	BasePath    string              `json:"base_path"`
-	Endpoints   []*Endpoint         `json:"endpoints"`
-	Middlewares []Middleware        `json:"-"`
-	Router      *routing.Router     `json:"-"`
+	Name        string          `json:"name"`
+	BasePath    string          `json:"base_path"`
+	Endpoints   []*Endpoint     `json:"endpoints"`
+	Middlewares []Middleware    `json:"-"`
+	Router      *routing.Router `json:"-"`
 	cache       map[string]cacheEntry
 	cacheMu     sync.RWMutex
 	httpServer  *http.Server

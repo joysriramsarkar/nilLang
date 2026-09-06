@@ -107,4 +107,3 @@ import { Button, Text } from "alap/web";
 		t.Fatalf("statement 2 not expected destructured import. got=%+v", program.Statements[2])
 	}
 }
-

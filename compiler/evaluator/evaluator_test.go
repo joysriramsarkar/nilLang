@@ -154,4 +154,3 @@ Counter["name"];
 		t.Fatalf("expected component name 'Counter', got=%v", cEval)
 	}
 }
-

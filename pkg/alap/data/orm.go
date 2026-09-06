@@ -17,14 +17,14 @@ const (
 
 // QueryBuilder constructs parameterized SQL statements
 type QueryBuilder struct {
-	driver     DriverType
-	table      string
-	selected   []string
-	wheres     []whereClause
-	orderBys   []string
-	limitVal   int
-	offsetVal  int
-	joins      []string
+	driver    DriverType
+	table     string
+	selected  []string
+	wheres    []whereClause
+	orderBys  []string
+	limitVal  int
+	offsetVal int
+	joins     []string
 }
 
 type whereClause struct {
@@ -37,12 +37,12 @@ type whereClause struct {
 // Table initializes a query builder for a table
 func Table(name string) *QueryBuilder {
 	return &QueryBuilder{
-		driver:    DriverPostgres,
-		table:     name,
-		selected:  []string{"*"},
-		wheres:    make([]whereClause, 0),
-		orderBys:  make([]string, 0),
-		joins:     make([]string, 0),
+		driver:   DriverPostgres,
+		table:    name,
+		selected: []string{"*"},
+		wheres:   make([]whereClause, 0),
+		orderBys: make([]string, 0),
+		joins:    make([]string, 0),
 	}
 }
 
@@ -529,4 +529,3 @@ func toFloat(val interface{}) (float64, error) {
 		return 0, fmt.Errorf("not numeric")
 	}
 }
-

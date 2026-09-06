@@ -189,11 +189,11 @@ func (s *Signal[T]) String() string {
 
 // Computed creates a memoized derived state derived from a computation
 type Computed[T any] struct {
-	fn     func() T
-	value  T
-	dirty  bool
-	sub    *Signal[T]
-	mu     sync.RWMutex
+	fn    func() T
+	value T
+	dirty bool
+	sub   *Signal[T]
+	mu    sync.RWMutex
 }
 
 // NewComputed binds compute function to dependencies
@@ -252,11 +252,11 @@ func NewEffect(action func()) *Effect {
 type PatchType string
 
 const (
-	PatchText      PatchType = "REPLACE_TEXT"
-	PatchAttr      PatchType = "SET_ATTR"
-	PatchAppend    PatchType = "APPEND_CHILD"
-	PatchRemove    PatchType = "REMOVE_CHILD"
-	PatchReplace   PatchType = "REPLACE_NODE"
+	PatchText    PatchType = "REPLACE_TEXT"
+	PatchAttr    PatchType = "SET_ATTR"
+	PatchAppend  PatchType = "APPEND_CHILD"
+	PatchRemove  PatchType = "REMOVE_CHILD"
+	PatchReplace PatchType = "REPLACE_NODE"
 )
 
 // DOMPatch represents a minimal DOM change to apply in browser
