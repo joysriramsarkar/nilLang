@@ -82,6 +82,28 @@ func (as *AssignStatement) String() string {
 	return out.String()
 }
 
+type IndexAssignStatement struct {
+	Token token.Token // token.LBRACKET or token.ASSIGN
+	Left  Expression
+	Index Expression
+	Value Expression
+}
+
+func (ias *IndexAssignStatement) statementNode()       {}
+func (ias *IndexAssignStatement) TokenLiteral() string { return ias.Token.Literal }
+func (ias *IndexAssignStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString(ias.Left.String())
+	out.WriteString("[")
+	out.WriteString(ias.Index.String())
+	out.WriteString("] = ")
+	if ias.Value != nil {
+		out.WriteString(ias.Value.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
 type ReturnStatement struct {
 	Token       token.Token // token.RETURN
 	ReturnValue Expression
@@ -421,6 +443,25 @@ type StateDeclaration struct {
 	Value Expression
 }
 
+func (sd *StateDeclaration) statementNode()       {}
+func (sd *StateDeclaration) TokenLiteral() string { return sd.Token.Literal }
+func (sd *StateDeclaration) String() string {
+	var out bytes.Buffer
+	out.WriteString(sd.TokenLiteral() + " ")
+	if sd.Name != nil {
+		out.WriteString(sd.Name.String())
+	}
+	if sd.Type != "" {
+		out.WriteString(": " + sd.Type)
+	}
+	if sd.Value != nil {
+		out.WriteString(" = " + sd.Value.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+
+
 type RenderMethod struct {
 	Token token.Token
 	Body  *BlockStatement
@@ -473,3 +514,37 @@ func (cl *ComponentLiteral) String() string {
 	out.WriteString("{ ... }")
 	return out.String()
 }
+
+// ─── IMPORT STATEMENT ───────────────────────────────────────────────────────
+
+type ImportStatement struct {
+	Token token.Token // token.IMPORT
+	Path  *StringLiteral
+	Alias *Identifier
+	Names []*Identifier
+}
+
+func (is *ImportStatement) statementNode()       {}
+func (is *ImportStatement) TokenLiteral() string { return is.Token.Literal }
+func (is *ImportStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString(is.TokenLiteral() + " ")
+	if len(is.Names) > 0 {
+		out.WriteString("{ ")
+		names := []string{}
+		for _, n := range is.Names {
+			names = append(names, n.String())
+		}
+		out.WriteString(strings.Join(names, ", "))
+		out.WriteString(" } from ")
+	}
+	if is.Path != nil {
+		out.WriteString(is.Path.String())
+	}
+	if is.Alias != nil {
+		out.WriteString(" as " + is.Alias.String())
+	}
+	out.WriteString(";")
+	return out.String()
+}
+

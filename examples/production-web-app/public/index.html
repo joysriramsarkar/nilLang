@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Alap Enterprise POS and Web Application Platform powered by the Nilang Programming Language.">
+  <title>Alap Enterprise Web — Nilang Language Ecosystem</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #07080c;
+      --bg-surface: #0e111a;
+      --bg-card: rgba(18, 23, 37, 0.75);
+      --bg-card-hover: rgba(26, 33, 53, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(0, 242, 254, 0.25);
+      --primary: #00f2fe;
+      --primary-gradient: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --radius: 12px;
+      --shadow-lg: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 20px 0 rgba(0, 242, 254, 0.05);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      line-height: 1.5;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(0, 242, 254, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(79, 172, 254, 0.06) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+    h1, h2, h3, .logo-title, .kpi-value { font-family: 'Outfit', system-ui, sans-serif; }
+    .app-container { max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 36px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+    .brand-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: rgba(0, 242, 254, 0.1); border: 1px solid rgba(0, 242, 254, 0.25); color: var(--primary); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .logo-title { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: var(--text-muted); font-size: 0.95rem; }
+    .status-pill { display: flex; align-items: center; gap: 8px; background: var(--bg-surface); border: 1px solid var(--border); padding: 8px 16px; border-radius: 999px; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background-color: var(--success); box-shadow: 0 0 10px var(--success); animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 36px; }
+    .kpi-card { background: var(--bg-card); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; box-shadow: var(--shadow-lg); }
+    .kpi-card:hover { transform: translateY(-2px); border-color: var(--border-glow); background: var(--bg-card-hover); }
+    .kpi-label { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .kpi-value { font-size: 1.85rem; font-weight: 700; color: var(--text-main); letter-spacing: -0.02em; }
+    .kpi-sub { font-size: 0.8rem; color: var(--success); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+    .dashboard-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+    @media (max-width: 960px) { .dashboard-layout { grid-template-columns: 1fr; } }
+    .panel { background: var(--bg-card); backdrop-filter: blur(16px); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-lg); }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .panel-title { font-size: 1.15rem; font-weight: 700; color: var(--text-main); }
+    .table-wrapper { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    td { padding: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 0.9rem; }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+    .stock-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .stock-badge.in-stock { background: var(--success-glow); color: var(--success); }
+    .btn-buy { background: var(--primary-gradient); border: none; color: #000; padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer; transition: opacity 0.2s, transform 0.1s; }
+    .btn-buy:hover { opacity: 0.9; transform: scale(1.02); }
+    .btn-buy:active { transform: scale(0.98); }
+    .live-logs { display: flex; flex-direction: column; gap: 10px; max-height: 380px; overflow-y: auto; padding-right: 4px; }
+    .log-entry { background: rgba(0, 0, 0, 0.25); border-left: 3px solid var(--primary); padding: 10px 14px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.8rem; color: #e2e8f0; }
+    .log-entry.success { border-left-color: var(--success); }
+    .log-time { color: var(--text-dim); font-size: 0.75rem; margin-right: 8px; }
+    .action-banner { margin-top: 24px; padding: 16px; background: rgba(0, 242, 254, 0.05); border: 1px dashed rgba(0, 242, 254, 0.2); border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; }
+    .nav-links { display: flex; gap: 16px; }
+    .nav-link { color: var(--primary); text-decoration: none; font-size: 0.85rem; font-weight: 500; transition: opacity 0.2s; }
+    .nav-link:hover { text-decoration: underline; }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: #fff; padding: 14px 20px; border-radius: 8px; border: 1px solid var(--primary); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); transform: translateY(100px); opacity: 0; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s; z-index: 1000; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header>
+      <div>
+        <div class="brand-badge" id="brand-badge">⚡ ALAP ENTERPRISE WEB v1.0 • NILANG LANG</div>
+        <h1 class="logo-title" id="main-heading">Alap Cloud POS &amp; Web Platform</h1>
+        <p class="subtitle">Next-Generation Full-Stack Web Architecture running on Nilang Stack VM</p>
+      </div>
+      <div class="status-pill" id="system-status-pill">
+        <span class="pulse-dot"></span>
+        <span id="system-status-text">Production Engine Active</span>
+      </div>
+    </header>
+
+    <!-- KPI Metric Cards -->
+    <section class="kpi-grid" aria-label="Key Performance Indicators">
+      <div class="kpi-card" id="kpi-sales">
+        <div class="kpi-label">Total Net Revenue</div>
+        <div class="kpi-value" id="metric-revenue" data-alap-text="revenue">৳১,৮৪,২৫০.০০</div>
+        <div class="kpi-sub">▲ 18.4% exact paisa arithmetic</div>
+      </div>
+
+      <div class="kpi-card" id="kpi-orders">
+        <div class="kpi-label">Total Confirmed Orders</div>
+        <div class="kpi-value" id="metric-orders" data-alap-text="orders">142 Orders</div>
+        <div class="kpi-sub">Atomic SQLite ORM Transactions</div>
+      </div>
+
+      <div class="kpi-card" id="kpi-inventory">
+        <div class="kpi-label">Catalog Products</div>
+        <div class="kpi-value" id="metric-products">3 Active</div>
+        <div class="kpi-sub">Real-time inventory deduction</div>
+      </div>
+
+      <div class="kpi-card" id="kpi-throughput">
+        <div class="kpi-label">Throughput / Latency</div>
+        <div class="kpi-value" id="metric-rps">1,450 req/s</div>
+        <div class="kpi-sub">Radix Trie Trie O(1) Routing</div>
+      </div>
+    </section>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-layout">
+      <!-- Product Catalog & Checkout Panel -->
+      <section class="panel" id="panel-inventory">
+        <div class="panel-header">
+          <h2 class="panel-title">Enterprise Product Catalog</h2>
+          <span class="brand-badge" style="margin:0;">Live ORM Store</span>
+        </div>
+
+        <div class="table-wrapper">
+          <table id="products-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Product Name</th>
+                <th>Stock</th>
+                <th>Unit Price</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="row-prod-1">
+                <td><code>LIC-ENT-01</code></td>
+                <td><strong>Alap Enterprise Cloud License</strong></td>
+                <td><span class="stock-badge in-stock">50 Units</span></td>
+                <td><strong>৳১,৫০০.০০</strong></td>
+                <td>
+                  <button class="btn-buy" id="buy-btn-1" onclick="checkoutItem('prod-1', 'Enterprise Cloud License', '৳1,500.00')">
+                    Instant Buy
+                  </button>
+                </td>
+              </tr>
+              <tr id="row-prod-2">
+                <td><code>SUB-DEV-02</code></td>
+                <td><strong>Nilang Developer Pro Subscription</strong></td>
+                <td><span class="stock-badge in-stock">100 Units</span></td>
+                <td><strong>৳৪৫০.০০</strong></td>
+                <td>
+                  <button class="btn-buy" id="buy-btn-2" onclick="checkoutItem('prod-2', 'Developer Pro Sub', '৳450.00')">
+                    Instant Buy
+                  </button>
+                </td>
+              </tr>
+              <tr id="row-prod-3">
+                <td><code>HW-SB-03</code></td>
+                <td><strong>SoftBus High-Speed Gateway Node</strong></td>
+                <td><span class="stock-badge in-stock">25 Units</span></td>
+                <td><strong>৳৮,৯০০.০০</strong></td>
+                <td>
+                  <button class="btn-buy" id="buy-btn-3" onclick="checkoutItem('prod-3', 'SoftBus Gateway', '৳8,900.00')">
+                    Instant Buy
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Quick Info Banner -->
+        <div class="action-banner">
+          <div>
+            <strong>Architecture Verified:</strong>
+            <span style="color: var(--text-muted); font-size: 0.85rem; margin-left: 6px;">
+              HIR/MIR Codegen • Zero-Float Money Math • SSR State Hydration
+            </span>
+          </div>
+          <div class="nav-links">
+            <a href="/api/health" class="nav-link" target="_blank" id="link-health">Health API</a>
+            <a href="/api/products" class="nav-link" target="_blank" id="link-products">Products API</a>
+            <a href="/api/metrics" class="nav-link" target="_blank" id="link-metrics">Prometheus Metrics</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Real-time Event Stream & Audit Panel -->
+      <section class="panel" id="panel-activity">
+        <div class="panel-header">
+          <h2 class="panel-title">Live Audit Stream</h2>
+          <span class="pulse-dot"></span>
+        </div>
+
+        <div class="live-logs" id="log-stream">
+          <div class="log-entry success">
+            <span class="log-time">[Init]</span> Engine booted: Nilang VM + Alap Web v1.0
+          </div>
+          <div class="log-entry">
+            <span class="log-time">[ORM]</span> SQLite schema migrations applied (v1, v2)
+          </div>
+          <div class="log-entry">
+            <span class="log-time">[Router]</span> Radix Trie registered 12 enterprise endpoints
+          </div>
+          <div class="log-entry">
+            <span class="log-time">[Security]</span> CSP, HSTS, X-Frame-Options, CSRF enabled
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <!-- SSR State Payload -->
+  <script id="__NILANG_STATE__" type="application/json">
+    {"revenue":"৳১,৮৪,২৫০.০০","orders":142,"productsCount":3}
+  </script>
+  <script>
+    window.__NILANG_INITIAL_STATE__ = JSON.parse(document.getElementById('__NILANG_STATE__').textContent);
+  </script>
+  <script src="/alap-runtime.js"></script>
+</body>
+</html>

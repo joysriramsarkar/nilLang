@@ -98,20 +98,98 @@ Thumbs.db
 		fmt.Fprintf(os.Stderr, "⚠️ .gitignore তৈরি করতে সমস্যা: %s\n", err)
 	}
 
+	if selectedProfile == "web" {
+		// Create public directory
+		pubDir := filepath.Join(projectName, "public")
+		_ = os.MkdirAll(pubDir, 0755)
+
+		// Create alap.yaml
+		alapYaml := fmt.Sprintf(`app:
+  name: "%s"
+  version: "1.0.0"
+  target: "web"
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  cors:
+    allowed_origins: ["*"]
+
+database:
+  driver: "sqlite"
+  dsn: "app.db"
+`, projectName)
+		_ = os.WriteFile(filepath.Join(projectName, "alap.yaml"), []byte(alapYaml), 0644)
+
+		// Create public/index.html
+		pubHTML := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>%s | Nilang Web App</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="badge">⚡ Powered by Nilang & Alap Web</div>
+    <h1>স্বাগতম — %s</h1>
+    <p class="subtitle">টাইপ-সেফ, মেমরি-সেফ এবং উচ্চ গতির ফুলস্ট্যাক ওয়েব অ্যাপ্লিকেশন।</p>
+    <div class="card">
+      <h2>🚀 প্রস্তুত ফিচারসমূহ</h2>
+      <ul>
+        <li>⚡ Radix Tree $O(k)$ রাউটার</li>
+        <li>🛡️ বিল্ট-ইন XSS ও CSRF প্রোটেকশন</li>
+        <li>🔄 রিয়্যাক্টিভ স্টেট ও সিগন্যাল ইঞ্জিন</li>
+        <li>🗄️ এন্টারপ্রাইজ টাইপ-সেফ ORM</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>`, projectName, projectName)
+		_ = os.WriteFile(filepath.Join(pubDir, "index.html"), []byte(pubHTML), 0644)
+
+		// Create public/style.css
+		pubCSS := `* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #090a0f; color: #f1f5f9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.container { max-width: 640px; padding: 32px; text-align: center; }
+.badge { display: inline-block; background: rgba(0, 212, 255, 0.15); color: #00d4ff; padding: 6px 16px; border-radius: 9999px; font-weight: 600; font-size: 0.85rem; margin-bottom: 20px; border: 1px solid rgba(0, 212, 255, 0.3); }
+h1 { font-size: 2.2rem; margin-bottom: 12px; background: linear-gradient(135deg, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.subtitle { color: #94a3b8; font-size: 1.1rem; line-height: 1.6; margin-bottom: 28px; }
+.card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 24px; text-align: left; }
+.card h2 { font-size: 1.2rem; color: #38bdf8; margin-bottom: 16px; }
+.card ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.card li { font-size: 0.95rem; color: #cbd5e1; }
+`
+		_ = os.WriteFile(filepath.Join(pubDir, "style.css"), []byte(pubCSS), 0644)
+	}
+
 	fmt.Println("✅ নীলাং প্রজেক্ট তৈরি হয়েছে!")
 	fmt.Println()
 	fmt.Printf("📁 %s/\n", projectName)
+	if selectedProfile == "web" {
+		fmt.Println("├── alap.yaml         # Alap ওয়েব কনফিগারেশন")
+	}
 	fmt.Println("├── nil.json          # প্রজেক্ট কনফিগারেশন")
 	fmt.Println("├── src/")
 	fmt.Println("│   └── main.nil      # এন্ট্রি পয়েন্ট")
+	if selectedProfile == "web" {
+		fmt.Println("├── public/")
+		fmt.Println("│   ├── index.html    # ওয়েব ল্যান্ডিং পেজ")
+		fmt.Println("│   └── style.css     # স্টাইলশিট")
+	}
 	fmt.Println("├── resources/        # অ্যাসেটস")
 	fmt.Println("├── build/            # বিল্ড আউটপুট")
 	fmt.Println("└── .gitignore")
 	fmt.Println()
 	if selectedProfile == "web" {
-		fmt.Printf("🚀 শুরু করতে: cd %s && nil render (বা nil run)\n", projectName)
+		fmt.Println("🚀 শুরু করতে রান করুন:")
+		fmt.Printf("   cd %s\n", projectName)
+		fmt.Println("   nil dev --port 8080")
 	} else {
-		fmt.Printf("🚀 শুরু করতে: cd %s && nil run\n", projectName)
+		fmt.Println("🚀 শুরু করতে রান করুন:")
+		fmt.Printf("   cd %s\n", projectName)
+		fmt.Println("   nil run")
 	}
 }
 

@@ -178,6 +178,10 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 func (p *Parser) parseStatement() ast.Statement {
 	switch p.curToken.Type {
+	case token.IMPORT:
+		return p.parseImportStatement()
+	case token.STATE:
+		return p.parseStateDeclaration()
 	case token.LET, token.CONST:
 		return p.parseLetStatement()
 	case token.RETURN:
@@ -199,6 +203,85 @@ func (p *Parser) parseStatement() ast.Statement {
 	default:
 		return p.parseExpressionStatement()
 	}
+}
+
+func (p *Parser) parseStateDeclaration() *ast.StateDeclaration {
+	stmt := &ast.StateDeclaration{Token: p.curToken}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Optional type: state count: i32 = 0
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // cur is :
+		if p.peekTokenIs(token.IDENT) {
+			p.nextToken() // cur is type name
+			stmt.Type = p.curToken.Literal
+		}
+	}
+
+	if p.peekTokenIs(token.ASSIGN) {
+		p.nextToken() // cur is =
+		p.nextToken() // start of expr
+		stmt.Value = p.parseExpression(LOWEST)
+	}
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+
+func (p *Parser) parseImportStatement() *ast.ImportStatement {
+	stmt := &ast.ImportStatement{Token: p.curToken, Names: []*ast.Identifier{}}
+
+	// Case 1: import { Button, Text } from "alap/web"
+	if p.peekTokenIs(token.LBRACE) {
+		p.nextToken() // cur is {
+		for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+			p.nextToken()
+			if p.curTokenIs(token.IDENT) {
+				stmt.Names = append(stmt.Names, &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal})
+			}
+			if p.peekTokenIs(token.COMMA) {
+				p.nextToken()
+			}
+		}
+		if p.curTokenIs(token.RBRACE) {
+			p.nextToken() // past }
+		}
+		if p.curTokenIs(token.FROM) || (p.curTokenIs(token.IDENT) && p.curToken.Literal == "from") {
+			p.nextToken() // past from
+		}
+		if p.curTokenIs(token.STRING) {
+			stmt.Path = &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+		}
+	} else if p.peekTokenIs(token.STRING) {
+		p.nextToken()
+		stmt.Path = &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	} else if p.peekTokenIs(token.IDENT) {
+		p.nextToken()
+		stmt.Path = &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	}
+
+	// Optional: as <alias>
+	if p.peekTokenIs(token.AS) || (p.peekTokenIs(token.IDENT) && p.peekToken.Literal == "as") {
+		p.nextToken() // at "as"
+		if p.peekTokenIs(token.IDENT) {
+			p.nextToken()
+			stmt.Alias = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		}
+	}
+
+	if p.peekTokenIs(token.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
 }
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
@@ -281,10 +364,36 @@ func (p *Parser) parseWhileStatement() *ast.WhileStatement {
 	return stmt
 }
 
-func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
+func (p *Parser) parseExpressionStatement() ast.Statement {
 	stmt := &ast.ExpressionStatement{Token: p.curToken}
 
-	stmt.Expression = p.parseExpression(LOWEST)
+	expr := p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.ASSIGN) {
+		p.nextToken() // cur is =
+		p.nextToken() // cur is start of value
+		val := p.parseExpression(LOWEST)
+		if p.peekTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+		if idxExpr, ok := expr.(*ast.IndexExpression); ok {
+			return &ast.IndexAssignStatement{
+				Token: p.curToken,
+				Left:  idxExpr.Left,
+				Index: idxExpr.Index,
+				Value: val,
+			}
+		}
+		if idExpr, ok := expr.(*ast.Identifier); ok {
+			return &ast.AssignStatement{
+				Token: idExpr.Token,
+				Name:  idExpr,
+				Value: val,
+			}
+		}
+	}
+
+	stmt.Expression = expr
 
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()

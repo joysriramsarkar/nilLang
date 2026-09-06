@@ -41,6 +41,32 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 		env.Assign(node.Name.Value, val)
 		return val
+	case *ast.IndexAssignStatement:
+		left := Eval(node.Left, env)
+		if isError(left) {
+			return left
+		}
+		index := Eval(node.Index, env)
+		if isError(index) {
+			return index
+		}
+		val := Eval(node.Value, env)
+		if isError(val) {
+			return val
+		}
+		return evalIndexAssign(left, index, val)
+	case *ast.StateDeclaration:
+		var val object.Object = NULL
+		if node.Value != nil {
+			val = Eval(node.Value, env)
+			if isError(val) {
+				return val
+			}
+		}
+		if node.Name != nil {
+			env.Set(node.Name.Value, val)
+		}
+		return val
 	case *ast.WhileStatement:
 		return evalWhileStatement(node, env)
 
@@ -119,8 +145,10 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return evalDotExpression(left, node.Member.Value, env)
 	case *ast.HashLiteral:
 		return evalHashLiteral(node, env)
+	case *ast.ImportStatement:
+		return evalImportStatement(node, env)
 	case *ast.ComponentLiteral:
-		return &object.String{Value: fmt.Sprintf("Component<%s>", node.Name.Value)}
+		return evalComponentLiteral(node, env)
 	}
 
 	return nil
@@ -628,6 +656,31 @@ func evalHashIndexExpression(hash, index object.Object) object.Object {
 	}
 
 	return pair.Value
+}
+
+func evalIndexAssign(left, index, val object.Object) object.Object {
+	switch l := left.(type) {
+	case *object.Hash:
+		hashable, ok := index.(object.Hashable)
+		if !ok {
+			return newError("unusable as hash key: %s", index.Type())
+		}
+		l.Pairs[hashable.HashKey()] = object.HashPair{Key: index, Value: val}
+		return val
+	case *object.Array:
+		idxObj, ok := index.(*object.Integer)
+		if !ok {
+			return newError("array index must be an integer, got %s", index.Type())
+		}
+		idx := idxObj.Value
+		if idx < 0 || idx >= int64(len(l.Elements)) {
+			return newError("index out of bounds: %d", idx)
+		}
+		l.Elements[idx] = val
+		return val
+	default:
+		return newError("index-assignment not supported on: %s", left.Type())
+	}
 }
 
 func evalDotExpression(left object.Object, member string, env *object.Environment) object.Object {

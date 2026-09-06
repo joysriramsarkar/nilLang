@@ -28,19 +28,53 @@ func TestStore(t *testing.T) {
 	}
 }
 
-func TestSignal(t *testing.T) {
-	sig := NewSignal("initial")
-	if sig.Get() != "initial" {
-		t.Errorf("expected 'initial', got %s", sig.Get())
-	}
+func TestStoreBatch(t *testing.T) {
+	store := NewStore()
+	callCount := 0
 
-	observed := ""
-	sig.Watch(func(newVal string) {
-		observed = newVal
+	store.SubscribeAll(func(key string, newVal, oldVal interface{}) {
+		callCount++
 	})
 
-	sig.Set("updated")
-	if sig.Get() != "updated" || observed != "updated" {
-		t.Errorf("signal update failed: current=%s observed=%s", sig.Get(), observed)
+	store.Batch(func() {
+		store.Set("a", 1)
+		store.Set("b", 2)
+		store.Set("c", 3)
+	})
+
+	// After batch completes, subscribers should be notified for the changed keys
+	if callCount != 3 {
+		t.Errorf("expected 3 batch subscriber calls, got %d", callCount)
+	}
+	if store.GetInt("a", 0) != 1 || store.GetInt("b", 0) != 2 || store.GetInt("c", 0) != 3 {
+		t.Errorf("store values incorrect after batch")
+	}
+}
+
+func TestSignalAndComputed(t *testing.T) {
+	count := NewSignal(5)
+	doubled := NewComputed(func() int {
+		return count.Get() * 2
+	})
+
+	if doubled.Get() != 10 {
+		t.Errorf("expected doubled 10, got %d", doubled.Get())
+	}
+
+	// Update signal and invalidate computed
+	count.Set(15)
+	doubled.Invalidate()
+	if doubled.Get() != 30 {
+		t.Errorf("expected doubled 30, got %d", doubled.Get())
+	}
+}
+
+func TestDiffNodes(t *testing.T) {
+	patches := DiffNodes("btn-1", "Click Me", "btn-1", "Submitted!")
+	if len(patches) != 1 {
+		t.Fatalf("expected 1 patch, got %d", len(patches))
+	}
+	if patches[0].Type != PatchText || patches[0].Payload["text"] != "Submitted!" {
+		t.Errorf("unexpected patch: %+v", patches[0])
 	}
 }

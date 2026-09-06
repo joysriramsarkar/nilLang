@@ -100,3 +100,58 @@ func testIntegerObject(t *testing.T, obj object.Object, expected int64) bool {
 	}
 	return true
 }
+
+func TestImportNativeModules(t *testing.T) {
+	// Test money module import and calculation
+	moneyInput := `
+import "money";
+let price = money.ofMinor(1250, "BDT");
+let qty = 2;
+let total = money.add(price, price);
+total["formatted"];
+`
+	mEval := testEval(moneyInput)
+	str, ok := mEval.(*object.String)
+	if !ok {
+		t.Fatalf("expected string from money format, got=%T (%+v)", mEval, mEval)
+	}
+	if str.Value != "৳25.00" {
+		t.Errorf("expected ৳25.00, got=%s", str.Value)
+	}
+
+	// Test web module import and app setup
+	webInput := `
+import "web";
+let app = web.new("pos-app");
+app.get("/products", fn(req) { return "ok"; });
+let r = app.routes();
+len(r);
+`
+	wEval := testEval(webInput)
+	testIntegerObject(t, wEval, 1)
+
+	// Test data module import and table operations
+	dataInput := `
+import "data";
+let users = data.table("users");
+users.insert({"name": "Alice", "role": "admin"});
+users.count();
+`
+	dEval := testEval(dataInput)
+	testIntegerObject(t, dEval, 1)
+}
+
+func TestComponentEvaluation(t *testing.T) {
+	compInput := `
+component Counter {
+	state count = 0;
+}
+Counter["name"];
+`
+	cEval := testEval(compInput)
+	str, ok := cEval.(*object.String)
+	if !ok || str.Value != "Counter" {
+		t.Fatalf("expected component name 'Counter', got=%v", cEval)
+	}
+}
+

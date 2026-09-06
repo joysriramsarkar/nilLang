@@ -61,6 +61,8 @@ const (
 	FOR    = "FOR"
 	IMPORT = "IMPORT"
 	EXPORT = "EXPORT"
+	AS     = "AS"
+	FROM   = "FROM"
 
 	// UI & Declarative Keywords
 	COMPONENT = "COMPONENT" // component
@@ -93,6 +95,8 @@ var keywords = map[string]TokenType{
 	"for":       FOR,
 	"import":    IMPORT,
 	"export":    EXPORT,
+	"as":        AS,
+	"from":      FROM,
 	"component": COMPONENT,
 	"state":     STATE,
 	"render":    RENDER,

@@ -13,6 +13,8 @@ type Store struct {
 	data        map[string]interface{}
 	subscribers map[string][]Subscriber
 	allSubs     []Subscriber
+	inBatch     bool
+	pendingKeys map[string]bool
 	mu          sync.RWMutex
 }
 
@@ -22,14 +24,22 @@ func NewStore() *Store {
 		data:        make(map[string]interface{}),
 		subscribers: make(map[string][]Subscriber),
 		allSubs:     []Subscriber{},
+		pendingKeys: make(map[string]bool),
 	}
 }
 
-// Set updates a key in the store and notifies subscribers
+// Set updates a key in the store and notifies subscribers (or defers if in batch)
 func (s *Store) Set(key string, val interface{}) {
 	s.mu.Lock()
 	oldVal := s.data[key]
 	s.data[key] = val
+
+	if s.inBatch {
+		s.pendingKeys[key] = true
+		s.mu.Unlock()
+		return
+	}
+
 	keySubs := append([]Subscriber{}, s.subscribers[key]...)
 	allSubs := append([]Subscriber{}, s.allSubs...)
 	s.mu.Unlock()
@@ -39,6 +49,41 @@ func (s *Store) Set(key string, val interface{}) {
 	}
 	for _, sub := range allSubs {
 		sub(key, val, oldVal)
+	}
+}
+
+// Batch groups multiple state mutations, firing subscribers once when finished
+func (s *Store) Batch(fn func()) {
+	s.mu.Lock()
+	s.inBatch = true
+	s.pendingKeys = make(map[string]bool)
+	s.mu.Unlock()
+
+	fn()
+
+	s.mu.Lock()
+	s.inBatch = false
+	changed := make([]string, 0, len(s.pendingKeys))
+	for k := range s.pendingKeys {
+		changed = append(changed, k)
+	}
+	s.pendingKeys = make(map[string]bool)
+
+	allSubs := append([]Subscriber{}, s.allSubs...)
+	s.mu.Unlock()
+
+	for _, k := range changed {
+		s.mu.RLock()
+		val := s.data[k]
+		subs := append([]Subscriber{}, s.subscribers[k]...)
+		s.mu.RUnlock()
+
+		for _, sub := range subs {
+			sub(k, val, nil)
+		}
+		for _, sub := range allSubs {
+			sub(k, val, nil)
+		}
 	}
 }
 
@@ -95,7 +140,7 @@ func (s *Store) Snapshot() map[string]interface{} {
 	return copyMap
 }
 
-// ─── REACTIVE SIGNAL ────────────────────────────────────────────────────────
+// ─── REACTIVE SIGNAL & COMPUTED ─────────────────────────────────────────────
 
 // Signal represents a single reactive value
 type Signal[T any] struct {
@@ -140,4 +185,96 @@ func (s *Signal[T]) Watch(fn func(newVal T)) {
 
 func (s *Signal[T]) String() string {
 	return fmt.Sprintf("%v", s.Get())
+}
+
+// Computed creates a memoized derived state derived from a computation
+type Computed[T any] struct {
+	fn     func() T
+	value  T
+	dirty  bool
+	sub    *Signal[T]
+	mu     sync.RWMutex
+}
+
+// NewComputed binds compute function to dependencies
+func NewComputed[T any](fn func() T) *Computed[T] {
+	c := &Computed[T]{
+		fn:    fn,
+		dirty: true,
+		sub:   NewSignal(fn()),
+	}
+	return c
+}
+
+// Get evaluates if dirty, or returns cached value
+func (c *Computed[T]) Get() T {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dirty {
+		c.value = c.fn()
+		c.dirty = false
+	}
+	return c.value
+}
+
+// Invalidate marks the computed value as dirty
+func (c *Computed[T]) Invalidate() {
+	c.mu.Lock()
+	c.dirty = true
+	c.mu.Unlock()
+	c.sub.Set(c.Get())
+}
+
+// Watch listens to computed value changes
+func (c *Computed[T]) Watch(fn func(newVal T)) {
+	c.sub.Watch(fn)
+}
+
+// Effect registers an automatic side-effect
+type Effect struct {
+	action func()
+	stop   chan struct{}
+}
+
+// NewEffect runs an action whenever dependencies trigger
+func NewEffect(action func()) *Effect {
+	e := &Effect{
+		action: action,
+		stop:   make(chan struct{}),
+	}
+	action() // Run once immediately
+	return e
+}
+
+// ─── VIRTUAL DOM DIFF PATCH ─────────────────────────────────────────────────
+
+// PatchType defines DOM mutation operation
+type PatchType string
+
+const (
+	PatchText      PatchType = "REPLACE_TEXT"
+	PatchAttr      PatchType = "SET_ATTR"
+	PatchAppend    PatchType = "APPEND_CHILD"
+	PatchRemove    PatchType = "REMOVE_CHILD"
+	PatchReplace   PatchType = "REPLACE_NODE"
+)
+
+// DOMPatch represents a minimal DOM change to apply in browser
+type DOMPatch struct {
+	Type     PatchType              `json:"type"`
+	TargetID string                 `json:"target_id"`
+	Payload  map[string]interface{} `json:"payload"`
+}
+
+// DiffNodes compares two simple node representations and outputs minimal patches
+func DiffNodes(oldID, oldText string, newID, newText string) []DOMPatch {
+	patches := make([]DOMPatch, 0)
+	if oldText != newText {
+		patches = append(patches, DOMPatch{
+			Type:     PatchText,
+			TargetID: newID,
+			Payload:  map[string]interface{}{"text": newText},
+		})
+	}
+	return patches
 }

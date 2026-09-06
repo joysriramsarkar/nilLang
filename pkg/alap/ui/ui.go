@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/pkg/nilui"
@@ -109,9 +111,9 @@ func (p *Page) Build(theme Theme) nilui.Primitive {
 
 func (p *Page) RenderANSI(theme Theme) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\033[1;36m╔══════════════════════════════════════════════════════════════════╗\033[0m\n"))
+	sb.WriteString("\033[1;36m╔══════════════════════════════════════════════════════════════════╗\033[0m\n")
 	sb.WriteString(fmt.Sprintf("\033[1;36m║  %s - Alap UI Page\033[0m\n", p.Title))
-	sb.WriteString(fmt.Sprintf("\033[1;36m╠══════════════════════════════════════════════════════════════════╣\033[0m\n"))
+	sb.WriteString("\033[1;36m╠══════════════════════════════════════════════════════════════════╣\033[0m\n")
 
 	if p.Navigation != nil {
 		sb.WriteString(p.Navigation.RenderANSI(theme))
@@ -126,12 +128,18 @@ func (p *Page) RenderANSI(theme Theme) string {
 	if p.FooterText != "" {
 		sb.WriteString(fmt.Sprintf("\033[90m— %s —\033[0m\n", p.FooterText))
 	}
-	sb.WriteString(fmt.Sprintf("\033[1;36m╚══════════════════════════════════════════════════════════════════╝\033[0m\n"))
+	sb.WriteString("\033[1;36m╚══════════════════════════════════════════════════════════════════╝\033[0m\n")
 	return sb.String()
 }
 
 func (p *Page) RenderHTML(theme Theme) string {
+	return p.RenderSSR(theme, nil)
+}
+
+// RenderSSR renders the Page with state hydration script
+func (p *Page) RenderSSR(theme Theme, state map[string]interface{}) string {
 	var sb strings.Builder
+	escapedTitle := html.EscapeString(p.Title)
 	sb.WriteString(fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
@@ -152,7 +160,7 @@ func (p *Page) RenderHTML(theme Theme) string {
 <body>
 <div style="max-width: 900px; margin: 0 auto;">
   <h1 style="color:%s;">%s</h1>
-`, p.Title, theme.BackgroundColor, theme.TextColor, theme.SurfaceColor, theme.BorderRadius, theme.AccentColor, theme.PrimaryColor, theme.PrimaryColor, theme.BorderRadius, theme.AccentColor, p.Title))
+`, escapedTitle, theme.BackgroundColor, theme.TextColor, theme.SurfaceColor, theme.BorderRadius, theme.AccentColor, theme.PrimaryColor, theme.PrimaryColor, theme.BorderRadius, theme.AccentColor, escapedTitle))
 
 	if p.Navigation != nil {
 		sb.WriteString(p.Navigation.RenderHTML(theme))
@@ -163,7 +171,18 @@ func (p *Page) RenderHTML(theme Theme) string {
 	}
 
 	if p.FooterText != "" {
-		sb.WriteString(fmt.Sprintf(`<footer style="margin-top:40px; color:#64748b; font-size:13px; text-align:center;">%s</footer>`, p.FooterText))
+		sb.WriteString(fmt.Sprintf(`<footer style="margin-top:40px; color:#64748b; font-size:13px; text-align:center;">%s</footer>`, html.EscapeString(p.FooterText)))
+	}
+
+	// State Hydration Script
+	if state != nil {
+		stateJSON, err := json.Marshal(state)
+		if err == nil {
+			sb.WriteString(fmt.Sprintf("\n<script id=\"__NILANG_STATE__\" type=\"application/json\">%s</script>\n", string(stateJSON)))
+			sb.WriteString("<script>\n")
+			sb.WriteString("  window.__NILANG_INITIAL_STATE__ = JSON.parse(document.getElementById('__NILANG_STATE__').textContent);\n")
+			sb.WriteString("</script>\n")
+		}
 	}
 
 	sb.WriteString(`</div></body></html>`)
@@ -201,7 +220,7 @@ func (c *Card) RenderANSI(theme Theme) string {
 }
 
 func (c *Card) RenderHTML(theme Theme) string {
-	return fmt.Sprintf(`<div class="alap-card"><h3>%s</h3><p>%s</p></div>`, c.Title, c.Body)
+	return fmt.Sprintf(`<div class="alap-card"><h3>%s</h3><p>%s</p></div>`, html.EscapeString(c.Title), html.EscapeString(c.Body))
 }
 
 // ─── NAVIGATION COMPONENT ───────────────────────────────────────────────────
@@ -250,9 +269,9 @@ func (n *Navigation) RenderANSI(theme Theme) string {
 func (n *Navigation) RenderHTML(theme Theme) string {
 	var sb strings.Builder
 	sb.WriteString(`<nav style="display:flex; gap:20px; align-items:center; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.1);">`)
-	sb.WriteString(fmt.Sprintf(`<strong style="font-size:18px; color:%s;">%s</strong>`, theme.AccentColor, n.Brand))
+	sb.WriteString(fmt.Sprintf(`<strong style="font-size:18px; color:%s;">%s</strong>`, theme.AccentColor, html.EscapeString(n.Brand)))
 	for _, item := range n.Items {
-		sb.WriteString(fmt.Sprintf(`<a href="%s" style="color:%s; text-decoration:none;">%s</a>`, item.Path, theme.TextColor, item.Label))
+		sb.WriteString(fmt.Sprintf(`<a href="%s" style="color:%s; text-decoration:none;">%s</a>`, html.EscapeString(item.Path), theme.TextColor, html.EscapeString(item.Label)))
 	}
 	sb.WriteString(`</nav>`)
 	return sb.String()
@@ -288,10 +307,14 @@ func (t *Table) Build(theme Theme) nilui.Primitive {
 
 func (t *Table) RenderANSI(theme Theme) string {
 	var sb strings.Builder
-	sb.WriteString("\033[1m" + strings.Join(t.Headers, "\t│ ") + "\033[0m\n")
-	sb.WriteString(strings.Repeat("─", 40) + "\n")
+	sb.WriteString("\033[1m")
+	sb.WriteString(strings.Join(t.Headers, "\t│ "))
+	sb.WriteString("\033[0m\n")
+	sb.WriteString(strings.Repeat("─", 40))
+	sb.WriteByte('\n')
 	for _, r := range t.Rows {
-		sb.WriteString(strings.Join(r, "\t│ ") + "\n")
+		sb.WriteString(strings.Join(r, "\t│ "))
+		sb.WriteByte('\n')
 	}
 	return sb.String()
 }
@@ -300,13 +323,13 @@ func (t *Table) RenderHTML(theme Theme) string {
 	var sb strings.Builder
 	sb.WriteString(`<table class="alap-table"><thead><tr>`)
 	for _, h := range t.Headers {
-		sb.WriteString(fmt.Sprintf(`<th>%s</th>`, h))
+		sb.WriteString(fmt.Sprintf(`<th>%s</th>`, html.EscapeString(h)))
 	}
 	sb.WriteString(`</tr></thead><tbody>`)
 	for _, r := range t.Rows {
 		sb.WriteString(`<tr>`)
 		for _, c := range r {
-			sb.WriteString(fmt.Sprintf(`<td>%s</td>`, c))
+			sb.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(c)))
 		}
 		sb.WriteString(`</tr>`)
 	}
@@ -371,11 +394,12 @@ func (f *Form) RenderANSI(theme Theme) string {
 
 func (f *Form) RenderHTML(theme Theme) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`<div class="alap-card"><h3>%s</h3><form style="display:flex; flex-direction:column; gap:12px;">`, f.Title))
+	sb.WriteString(fmt.Sprintf(`<div class="alap-card"><h3>%s</h3><form style="display:flex; flex-direction:column; gap:12px;">`, html.EscapeString(f.Title)))
 	for _, fld := range f.Fields {
-		sb.WriteString(fmt.Sprintf(`<div><label style="display:block; margin-bottom:4px; font-size:14px;">%s</label><input class="alap-input" name="%s" placeholder="%s" /></div>`, fld.Label, fld.Name, fld.Placeholder))
+		sb.WriteString(fmt.Sprintf(`<div><label style="display:block; margin-bottom:4px; font-size:14px;">%s</label><input class="alap-input" name="%s" placeholder="%s" /></div>`,
+			html.EscapeString(fld.Label), html.EscapeString(fld.Name), html.EscapeString(fld.Placeholder)))
 	}
-	sb.WriteString(fmt.Sprintf(`<button type="submit" class="alap-btn">%s</button></form></div>`, f.SubmitLabel))
+	sb.WriteString(fmt.Sprintf(`<button type="submit" class="alap-btn">%s</button></form></div>`, html.EscapeString(f.SubmitLabel)))
 	return sb.String()
 }
 
@@ -421,9 +445,10 @@ func (d *Dashboard) RenderANSI(theme Theme) string {
 
 func (d *Dashboard) RenderHTML(theme Theme) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`<h2>%s</h2><div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">`, d.Title))
+	sb.WriteString(fmt.Sprintf(`<h2>%s</h2><div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">`, html.EscapeString(d.Title)))
 	for _, m := range d.Metrics {
-		sb.WriteString(fmt.Sprintf(`<div class="alap-card"><div style="color:#94a3b8; font-size:13px;">%s</div><div style="font-size:24px; font-weight:bold; margin:6px 0;">%s</div><div style="color:#4ade80; font-size:12px;">%s</div></div>`, m.Label, m.Value, m.Delta))
+		sb.WriteString(fmt.Sprintf(`<div class="alap-card"><div style="color:#94a3b8; font-size:13px;">%s</div><div style="font-size:24px; font-weight:bold; margin:6px 0;">%s</div><div style="color:#4ade80; font-size:12px;">%s</div></div>`,
+			html.EscapeString(m.Label), html.EscapeString(m.Value), html.EscapeString(m.Delta)))
 	}
 	sb.WriteString(`</div>`)
 	return sb.String()

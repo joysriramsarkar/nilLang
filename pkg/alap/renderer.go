@@ -1,7 +1,9 @@
 package alap
 
 import (
+	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 )
 
@@ -95,29 +97,48 @@ func (r *Renderer) renderElementToANSI(sb *strings.Builder, elem *UIElement, dep
 	}
 }
 
-// RenderToHTML renders the UI tree as HTML (for web preview)
+// RenderToHTML renders the UI tree as sanitized HTML (for web preview)
 func (r *Renderer) RenderToHTML() string {
+	return r.RenderToSSR(nil)
+}
+
+// RenderToSSR renders the UI tree as sanitized HTML with hydration state
+func (r *Renderer) RenderToSSR(initialState map[string]interface{}) string {
 	if r.root == nil {
-		return "<html><body></body></html>"
+		return "<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"></head><body></body></html>"
 	}
 
 	var sb strings.Builder
 	sb.WriteString("<!DOCTYPE html>\n<html>\n<head>\n")
 	sb.WriteString("  <meta charset=\"UTF-8\">\n")
-	sb.WriteString("  <title>Alap UI Preview</title>\n")
+	sb.WriteString("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+	sb.WriteString("  <title>Alap UI Application</title>\n")
 	sb.WriteString("  <style>\n")
-	sb.WriteString(fmt.Sprintf("    body { background: %s; color: %s; font-family: system-ui; }\n",
+	sb.WriteString(fmt.Sprintf("    body { background: %s; color: %s; font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px; }\n",
 		r.theme.BackgroundColor, r.theme.TextColor))
 	sb.WriteString(fmt.Sprintf("    .column { display: flex; flex-direction: column; gap: %dpx; }\n", r.theme.Padding))
 	sb.WriteString(fmt.Sprintf("    .row { display: flex; flex-direction: row; gap: %dpx; }\n", r.theme.Padding))
-	sb.WriteString(fmt.Sprintf("    .button { background: %s; color: white; padding: %dpx; border-radius: %dpx; border: none; cursor: pointer; }\n",
+	sb.WriteString(fmt.Sprintf("    .button { background: %s; color: white; padding: %dpx 16px; border-radius: %dpx; border: none; cursor: pointer; font-weight: 500; transition: opacity 0.2s; }\n",
 		r.theme.PrimaryColor, r.theme.Padding/2, r.theme.BorderRadius))
+	sb.WriteString("    .button:hover { opacity: 0.9; }\n")
 	sb.WriteString(fmt.Sprintf("    .container { padding: %dpx; }\n", r.theme.Padding))
 	sb.WriteString("  </style>\n")
 	sb.WriteString("</head>\n<body>\n")
 	r.renderElementToHTML(&sb, r.root, 1)
-	sb.WriteString("</body>\n</html>")
 
+	// Inject SSR state hydration payload if provided
+	if initialState != nil {
+		stateJSON, err := json.Marshal(initialState)
+		if err == nil {
+			sb.WriteString(fmt.Sprintf("\n  <script id=\"__NILANG_STATE__\" type=\"application/json\">%s</script>\n", string(stateJSON)))
+			sb.WriteString("  <script>\n")
+			sb.WriteString("    window.__NILANG_INITIAL_STATE__ = JSON.parse(document.getElementById('__NILANG_STATE__').textContent);\n")
+			sb.WriteString("    console.log('[Alap Web] Hydrated state with', Object.keys(window.__NILANG_INITIAL_STATE__).length, 'keys');\n")
+			sb.WriteString("  </script>\n")
+		}
+	}
+
+	sb.WriteString("</body>\n</html>")
 	return sb.String()
 }
 
@@ -126,36 +147,39 @@ func (r *Renderer) renderElementToHTML(sb *strings.Builder, elem *UIElement, dep
 
 	switch elem.Tag {
 	case "Text":
-		sb.WriteString(fmt.Sprintf("%s<p>%s</p>\n", padding, elem.Text))
+		sb.WriteString(fmt.Sprintf("%s<p data-alap-id=\"%s\">%s</p>\n", padding, html.EscapeString(elem.ID), html.EscapeString(elem.Text)))
 	case "Button":
 		label := elem.Attributes["label"]
-		sb.WriteString(fmt.Sprintf("%s<button class=\"button\">%v</button>\n", padding, label))
+		sb.WriteString(fmt.Sprintf("%s<button data-alap-id=\"%s\" data-alap-event=\"click\" class=\"button\">%s</button>\n",
+			padding, html.EscapeString(elem.ID), html.EscapeString(fmt.Sprintf("%v", label))))
 	case "Column":
-		sb.WriteString(fmt.Sprintf("%s<div class=\"column\">\n", padding))
+		sb.WriteString(fmt.Sprintf("%s<div data-alap-id=\"%s\" class=\"column\">\n", padding, html.EscapeString(elem.ID)))
 		for _, child := range elem.Children {
 			r.renderElementToHTML(sb, child, depth+1)
 		}
 		sb.WriteString(fmt.Sprintf("%s</div>\n", padding))
 	case "Row":
-		sb.WriteString(fmt.Sprintf("%s<div class=\"row\">\n", padding))
+		sb.WriteString(fmt.Sprintf("%s<div data-alap-id=\"%s\" class=\"row\">\n", padding, html.EscapeString(elem.ID)))
 		for _, child := range elem.Children {
 			r.renderElementToHTML(sb, child, depth+1)
 		}
 		sb.WriteString(fmt.Sprintf("%s</div>\n", padding))
 	case "Container":
-		sb.WriteString(fmt.Sprintf("%s<div class=\"container\">\n", padding))
+		sb.WriteString(fmt.Sprintf("%s<div data-alap-id=\"%s\" class=\"container\">\n", padding, html.EscapeString(elem.ID)))
 		for _, child := range elem.Children {
 			r.renderElementToHTML(sb, child, depth+1)
 		}
 		sb.WriteString(fmt.Sprintf("%s</div>\n", padding))
 	case "Image":
 		src := elem.Attributes["src"]
-		sb.WriteString(fmt.Sprintf("%s<img src=\"%v\" />\n", padding, src))
+		sb.WriteString(fmt.Sprintf("%s<img data-alap-id=\"%s\" src=\"%s\" />\n",
+			padding, html.EscapeString(elem.ID), html.EscapeString(fmt.Sprintf("%v", src))))
 	case "Input":
 		placeholder := elem.Attributes["placeholder"]
-		sb.WriteString(fmt.Sprintf("%s<input type=\"text\" placeholder=\"%v\" />\n", padding, placeholder))
+		sb.WriteString(fmt.Sprintf("%s<input data-alap-id=\"%s\" type=\"text\" placeholder=\"%s\" />\n",
+			padding, html.EscapeString(elem.ID), html.EscapeString(fmt.Sprintf("%v", placeholder))))
 	default:
-		sb.WriteString(fmt.Sprintf("%s<div>\n", padding))
+		sb.WriteString(fmt.Sprintf("%s<div data-alap-id=\"%s\">\n", padding, html.EscapeString(elem.ID)))
 		for _, child := range elem.Children {
 			r.renderElementToHTML(sb, child, depth+1)
 		}

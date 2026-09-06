@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -45,6 +46,101 @@ func TestRouter(t *testing.T) {
 	_, err4 := router.Dispatch(ctx4)
 	if err4 == nil {
 		t.Errorf("expected 404 error for unknown route, got nil")
+	}
+}
+
+func TestRadixTreeConstraintsAndWildcards(t *testing.T) {
+	r := NewRouter()
+
+	// Typed constraint: {id:int}
+	r.GET("/items/{id:int}", func(ctx *Context) (interface{}, error) {
+		id, err := ctx.ParamInt("id")
+		if err != nil {
+			return nil, err
+		}
+		return fmt.Sprintf("item-%d", id), nil
+	})
+
+	// Typed constraint: {id:uuid}
+	r.GET("/records/{id:uuid}", func(ctx *Context) (interface{}, error) {
+		return "record:" + ctx.Param("id"), nil
+	})
+
+	// Wildcard: /static/*filepath
+	r.GET("/static/*filepath", func(ctx *Context) (interface{}, error) {
+		return "file:" + ctx.Param("filepath"), nil
+	})
+
+	// 1. Valid int
+	res, err := r.Dispatch(NewContext("GET", "/items/123"))
+	if err != nil || res != "item-123" {
+		t.Errorf("expected item-123, got %v, err=%v", res, err)
+	}
+
+	// 2. Invalid int constraint should 404
+	_, err = r.Dispatch(NewContext("GET", "/items/abc"))
+	if err == nil {
+		t.Errorf("expected 404 for non-int param")
+	}
+
+	// 3. Valid UUID
+	validUUID := "123e4567-e89b-12d3-a456-426614174000"
+	res, err = r.Dispatch(NewContext("GET", "/records/"+validUUID))
+	if err != nil || res != "record:"+validUUID {
+		t.Errorf("expected record uuid, got %v, err=%v", res, err)
+	}
+
+	// 4. Invalid UUID should 404
+	_, err = r.Dispatch(NewContext("GET", "/records/not-a-uuid"))
+	if err == nil {
+		t.Errorf("expected 404 for invalid uuid")
+	}
+
+	// 5. Wildcard match
+	res, err = r.Dispatch(NewContext("GET", "/static/css/theme/dark.css"))
+	if err != nil || res != "file:css/theme/dark.css" {
+		t.Errorf("expected wildcard match, got %v, err=%v", res, err)
+	}
+}
+
+func TestRouteGroupsAndMiddleware(t *testing.T) {
+	r := NewRouter()
+
+	var order []string
+	globalMW := func(next HandlerFunc) HandlerFunc {
+		return func(ctx *Context) (interface{}, error) {
+			order = append(order, "global")
+			return next(ctx)
+		}
+	}
+	groupMW := func(next HandlerFunc) HandlerFunc {
+		return func(ctx *Context) (interface{}, error) {
+			order = append(order, "group")
+			return next(ctx)
+		}
+	}
+
+	r.Use(globalMW)
+	v1 := r.Group("/api/v1", groupMW)
+	v1.GET("/profile", func(ctx *Context) (interface{}, error) {
+		order = append(order, "handler")
+		return "profile-ok", nil
+	})
+
+	ctx := NewContext("GET", "/api/v1/profile")
+	res, err := r.Dispatch(ctx)
+	if err != nil || res != "profile-ok" {
+		t.Fatalf("group dispatch failed: res=%v, err=%v", res, err)
+	}
+
+	if len(order) != 3 || order[0] != "global" || order[1] != "group" || order[2] != "handler" {
+		t.Errorf("unexpected middleware execution order: %v", order)
+	}
+
+	// Verify route introspection
+	routes := r.Routes()
+	if len(routes) != 1 || routes[0].Pattern != "/api/v1/profile" {
+		t.Errorf("expected 1 route /api/v1/profile, got %+v", routes)
 	}
 }
 

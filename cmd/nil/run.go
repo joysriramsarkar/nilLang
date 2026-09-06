@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -100,6 +101,12 @@ func runDirectFile(filePath string, useVM bool) {
 	if strings.HasSuffix(filePath, ".nilax") {
 		runBundleFile(filePath, useVM)
 		return
+	}
+
+	absPath, err := filepath.Abs(filePath)
+	if err == nil {
+		evaluator.PushScriptDir(filepath.Dir(absPath))
+		defer evaluator.PopScriptDir()
 	}
 
 	source, err := os.ReadFile(filePath)

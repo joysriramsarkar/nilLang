@@ -77,6 +77,7 @@ func (c *Component) triggerReRender() {
 
 // UIElement represents a rendered UI element
 type UIElement struct {
+	ID         string
 	Tag        string
 	Attributes map[string]interface{}
 	Children   []*UIElement
@@ -90,6 +91,12 @@ func NewUIElement(tag string) *UIElement {
 		Attributes: make(map[string]interface{}),
 		Children:   []*UIElement{},
 	}
+}
+
+// SetID sets element ID
+func (e *UIElement) SetID(id string) *UIElement {
+	e.ID = id
+	return e
 }
 
 // SetAttr sets an attribute

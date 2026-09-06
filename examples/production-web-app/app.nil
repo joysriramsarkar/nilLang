@@ -1,0 +1,58 @@
+// Alap Enterprise Web Application written in Nilang Language
+import "web";
+import "data";
+import "money";
+import "security";
+
+// Define Product Entity & Pricing
+let product1 = {
+    "id": "p-101",
+    "name": "Alap Enterprise Core Server",
+    "sku": "ALAP-ENT-001",
+    "price": money.ofMinor(150000, "BDT"), // ৳1,500.00
+    "stock": 45
+};
+
+let product2 = {
+    "id": "p-102",
+    "name": "Nilang High-Performance VM Node",
+    "sku": "NIL-VM-002",
+    "price": money.ofMinor(45000, "BDT"),  // ৳450.00
+    "stock": 80
+};
+
+let product3 = {
+    "id": "p-103",
+    "name": "SoftBus Real-time Mesh Router",
+    "sku": "SB-MESH-003",
+    "price": money.ofMinor(890000, "BDT"), // ৳8,900.00
+    "stock": 20
+};
+
+// Calculate Cart & Order with exact Money math
+let calculateTotal = fn(itemPrice, qty) {
+    return money.mulQty(itemPrice, qty, 1);
+};
+
+// UI Component Declaration
+component POSDashboard {
+    state totalSales = "৳0.00";
+    state ordersCount = 0;
+}
+
+let app = web.new("AlapProductionApp");
+
+// Register application routes
+app.get("/api/v1/health", fn(req) {
+    return {
+        "status": "healthy",
+        "engine": "Nilang VM",
+        "framework": "Alap Web Enterprise"
+    };
+});
+
+app.get("/api/v1/products", fn(req) {
+    return [product1, product2, product3];
+});
+
+puts("✅ [Nilang] Enterprise Web Application configured successfully.");

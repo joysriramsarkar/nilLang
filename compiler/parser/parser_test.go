@@ -73,3 +73,38 @@ func checkParserErrors(t *testing.T, p *Parser) {
 	}
 	t.FailNow()
 }
+
+func TestImportStatements(t *testing.T) {
+	input := `
+import "web";
+import "data" as db;
+import { Button, Text } from "alap/web";
+`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(program.Statements))
+	}
+
+	// 1st: import "web"
+	s1, ok := program.Statements[0].(*ast.ImportStatement)
+	if !ok || s1.Path.Value != "web" {
+		t.Fatalf("statement 0 not expected import. got=%+v", program.Statements[0])
+	}
+
+	// 2nd: import "data" as db
+	s2, ok := program.Statements[1].(*ast.ImportStatement)
+	if !ok || s2.Path.Value != "data" || s2.Alias == nil || s2.Alias.Value != "db" {
+		t.Fatalf("statement 1 not expected import as. got=%+v", program.Statements[1])
+	}
+
+	// 3rd: import { Button, Text } from "alap/web"
+	s3, ok := program.Statements[2].(*ast.ImportStatement)
+	if !ok || s3.Path.Value != "alap/web" || len(s3.Names) != 2 {
+		t.Fatalf("statement 2 not expected destructured import. got=%+v", program.Statements[2])
+	}
+}
+

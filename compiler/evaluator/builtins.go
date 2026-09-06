@@ -134,6 +134,44 @@ var Builtins = map[string]*object.Builtin{
 			return &object.Array{Elements: newElements}
 		},
 	},
+	"append": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments. got=%d, want=2", len(args))
+			}
+			if args[0].Type() != object.ARRAY_OBJ {
+				return newError("argument to `append` must be ARRAY, got %s", args[0].Type())
+			}
+			arr := args[0].(*object.Array)
+			length := len(arr.Elements)
+			newElements := make([]object.Object, length+1)
+			copy(newElements, arr.Elements)
+			newElements[length] = args[1]
+			return &object.Array{Elements: newElements}
+		},
+	},
+	"set": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 3 {
+				return newError("wrong number of arguments to `set`. got=%d, want=3", len(args))
+			}
+			hash, ok := args[0].(*object.Hash)
+			if !ok {
+				return newError("first argument to `set` must be HASH, got %s", args[0].Type())
+			}
+			hashable, ok := args[1].(object.Hashable)
+			if !ok {
+				return newError("unusable as hash key: %s", args[1].Type())
+			}
+			newPairs := make(map[object.HashKey]object.HashPair)
+			for k, v := range hash.Pairs {
+				newPairs[k] = v
+			}
+			newPairs[hashable.HashKey()] = object.HashPair{Key: args[1], Value: args[2]}
+			hash.Pairs = newPairs
+			return hash
+		},
+	},
 	"str": {
 		Fn: func(args ...object.Object) object.Object {
 			if len(args) != 1 {
