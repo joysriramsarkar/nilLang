@@ -198,64 +198,12 @@ func (m Money) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// ─── DECIMAL SUB-SYSTEM ─────────────────────────────────────────────────────
+// ─── DECIMAL INTEGRATION ─────────────────────────────────────────────────────
 
-// Decimal provides fixed-point arithmetic with 4 decimal places (scale = 10000)
-type Decimal struct {
-	Value int64 `json:"raw"`
+// MulDecimal multiplies Money by an exact Decimal quantity
+func (m Money) MulDecimal(d Decimal) Money {
+	// m.Minor is 2 decimal places, d is 4 decimal places (DecimalScale)
+	newMinor := (m.Minor * d.Value) / DecimalScale
+	return NewMoney(newMinor, m.Currency)
 }
 
-const DecimalScale int64 = 10000
-
-// NewDecimal creates a Decimal from a float
-func NewDecimal(f float64) Decimal {
-	return Decimal{Value: int64(math.Round(f * float64(DecimalScale)))}
-}
-
-// NewDecimalFromInt creates a Decimal from an integer
-func NewDecimalFromInt(i int64) Decimal {
-	return Decimal{Value: i * DecimalScale}
-}
-
-// Add adds two Decimals
-func (d Decimal) Add(other Decimal) Decimal {
-	return Decimal{Value: d.Value + other.Value}
-}
-
-// Sub subtracts two Decimals
-func (d Decimal) Sub(other Decimal) Decimal {
-	return Decimal{Value: d.Value - other.Value}
-}
-
-// Mul multiplies two Decimals
-func (d Decimal) Mul(other Decimal) Decimal {
-	return Decimal{Value: (d.Value * other.Value) / DecimalScale}
-}
-
-// Div divides two Decimals
-func (d Decimal) Div(other Decimal) (Decimal, error) {
-	if other.Value == 0 {
-		return Decimal{}, fmt.Errorf("decimal division by zero")
-	}
-	return Decimal{Value: (d.Value * DecimalScale) / other.Value}, nil
-}
-
-// Float64 converts Decimal to float64
-func (d Decimal) Float64() float64 {
-	return float64(d.Value) / float64(DecimalScale)
-}
-
-func (d Decimal) String() string {
-	val := d.Value
-	neg := val < 0
-	if neg {
-		val = -val
-	}
-	maj := val / DecimalScale
-	min := val % DecimalScale
-	res := fmt.Sprintf("%d.%04d", maj, min)
-	if neg {
-		return "-" + res
-	}
-	return res
-}
