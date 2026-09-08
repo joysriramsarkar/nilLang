@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
@@ -27,8 +28,10 @@ type CheckoutResult struct {
 // CheckoutService orchestrates the atomic retail transaction pipeline.
 // All domain mutations occur inside a single database transaction; external
 // side-effects (printer, cash drawer, network sync) only fire AFTER commit.
+// Execute() is safe for concurrent use: each checkout runs its ACID
+// transaction independently; only the in-memory sales map write is serialized.
 type CheckoutService struct {
-	mu         sync.Mutex
+	mu         sync.Mutex // guards cs.sales map writes only
 	catalog    *CatalogRepository
 	inventory  *InventoryLedger
 	shifts     *ShiftManager
@@ -36,7 +39,7 @@ type CheckoutService struct {
 	audit      *AuditTrail
 	db         *data.RealDBPool // nil → in-memory only (testing)
 	sales      map[string]*Sale
-	orderCount int64
+	orderCount int64  // accessed via atomic.AddInt64
 	storeName  string // configurable store name (no hard-coded strings)
 	storeSub   string
 }
@@ -132,10 +135,9 @@ func (cs *CheckoutService) Execute(
 	registerID string,
 	customerID string,
 ) (*CheckoutResult, error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
 	// ── 1. VALIDATION (read-only) ─────────────────────────────────────────────
+	// No global mutex here: catalog/inventory/customer all have their own
+	// RWMutex, and the DB transaction (step 3) provides ACID isolation.
 	snapshot := cart.Snapshot()
 	if len(snapshot.Items) == 0 {
 		return nil, fmt.Errorf("cart is empty")
@@ -167,10 +169,12 @@ func (cs *CheckoutService) Execute(
 	}
 
 	// ── 2. PREPARE RECORDS ───────────────────────────────────────────────────
-	cs.orderCount++
+	// Use atomic increment so concurrent checkouts get unique monotonic IDs
+	// without holding the mutex during the entire transaction.
+	count := atomic.AddInt64(&cs.orderCount, 1)
 	now := time.Now()
-	invoiceNo := fmt.Sprintf("INV-%s-%04d", now.Format("20060102"), cs.orderCount)
-	saleID := fmt.Sprintf("sale-%d", now.UnixNano())
+	invoiceNo := fmt.Sprintf("INV-%s-%04d", now.Format("20060102"), count)
+	saleID := fmt.Sprintf("sale-%d-%d", now.UnixNano(), count)
 	if customerID == "" {
 		customerID = snapshot.CustomerID
 	}
@@ -179,7 +183,7 @@ func (cs *CheckoutService) Execute(
 	for i, it := range snapshot.Items {
 		costTotalMoney := it.CostPrice.MulDecimal(it.Quantity)
 		saleItems[i] = SaleItem{
-			ID:             fmt.Sprintf("si-%d-%d", now.UnixNano(), i),
+			ID:             fmt.Sprintf("si-%s-%d", saleID, i),
 			SaleID:         saleID,
 			ProductID:      it.ProductID,
 			Name:           it.Name,
@@ -220,9 +224,9 @@ func (cs *CheckoutService) Execute(
 		UpdatedAt:     now,
 	}
 
-	// ── 3. ATOMIC DATABASE TRANSACTION ───────────────────────────────────────
+	// ── 3. ATOMIC DATABASE TRANSACTION ─────────────────────────────────────────────
 	if cs.db != nil {
-		err := cs.db.Transaction(func(tx *data.RealTx) error {
+		err := cs.db.TransactionWithRetry(func(tx *data.RealTx) error {
 			// 3a. INSERT sale
 			if err := insertSale(tx, sale, shiftID); err != nil {
 				return fmt.Errorf("insert sale: %w", err)
@@ -237,7 +241,7 @@ func (cs *CheckoutService) Execute(
 
 			// 3c. INSERT sale_payments
 			for i, p := range payments {
-				payID := fmt.Sprintf("pay-%d-%d", now.UnixNano(), i)
+				payID := fmt.Sprintf("pay-%s-%d", saleID, i)
 				if err := insertPayment(tx, payID, saleID, p, now); err != nil {
 					return fmt.Errorf("insert payment: %w", err)
 				}
@@ -246,10 +250,9 @@ func (cs *CheckoutService) Execute(
 			// 3d. UPDATE product stock WITH optimistic version lock + INSERT stock_movements
 			for _, it := range snapshot.Items {
 				p, _ := cs.catalog.FindByID(it.ProductID)
-				newStockRaw := p.Stock.Value - it.Quantity.Value
 				res, err := tx.Exec(
-					`UPDATE products SET stock_raw=?, version=version+1, updated_at=? WHERE id=? AND stock_raw>=?`,
-					newStockRaw, now.UTC().Format(time.RFC3339), it.ProductID, it.Quantity.Value,
+					`UPDATE products SET stock_raw=stock_raw-?, version=version+1, updated_at=? WHERE id=? AND stock_raw>=?`,
+					it.Quantity.Value, now.UTC().Format(time.RFC3339), it.ProductID, it.Quantity.Value,
 				)
 				if err != nil {
 					return fmt.Errorf("update stock for %s: %w", it.ProductID, err)
@@ -259,12 +262,16 @@ func (cs *CheckoutService) Execute(
 					return fmt.Errorf("concurrent stock conflict for product %s — retry checkout", it.ProductID)
 				}
 
-				movID := fmt.Sprintf("mov-%s-%d", it.ProductID, now.UnixNano())
-				balanceRaw := p.Stock.Value - it.Quantity.Value
+				var remainingStockRaw int64
+				if err := tx.QueryRow(`SELECT stock_raw FROM products WHERE id=?`, it.ProductID).Scan(&remainingStockRaw); err != nil {
+					return fmt.Errorf("read updated stock for %s: %w", it.ProductID, err)
+				}
+
+				movID := fmt.Sprintf("mov-%s-%s", saleID, it.ProductID)
 				_, err = tx.Exec(
 					`INSERT INTO stock_movements (id,product_id,product_name,type,delta_raw,balance_raw,cost_minor,reference,timestamp,notes) VALUES (?,?,?,?,?,?,?,?,?,?)`,
 					movID, it.ProductID, it.Name, string(MovementSale),
-					-it.Quantity.Value, balanceRaw, p.Cost.Minor,
+					-it.Quantity.Value, remainingStockRaw, p.Cost.Minor,
 					invoiceNo, now.UTC().Format(time.RFC3339),
 					fmt.Sprintf("POS Sale #%s", invoiceNo),
 				)
@@ -274,7 +281,7 @@ func (cs *CheckoutService) Execute(
 			}
 
 			// 3e. UPDATE customer balance for credit payments
-			for _, p := range payments {
+			for i, p := range payments {
 				if p.Method == MethodCredit && customerID != "" {
 					_, err := tx.Exec(
 						`UPDATE customers SET due_balance_minor=due_balance_minor+?, total_purchases_minor=total_purchases_minor+?, updated_at=? WHERE id=?`,
@@ -283,7 +290,7 @@ func (cs *CheckoutService) Execute(
 					if err != nil {
 						return fmt.Errorf("update customer balance: %w", err)
 					}
-					ledgerID := fmt.Sprintf("cled-%d", now.UnixNano())
+					ledgerID := fmt.Sprintf("cled-%s-%d", saleID, i)
 					_, err = tx.Exec(
 						`INSERT INTO customer_ledger (id,customer_id,type,amount_minor,balance_after,reference,notes,created_by,timestamp) VALUES (?,?,?,?,?,?,?,?,?)`,
 						ledgerID, customerID, "CREDIT_SALE", p.AmountMinor, 0,
@@ -300,7 +307,7 @@ func (cs *CheckoutService) Execute(
 			afterJSON, _ := json.Marshal(map[string]interface{}{
 				"invoice": invoiceNo, "total": sale.TotalMinor, "items": len(saleItems),
 			})
-			auditID := fmt.Sprintf("aud-%d", now.UnixNano())
+			auditID := fmt.Sprintf("aud-%s", saleID)
 			_, err := tx.Exec(
 				`INSERT INTO audit_log (id,action,entity_id,entity_type,actor,after_json,notes,timestamp) VALUES (?,?,?,?,?,?,?,?)`,
 				auditID, string(ActionSaleCompleted), saleID, "sale", cashierID,
@@ -312,7 +319,8 @@ func (cs *CheckoutService) Execute(
 			}
 
 			return nil
-		})
+		}, 5)
+		// return the transaction error (already wrapped by TransactionWithRetry)
 		if err != nil {
 			return nil, fmt.Errorf("checkout transaction failed: %w", err)
 		}
@@ -336,8 +344,10 @@ func (cs *CheckoutService) Execute(
 	// Record in shift
 	_ = cs.shifts.RecordSale(sale)
 
-	// Store in memory registry
+	// Store in memory registry — mutex required for concurrent map write
+	cs.mu.Lock()
 	cs.sales[sale.ID] = sale
+	cs.mu.Unlock()
 
 	// ── 5. EXTERNAL SIDE-EFFECTS (post-commit) ───────────────────────────────
 	receiptLines := make([]device.ReceiptLineItem, len(sale.Items))

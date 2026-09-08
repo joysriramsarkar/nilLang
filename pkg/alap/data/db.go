@@ -167,6 +167,66 @@ func (p *RealDBPool) Transaction(fn func(tx *RealTx) error) (err error) {
 	return tx.Commit()
 }
 
+// isTransientError reports whether err represents a transient database error
+// that is safe to retry. Checks for SQLite BUSY/locked and PostgreSQL
+// serialization failure (SQLSTATE 40001) and deadlock errors.
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// SQLite: database is locked / SQLITE_BUSY / table is locked
+	if strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "SQLITE_BUSY") ||
+		strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "table is locked") {
+		return true
+	}
+	// PostgreSQL: serialization failure (40001) or deadlock detected (40P01)
+	if strings.Contains(msg, "40001") ||
+		strings.Contains(msg, "could not serialize access") ||
+		strings.Contains(msg, "deadlock detected") ||
+		strings.Contains(msg, "40P01") {
+		return true
+	}
+	return false
+}
+
+// TransactionWithRetry executes fn inside an ACID transaction, automatically
+// retrying up to maxRetries times on transient failures (SQLite BUSY or
+// Postgres serialization errors). Retry delays use truncated exponential
+// backoff starting at 10ms, capped at 500ms. Non-transient errors are
+// returned immediately without retrying.
+//
+// Use maxRetries=0 for a single attempt with no retry (equivalent to Transaction).
+// Recommended value for POS checkout: 5.
+func (p *RealDBPool) TransactionWithRetry(fn func(tx *RealTx) error, maxRetries int) error {
+	const (
+		initialBackoff = 10 * time.Millisecond
+		maxBackoff     = 500 * time.Millisecond
+	)
+	backoff := initialBackoff
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		err := p.Transaction(fn)
+		if err == nil {
+			return nil
+		}
+		if !isTransientError(err) {
+			return err // non-transient: propagate immediately
+		}
+		lastErr = err
+		if attempt < maxRetries {
+			time.Sleep(backoff)
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
+	return fmt.Errorf("transaction failed after %d retries: %w", maxRetries, lastErr)
+}
+
 // ─── QUERY BUILDER REAL EXECUTION ────────────────────────────────────────────
 
 // RealGet executes the QueryBuilder SELECT against a real DB and returns rows as []map[string]interface{}.

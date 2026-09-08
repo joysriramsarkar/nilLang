@@ -1,6 +1,7 @@
 package data
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -164,5 +165,59 @@ func TestTableCRUDAndAtomicRollback(t *testing.T) {
 	pAfter, err := pool.Table("products").Where("id", "=", "p1").First(pool)
 	if err != nil || pAfter == nil || pAfter["stock"] != 10 {
 		t.Fatalf("stock should have rolled back to 10, got: %+v", pAfter)
+	}
+}
+
+func TestRealDBPoolTransactionWithRetry(t *testing.T) {
+	pool, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer pool.Close()
+
+	// 1. Immediate success
+	var attempts int
+	err = pool.TransactionWithRetry(func(tx *RealTx) error {
+		attempts++
+		return nil
+	}, 3)
+	if err != nil || attempts != 1 {
+		t.Errorf("immediate success failed: attempts=%d, err=%v", attempts, err)
+	}
+
+	// 2. Transient error retried and succeeds on attempt 3
+	attempts = 0
+	err = pool.TransactionWithRetry(func(tx *RealTx) error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("database is locked (SQLITE_BUSY)")
+		}
+		return nil
+	}, 5)
+	if err != nil || attempts != 3 {
+		t.Errorf("transient retry failed: attempts=%d, err=%v", attempts, err)
+	}
+
+	// 3. Non-transient error fails immediately on attempt 1 without retry
+	attempts = 0
+	err = pool.TransactionWithRetry(func(tx *RealTx) error {
+		attempts++
+		return errors.New("syntax error at or near 'SELECT'")
+	}, 5)
+	if err == nil || attempts != 1 {
+		t.Errorf("non-transient error should fail on attempt 1: attempts=%d, err=%v", attempts, err)
+	}
+
+	// 4. Retries exhausted returns wrapped error
+	attempts = 0
+	err = pool.TransactionWithRetry(func(tx *RealTx) error {
+		attempts++
+		return errors.New("database is locked")
+	}, 2)
+	if err == nil || attempts != 3 { // attempt 0, 1, 2 = 3 attempts total
+		t.Errorf("expected 3 attempts for maxRetries=2: attempts=%d, err=%v", attempts, err)
+	}
+	if !strings.Contains(err.Error(), "transaction failed after 2 retries") {
+		t.Errorf("expected retry exhaustion message, got: %v", err)
 	}
 }
