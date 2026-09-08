@@ -72,6 +72,7 @@ const (
 	ON        = "ON"        // on
 	BUILD     = "BUILD"     // build
 	STYLE     = "STYLE"     // style
+	ENTITY    = "ENTITY"    // entity (web-implications.md Section 26)
 )
 
 type Token struct {
@@ -104,6 +105,7 @@ var keywords = map[string]TokenType{
 	"on":        ON,
 	"build":     BUILD,
 	"style":     STYLE,
+	"entity":    ENTITY,
 }
 
 func LookupIdent(ident string) TokenType {

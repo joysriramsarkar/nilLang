@@ -29,6 +29,7 @@ type CheckoutService struct {
 	shifts     *ShiftManager
 	customers  *CustomerRepository
 	audit      *AuditTrail
+	dbPool     *data.DBPool
 	sales      map[string]*Sale
 	orderCount int64
 }
@@ -51,6 +52,13 @@ func NewCheckoutService(
 	}
 }
 
+// SetDBPool sets the database pool for ACID database transaction persistence
+func (cs *CheckoutService) SetDBPool(pool *data.DBPool) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.dbPool = pool
+}
+
 // Execute processes the complete POS Vertical Slice #1 transaction atomically
 func (cs *CheckoutService) Execute(
 	cart *Cart,
@@ -68,11 +76,16 @@ func (cs *CheckoutService) Execute(
 		return nil, fmt.Errorf("cart is empty")
 	}
 
-	// 2. Validate physical stock sufficiency for all items
+	// 2. Validate physical stock sufficiency & unit compatibility for all items
 	for _, it := range snapshot.Items {
 		p, exists := cs.catalog.FindByID(it.ProductID)
 		if !exists {
 			return nil, fmt.Errorf("product not found: %s", it.ProductID)
+		}
+		if it.Unit != "" && p.Unit != "" {
+			if err := data.ValidateUnitCompatibility(it.Unit, p.Unit); err != nil {
+				return nil, fmt.Errorf("unit compatibility error for %s: %w", p.Name, err)
+			}
 		}
 		if p.Stock.Cmp(it.Quantity) < 0 {
 			return nil, fmt.Errorf("insufficient stock for '%s' (available: %s, requested: %s)",
@@ -164,7 +177,39 @@ func (cs *CheckoutService) Execute(
 	// 9. Record in active shift
 	_ = cs.shifts.RecordSale(sale)
 
-	// 10. Store Sale
+	// 10. Database Transaction Persistence if DBPool configured
+	if cs.dbPool != nil {
+		_ = cs.dbPool.Transaction(func(tx *data.Tx) error {
+			cs.dbPool.Table("sales").Insert(cs.dbPool, map[string]interface{}{
+				"id":             sale.ID,
+				"invoice_number": sale.InvoiceNumber,
+				"register_id":    sale.RegisterID,
+				"cashier_id":     sale.CashierID,
+				"customer_id":    sale.CustomerID,
+				"subtotal":       sale.SubtotalMinor,
+				"discount":       sale.DiscountMinor,
+				"tax":            sale.TaxMinor,
+				"total":          sale.TotalMinor,
+				"paid":           sale.PaidMinor,
+				"change":         sale.ChangeMinor,
+				"status":         string(sale.Status),
+			})
+			for _, it := range sale.Items {
+				cs.dbPool.Table("sale_items").Insert(cs.dbPool, map[string]interface{}{
+					"id":         it.ID,
+					"sale_id":    sale.ID,
+					"product_id": it.ProductID,
+					"name":       it.Name,
+					"quantity":   it.Quantity.String(),
+					"unit_price": it.UnitPriceMinor,
+					"subtotal":   it.SubtotalMinor,
+				})
+			}
+			return nil
+		})
+	}
+
+	// 11. Store Sale in memory registry
 	cs.sales[sale.ID] = sale
 
 	// 11. Format Thermal Receipt (ESC/POS and Text preview)

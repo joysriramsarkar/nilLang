@@ -321,9 +321,14 @@ func (p *DBPool) ExecTableUpdate(qb *QueryBuilder, updates map[string]interface{
 	var count int64
 	for i, row := range rows {
 		if matchWheres(row, qb.wheres) {
-			for k, v := range updates {
-				rows[i][k] = v
+			newRow := make(map[string]interface{}, len(row)+len(updates))
+			for k, v := range row {
+				newRow[k] = v
 			}
+			for k, v := range updates {
+				newRow[k] = v
+			}
+			rows[i] = newRow
 			count++
 		}
 	}
@@ -359,6 +364,7 @@ type Tx struct {
 	committed  bool
 	rolledBack bool
 	pool       *DBPool
+	snapshot   map[string][]map[string]interface{}
 }
 
 // Commit commits the transaction
@@ -366,52 +372,72 @@ func (t *Tx) Commit() error {
 	if t.rolledBack {
 		return fmt.Errorf("cannot commit rolled back transaction")
 	}
+	if t.committed {
+		return nil
+	}
 	t.committed = true
+	t.pool.mu.Lock()
+	if t.pool.activeTx > 0 {
+		t.pool.activeTx--
+	}
+	t.pool.mu.Unlock()
 	return nil
 }
 
-// Rollback rolls back the transaction
+// Rollback rolls back the transaction, restoring data to state when transaction began
 func (t *Tx) Rollback() error {
 	if t.committed {
 		return fmt.Errorf("cannot rollback committed transaction")
 	}
+	if t.rolledBack {
+		return nil
+	}
 	t.rolledBack = true
+	t.pool.mu.Lock()
+	if t.snapshot != nil {
+		t.pool.tables = t.snapshot
+	}
+	if t.pool.activeTx > 0 {
+		t.pool.activeTx--
+	}
+	t.pool.mu.Unlock()
 	return nil
+}
+
+// Begin begins an explicit atomic transaction
+func (p *DBPool) Begin() (*Tx, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.activeTx++
+
+	snapshot := make(map[string][]map[string]interface{}, len(p.tables))
+	for tbl, rows := range p.tables {
+		snapRows := make([]map[string]interface{}, len(rows))
+		copy(snapRows, rows)
+		snapshot[tbl] = snapRows
+	}
+
+	return &Tx{
+		ID:       fmt.Sprintf("tx_%d", time.Now().UnixNano()),
+		pool:     p,
+		snapshot: snapshot,
+	}, nil
 }
 
 // Transaction executes a function inside an atomic transaction with full rollback on error
 func (p *DBPool) Transaction(fn func(tx *Tx) error) (err error) {
-	p.mu.Lock()
-	p.activeTx++
-
-	// Snapshot all tables for atomic rollback
-	snapshot := make(map[string][]map[string]interface{})
-	for tbl, rows := range p.tables {
-		snapRows := make([]map[string]interface{}, len(rows))
-		for i, r := range rows {
-			rowCopy := make(map[string]interface{})
-			for k, v := range r {
-				rowCopy[k] = v
-			}
-			snapRows[i] = rowCopy
-		}
-		snapshot[tbl] = snapRows
+	tx, err := p.Begin()
+	if err != nil {
+		return err
 	}
-	p.mu.Unlock()
-
-	tx := &Tx{ID: fmt.Sprintf("tx_%d", time.Now().UnixNano()), pool: p}
 
 	defer func() {
-		p.mu.Lock()
-		p.activeTx--
 		if r := recover(); r != nil {
-			p.tables = snapshot
 			_ = tx.Rollback()
 			err = fmt.Errorf("transaction panic: %v", r)
 		} else if err != nil || tx.rolledBack {
-			p.tables = snapshot
+			_ = tx.Rollback()
 		}
-		p.mu.Unlock()
 	}()
 
 	err = fn(tx)
@@ -445,6 +471,52 @@ func (q *QueryBuilder) First(pool *DBPool) (map[string]interface{}, error) {
 		return nil, nil
 	}
 	return rows[0], nil
+}
+
+// Find looks up a single record by primary key id
+func (q *QueryBuilder) Find(pool *DBPool, id interface{}) (map[string]interface{}, bool, error) {
+	q.Where("id", "=", id).Limit(1)
+	row, err := q.First(pool)
+	if err != nil {
+		return nil, false, err
+	}
+	if row == nil {
+		return nil, false, nil
+	}
+	return row, true, nil
+}
+
+// FindBy looks up a single record by column and value
+func (q *QueryBuilder) FindBy(pool *DBPool, col string, val interface{}) (map[string]interface{}, bool, error) {
+	q.Where(col, "=", val).Limit(1)
+	row, err := q.First(pool)
+	if err != nil {
+		return nil, false, err
+	}
+	if row == nil {
+		return nil, false, nil
+	}
+	return row, true, nil
+}
+
+// Paginate retrieves rows for a specific 1-indexed page and returns (rows, totalCount, error)
+func (q *QueryBuilder) Paginate(pool *DBPool, page, pageSize int) ([]map[string]interface{}, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	allRows := pool.ExecTableSelect(q)
+	total := int64(len(allRows))
+
+	offset := (page - 1) * pageSize
+	q.Limit(pageSize).Offset(offset)
+	rows, err := q.Get(pool)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
 }
 
 // Insert inserts a record into the table

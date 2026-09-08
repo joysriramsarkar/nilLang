@@ -193,6 +193,8 @@ func (p *Parser) parseStatement() ast.Statement {
 			return p.parseComponentDeclaration()
 		}
 		return p.parseExpressionStatement()
+	case token.ENTITY:
+		return p.parseEntityStatement()
 	case token.STYLE:
 		return p.parseStyleStatement()
 	case token.IDENT:
@@ -233,6 +235,78 @@ func (p *Parser) parseStateDeclaration() *ast.StateDeclaration {
 	}
 
 	return stmt
+}
+
+func (p *Parser) parseEntityStatement() *ast.EntityStatement {
+	stmt := &ast.EntityStatement{Token: p.curToken, Fields: []ast.EntityField{}}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	p.nextToken() // move inside {
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if p.curTokenIs(token.SEMICOLON) {
+			p.nextToken()
+			continue
+		}
+
+		if p.curTokenIs(token.IDENT) {
+			fieldName := p.curToken.Literal
+			field := ast.EntityField{Name: fieldName}
+
+			if p.peekTokenIs(token.COLON) {
+				p.nextToken() // cur is :
+				if p.peekTokenIs(token.IDENT) {
+					p.nextToken() // cur is type
+					field.Type = p.curToken.Literal
+				}
+			}
+
+			// Parse optional field modifiers: primary, required, unique, relation -> Target
+			for (p.peekTokenIs(token.IDENT) && isEntityFieldModifier(p.peekToken.Literal)) || p.peekTokenIs(token.MINUS) {
+				p.nextToken()
+				switch p.curToken.Literal {
+				case "primary":
+					field.IsPrimary = true
+				case "required":
+					field.IsRequired = true
+				case "unique":
+					field.IsUnique = true
+				case "relation":
+					if p.peekTokenIs(token.MINUS) {
+						p.nextToken()
+						if p.peekTokenIs(token.GT) {
+							p.nextToken()
+							if p.peekTokenIs(token.IDENT) {
+								p.nextToken()
+								field.TargetEntity = p.curToken.Literal
+							}
+						}
+					} else if p.peekTokenIs(token.IDENT) {
+						p.nextToken()
+						field.TargetEntity = p.curToken.Literal
+					}
+				}
+			}
+
+			stmt.Fields = append(stmt.Fields, field)
+		}
+
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func isEntityFieldModifier(lit string) bool {
+	return lit == "primary" || lit == "required" || lit == "unique" || lit == "relation"
 }
 
 func (p *Parser) parseImportStatement() *ast.ImportStatement {

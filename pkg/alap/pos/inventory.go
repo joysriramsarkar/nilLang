@@ -12,6 +12,7 @@ import (
 type StockMovementType string
 
 const (
+	MovementOpening    StockMovementType = "OPENING"
 	MovementSale       StockMovementType = "SALE"
 	MovementPurchase   StockMovementType = "PURCHASE"
 	MovementReturn     StockMovementType = "RETURN"
@@ -86,6 +87,37 @@ func (il *InventoryLedger) RecordMovement(
 	return mov, nil
 }
 
+// RecordOpeningStock records an initial opening stock movement for reconciliation audit trails
+func (il *InventoryLedger) RecordOpeningStock(productID string, initialStock data.Decimal, unitCost data.Money) *StockMovement {
+	il.mu.Lock()
+	defer il.mu.Unlock()
+
+	name := productID
+	p, exists := il.catalog.FindByID(productID)
+	if exists {
+		name = p.Name
+		if unitCost.IsZero() {
+			unitCost = p.Cost
+		}
+	}
+
+	mov := &StockMovement{
+		ID:           fmt.Sprintf("mov-open-%s", productID),
+		ProductID:    productID,
+		ProductName:  name,
+		Type:         MovementOpening,
+		Delta:        initialStock,
+		BalanceAfter: initialStock,
+		UnitCost:     unitCost,
+		Reference:    "OPENING-BALANCE",
+		Timestamp:    time.Now(),
+		Notes:        "Initial opening inventory balance",
+	}
+
+	il.movements = append(il.movements, mov)
+	return mov
+}
+
 // MovementsForProduct returns all movements for a single product
 func (il *InventoryLedger) MovementsForProduct(productID string) []*StockMovement {
 	il.mu.RLock()
@@ -126,4 +158,57 @@ func (il *InventoryLedger) TotalInventoryValuationMinor() int64 {
 		totalValuation += valMoney.Minor
 	}
 	return totalValuation
+}
+
+// ReconciliationRecord holds the audit comparison between product catalog stock and ledger movement history
+type ReconciliationRecord struct {
+	ProductID      string       `json:"product_id"`
+	ProductName    string       `json:"product_name"`
+	CatalogStock   data.Decimal `json:"catalog_stock"`
+	LedgerNetDelta data.Decimal `json:"ledger_net_delta"`
+	Discrepancy    data.Decimal `json:"discrepancy"`
+	Balanced       bool         `json:"balanced"`
+}
+
+// ReconcileProduct compares ledger transactions with product stock
+func (il *InventoryLedger) ReconcileProduct(productID string) (*ReconciliationRecord, error) {
+	il.mu.RLock()
+	defer il.mu.RUnlock()
+
+	p, exists := il.catalog.FindByID(productID)
+	if !exists {
+		return nil, fmt.Errorf("product not found: %s", productID)
+	}
+
+	var netDelta data.Decimal
+	for _, m := range il.movements {
+		if m.ProductID == productID {
+			netDelta = netDelta.Add(m.Delta)
+		}
+	}
+
+	// Discrepancy is CatalogStock - NetLedgerDelta
+	disc := p.Stock.Sub(netDelta)
+	balanced := disc.IsZero()
+
+	return &ReconciliationRecord{
+		ProductID:      productID,
+		ProductName:    p.Name,
+		CatalogStock:   p.Stock,
+		LedgerNetDelta: netDelta,
+		Discrepancy:    disc,
+		Balanced:       balanced,
+	}, nil
+}
+
+// ReconcileAll runs reconciliation across all products
+func (il *InventoryLedger) ReconcileAll() []*ReconciliationRecord {
+	products := il.catalog.AllProducts()
+	records := make([]*ReconciliationRecord, 0, len(products))
+	for _, p := range products {
+		if rec, err := il.ReconcileProduct(p.ID); err == nil {
+			records = append(records, rec)
+		}
+	}
+	return records
 }

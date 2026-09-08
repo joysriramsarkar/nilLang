@@ -178,3 +178,83 @@ func (s *Scheduler) Statuses() map[string]JobStatus {
 	}
 	return res
 }
+
+// ─── STANDARD PRODUCTION BACKGROUND JOBS (web-implications.md Section 22) ───
+
+// NewSyncJob creates a job that flushes offline queues to central servers
+func NewSyncJob(syncHandler func(ctx context.Context) error) Job {
+	return JobFunc{
+		JobName: "SyncJob",
+		Fn: func(ctx context.Context) error {
+			if syncHandler != nil {
+				return syncHandler(ctx)
+			}
+			return nil
+		},
+	}
+}
+
+// NewBackupJob creates a periodic database snapshot/backup job
+func NewBackupJob(backupHandler func(ctx context.Context) error) Job {
+	return JobFunc{
+		JobName: "BackupJob",
+		Fn: func(ctx context.Context) error {
+			if backupHandler != nil {
+				return backupHandler(ctx)
+			}
+			return nil
+		},
+	}
+}
+
+// NewReceiptRetryJob creates a job to retry pending thermal print requests
+func NewReceiptRetryJob(retryHandler func(ctx context.Context) error) Job {
+	return JobFunc{
+		JobName: "ReceiptRetryJob",
+		Fn: func(ctx context.Context) error {
+			if retryHandler != nil {
+				return retryHandler(ctx)
+			}
+			return nil
+		},
+	}
+}
+
+// NewLowStockJob creates a job that evaluates inventory against minimum thresholds
+func NewLowStockJob(checkHandler func(ctx context.Context) error) Job {
+	return JobFunc{
+		JobName: "LowStockJob",
+		Fn: func(ctx context.Context) error {
+			if checkHandler != nil {
+				return checkHandler(ctx)
+			}
+			return nil
+		},
+	}
+}
+
+// NewReportJob creates a job that aggregates daily financial reconciliations
+func NewReportJob(reportHandler func(ctx context.Context) error) Job {
+	return JobFunc{
+		JobName: "ReportJob",
+		Fn: func(ctx context.Context) error {
+			if reportHandler != nil {
+				return reportHandler(ctx)
+			}
+			return nil
+		},
+	}
+}
+
+// NewCleanupJob creates a job that purges stale sync ops, sessions and logs
+func NewCleanupJob(cleanupHandler func(ctx context.Context) error) Job {
+	return JobFunc{
+		JobName: "CleanupJob",
+		Fn: func(ctx context.Context) error {
+			if cleanupHandler != nil {
+				return cleanupHandler(ctx)
+			}
+			return nil
+		},
+	}
+}

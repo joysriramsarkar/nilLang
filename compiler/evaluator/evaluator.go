@@ -66,9 +66,32 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		if node.Name != nil {
 			env.Set(node.Name.Value, val)
 		}
-		return val
 	case *ast.WhileStatement:
 		return evalWhileStatement(node, env)
+	case *ast.EntityStatement:
+		fields := make([]object.EntityFieldObj, len(node.Fields))
+		for i, f := range node.Fields {
+			fields[i] = object.EntityFieldObj{
+				Name:         f.Name,
+				Type:         f.Type,
+				IsPrimary:    f.IsPrimary,
+				IsRequired:   f.IsRequired,
+				IsUnique:     f.IsUnique,
+				TargetEntity: f.TargetEntity,
+			}
+		}
+		var name string
+		if node.Name != nil {
+			name = node.Name.Value
+		}
+		entityObj := &object.Entity{
+			Name:   name,
+			Fields: fields,
+		}
+		if node.Name != nil {
+			env.Set(node.Name.Value, entityObj)
+		}
+		return entityObj
 
 	// Expressions
 	case *ast.IntegerLiteral:

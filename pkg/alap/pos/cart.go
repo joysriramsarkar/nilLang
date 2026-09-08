@@ -13,6 +13,7 @@ type CartItem struct {
 	SKU           string       `json:"sku"`
 	Barcode       string       `json:"barcode"`
 	Name          string       `json:"name"`
+	CategoryID    string       `json:"category_id,omitempty"`
 	Unit          string       `json:"unit"`
 	UnitPrice     data.Money   `json:"unit_price"`
 	CostPrice     data.Money   `json:"cost_price"`
@@ -28,6 +29,7 @@ type Cart struct {
 	ID              string      `json:"id"`
 	TabName         string      `json:"tab_name"`
 	CustomerID      string      `json:"customer_id"`
+	CouponCode      string      `json:"coupon_code,omitempty"`
 	Items           []*CartItem `json:"items"`
 	OrderDiscount   Discount    `json:"order_discount"`
 	TaxRate         TaxRate     `json:"tax_rate"`
@@ -68,14 +70,15 @@ func (c *Cart) AddProduct(p *Product, qty data.Decimal) {
 
 	// New line item
 	c.Items = append(c.Items, &CartItem{
-		ProductID: p.ID,
-		SKU:       p.SKU,
-		Barcode:   p.Barcode,
-		Name:      p.Name,
-		Unit:      p.Unit,
-		UnitPrice: p.Price,
-		CostPrice: p.Cost,
-		Quantity:  qty,
+		ProductID:  p.ID,
+		SKU:        p.SKU,
+		Barcode:    p.Barcode,
+		Name:       p.Name,
+		CategoryID: p.CategoryID,
+		Unit:       p.Unit,
+		UnitPrice:  p.Price,
+		CostPrice:  p.Cost,
+		Quantity:   qty,
 	})
 	c.recalculateLocked()
 }
@@ -129,6 +132,14 @@ func (c *Cart) SetCustomer(customerID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.CustomerID = customerID
+}
+
+// ApplyCoupon sets coupon code for cart
+func (c *Cart) ApplyCoupon(coupon string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.CouponCode = coupon
+	c.recalculateLocked()
 }
 
 // ApplyDiscount sets cart-level discount
@@ -215,6 +226,7 @@ func (c *Cart) Snapshot() Cart {
 		ID:              c.ID,
 		TabName:         c.TabName,
 		CustomerID:      c.CustomerID,
+		CouponCode:      c.CouponCode,
 		Items:           itemsCopy,
 		OrderDiscount:   c.OrderDiscount,
 		TaxRate:         c.TaxRate,

@@ -244,3 +244,23 @@ func (l *Layout) RenderHTML() string {
 	sb.WriteString(`</div>`)
 	return sb.String()
 }
+
+// Button represents low-level clickable button
+type Button struct {
+	id    string
+	Label string
+}
+
+func NewButton(id, label string) *Button {
+	return &Button{id: id, Label: label}
+}
+
+func (b *Button) ID() string { return b.id }
+
+func (b *Button) RenderANSI() string {
+	return fmt.Sprintf("\033[1;36m[%s]\033[0m", b.Label)
+}
+
+func (b *Button) RenderHTML() string {
+	return fmt.Sprintf(`<button id="%s" class="nil-button">%s</button>`, b.id, b.Label)
+}

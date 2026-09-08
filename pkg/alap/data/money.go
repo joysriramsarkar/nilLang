@@ -198,11 +198,74 @@ func (m Money) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// ─── DECIMAL INTEGRATION ─────────────────────────────────────────────────────
+// ─── DECIMAL & RATIO INTEGRATION ─────────────────────────────────────────────
 
-// MulDecimal multiplies Money by an exact Decimal quantity
+// MulDecimal multiplies Money by an exact Decimal quantity with Half-Up rounding to nearest minor unit
 func (m Money) MulDecimal(d Decimal) Money {
-	// m.Minor is 2 decimal places, d is 4 decimal places (DecimalScale)
-	newMinor := (m.Minor * d.Value) / DecimalScale
+	prod := m.Minor * d.Value
+	var newMinor int64
+	if prod >= 0 {
+		newMinor = (prod + DecimalScale/2) / DecimalScale
+	} else {
+		newMinor = (prod - DecimalScale/2) / DecimalScale
+	}
 	return NewMoney(newMinor, m.Currency)
+}
+
+// MulRatio multiplies Money by an exact integer fraction (numerator / denominator) with Half-Up rounding
+func (m Money) MulRatio(numerator, denominator int64) (Money, error) {
+	if denominator == 0 {
+		return Money{}, fmt.Errorf("division by zero in MulRatio")
+	}
+	prod := m.Minor * numerator
+	var newMinor int64
+	if (prod >= 0 && denominator > 0) || (prod < 0 && denominator < 0) {
+		newMinor = (prod + denominator/2) / denominator
+	} else {
+		newMinor = (prod - denominator/2) / denominator
+	}
+	return NewMoney(newMinor, m.Currency), nil
+}
+
+// Round returns the Money value (already canonical exact minor units)
+func (m Money) Round() Money {
+	return m
+}
+
+// Allocate splits Money across multiple ratio weights without losing any minor units (Fowler's allocation)
+func (m Money) Allocate(ratios ...int64) ([]Money, error) {
+	if len(ratios) == 0 {
+		return nil, fmt.Errorf("no ratios provided for allocation")
+	}
+	var totalRatio int64
+	for _, r := range ratios {
+		if r < 0 {
+			return nil, fmt.Errorf("ratio weight cannot be negative: %d", r)
+		}
+		totalRatio += r
+	}
+	if totalRatio == 0 {
+		return nil, fmt.Errorf("sum of ratios must be greater than zero")
+	}
+
+	results := make([]Money, len(ratios))
+	remainder := m.Minor
+	for i, r := range ratios {
+		share := (m.Minor * r) / totalRatio
+		results[i] = NewMoney(share, m.Currency)
+		remainder -= share
+	}
+
+	// Distribute leftover minor units one by one
+	step := int64(1)
+	if remainder < 0 {
+		step = -1
+		remainder = -remainder
+	}
+	for i := 0; remainder > 0 && i < len(results); i++ {
+		results[i].Minor += step
+		remainder--
+	}
+
+	return results, nil
 }

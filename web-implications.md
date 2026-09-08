@@ -1,775 +1,541 @@
-হ্যাঁ—এবার লক্ষ্যটা বদলাতে হবে। **“NilLang দিয়ে একটা POS demo বানানো” নয়; “TypeScript + Next.js + Node.js দিয়ে যে পূর্ণাঙ্গ POS বানাবি, Alap + NilLang-এ তার সমান product বানানো”**—এটাই সঠিক target।
+হ্যাঁ ভাই। এখন যেহেতু নীলাং/আলাপে **POS core সত্যিই implementation পর্যায়ে ঢুকে গেছে**, আমার মতে আর এদিক-ওদিক নতুন feature যোগ না করে একটা নির্দিষ্ট লক্ষ্য ধরে এগোনো উচিত:
 
-তোর বর্তমান `nilLang` repo-তে ৬ সেপ্টেম্বর ২০২৬ পর্যন্ত compiler, HIR/MIR, WASM, Entity, ORM/data, Money/Decimal, routing, web-dev CLI ইত্যাদি যোগ হয়েছে; সর্বশেষ commits-ও `pos-app` এবং formatting-এর দিকে গেছে। কিন্তু এগুলো এখনও একটি **production POS platform-এর সমগ্র contract পূরণ করে না**।
+> **NilLang + Alap দিয়ে একটি বাস্তব POS end-to-end চালু করা — তারপর সেই POS-কে reference TypeScript/Next.js POS-এর সঙ্গে parity test করা।**
 
-## প্রথমে একটি গুরুত্বপূর্ণ কথা
+সর্বশেষ commit-এ POS core, checkout, inventory, background jobs এবং `Decimal/Quantity` এসেছে—এটা গুরুত্বপূর্ণ অগ্রগতি।
 
-**TypeScript/Next.js POS = NilLang/Alap POS** বলতে আমি “একই code” বোঝাচ্ছি না।
+## ১. প্রথমে সবচেয়ে জরুরি: Financial Core শক্ত করো
 
-আমি বোঝাচ্ছি:
+এটা POS-এর foundation।
 
-```text
-                         SAME PRODUCT CONTRACT
+### Decimal
 
- TypeScript + Next.js + Node.js              NilLang + Alap
- ─────────────────────────────              ─────────────────────
- UI                                          UI
- Routing                                     Routing
- State                                       State
- Forms                                       Forms
- Validation                                  Validation
- API                                         API
- Authentication                              Authentication
- Database                                    Database
- Transactions                                Transactions
- Inventory                                   Inventory
- POS cart                                    POS cart
- Checkout                                    Checkout
- Payment                                     Payment
- Receipt                                     Receipt
- Reports                                     Reports
- Bengali                                     Bengali
- Offline                                     Offline
- Printing                                    Printing
- Keyboard                                    Keyboard
- Permissions                                 Permissions
- Audit                                       Audit
- Realtime                                    Realtime
-```
+বর্তমান `Decimal` fixed-point ভিত্তিক হওয়া ভালো সিদ্ধান্ত। কিন্তু financial core-এ `float64` যেন canonical input/operation না থাকে।
 
-অর্থাৎ **একটা POS-এর যেসব observable behaviour, business rule এবং user interaction আছে—দুই implementation-এ সেগুলো একই হতে হবে।**
-
----
-
-# ১. সবচেয়ে আগে Alap-কে “UI framework” থেকে “Application Platform” করতে হবে
-
-তোর Alap-এ এখন component/state/render জাতীয় ভিত্তি আছে। কিন্তু POS-এর জন্য শুধু declarative component যথেষ্ট নয়।
-
-Alap-এর architecture আমি এভাবে চাই:
+এখন লক্ষ্য:
 
 ```text
-Alap
-├── UI Runtime
-│   ├── Component
-│   ├── State
-│   ├── Event
-│   ├── Form
-│   ├── Table
-│   ├── Modal
-│   ├── Drawer
-│   ├── Select
-│   ├── Combobox
-│   ├── DatePicker
-│   ├── Tabs
-│   ├── Toast
-│   ├── Tooltip
-│   ├── Pagination
-│   └── VirtualList
-│
-├── Application Runtime
-│   ├── Router
-│   ├── Navigation
-│   ├── Session
-│   ├── Cache
-│   ├── Async
-│   ├── Validation
-│   ├── Forms
-│   ├── i18n
-│   └── Permissions
-│
-├── Server Runtime
-│   ├── HTTP
-│   ├── API
-│   ├── Middleware
-│   ├── Auth
-│   ├── Sessions
-│   ├── WebSocket
-│   └── Jobs
-│
-├── Data Runtime
-│   ├── ORM
-│   ├── Query Builder
-│   ├── Transactions
-│   ├── Migration
-│   ├── Relations
-│   ├── SQLite
-│   ├── PostgreSQL
-│   └── Sync
-│
-├── Device Runtime
-│   ├── Printer
-│   ├── Barcode Scanner
-│   ├── Cash Drawer
-│   ├── Keyboard
-│   ├── USB
-│   ├── Bluetooth
-│   └── Camera
-│
-└── POS Runtime
-    ├── Product
-    ├── Inventory
-    ├── Cart
-    ├── Sale
-    ├── Payment
-    ├── Refund
-    ├── Customer
-    ├── Supplier
-    ├── Purchase
-    ├── Tax
-    ├── Discount
-    ├── Shift
-    ├── Register
-    ├── Receipt
-    ├── Report
-    └── Audit
+Decimal
+ ├── Parse("12.50")
+ ├── FromInt(1250)
+ ├── Add
+ ├── Sub
+ ├── Mul
+ ├── Div
+ ├── Round
+ ├── Compare
+ └── JSON
 ```
 
-**এই layer-গুলো Alap-এর first-class primitives হওয়া দরকার।**
-
----
-
-# ২. NilLang syntax-কে POS বানানোর উপযোগী করতে হবে
-
-বর্তমান ভাষা দিয়ে imperative কাজ করা যায়, কিন্তু POS-এর code যেন TypeScript-এর মতো boilerplate-heavy না হয়।
-
-আমি NilLang-এ এই ধরনের abstraction চাই:
-
-```nil
-entity Product {
-    id: uuid primary
-    sku: string unique
-    name: string
-    price: money
-    stock: decimal
-    category: relation Category
-}
-```
-
-এটা শুধু struct নয়।
-
-একই declaration থেকে:
+বিশেষ করে:
 
 ```text
-Database schema
-+
-Validation
-+
-CRUD
-+
-API
-+
-Client model
-+
-Form metadata
-+
-Table metadata
-+
-Search metadata
-+
-Serialization
+NewDecimal(float64)
 ```
 
-generate হবে।
-
-অর্থাৎ:
-
-```nil
-entity Product
-```
-
-হবে **single source of truth**।
-
-তোর repo-তে Entity generator এখন SQL, REST এবং client model পর্যন্ত করেছে—এটাই সঠিক দিক; এখন এটাকে অনেক গভীরে নিতে হবে।
-
----
-
-# ৩. Entity system-কে পূর্ণাঙ্গ করতে হবে
-
-বর্তমান:
+ধরনের API-কে core financial path থেকে সরিয়ে:
 
 ```text
-Field
-Entity
-Relation
-GenerateSQL
-GenerateRESTEndpoints
-GenerateClientModel
-Validate
+ParseDecimal("12.50")
+DecimalFromMinor(...)
+DecimalFromString(...)
 ```
 
-থেকে যেতে হবে:
+জাতীয় exact API রাখো।
+
+### Money
+
+Money-এর canonical representation:
 
 ```text
-Entity
- ├── schema
- ├── validation
- ├── defaults
- ├── indexes
- ├── unique constraints
- ├── foreign keys
- ├── cascade rules
- ├── soft delete
- ├── timestamps
- ├── computed fields
- ├── lifecycle hooks
- ├── audit fields
- ├── permissions
- ├── serialization
- ├── filtering
- ├── sorting
- ├── pagination
- ├── search
- └── API contract
+amount = integer minor units
+currency = BDT
 ```
 
 যেমন:
 
-```nil
-entity Product {
-    id: uuid primary
-    sku: string unique indexed
-    name: string required searchable
-    price: money required
-    stock: decimal default 0
-    active: bool default true
-
-    created_at: datetime auto
-    updated_at: datetime auto
-}
+```text
+₹100.50
+↓
+10050 paise
 ```
 
-তারপর:
+অথবা BDT:
 
-```nil
-Product.find(...)
-Product.where(...)
-Product.order(...)
-Product.paginate(...)
-Product.create(...)
-Product.update(...)
-Product.delete(...)
+```text
+৳100.50
+↓
+10050 paisa
 ```
+
+`Money.Mul(float64)`-এর মতো floating-point ভিত্তিক financial operation-ও শেষ পর্যন্ত বাদ দিতে হবে।
 
 ---
 
-# ৪. ORM-কে সত্যিকারের ORM বানাতে হবে
+# ২. Quantity-কে production-grade করো
 
-POS-এ ORM শুধু CRUD করলে চলবে না।
+POS-এ শুধু `2 pieces` নয়।
 
-প্রয়োজন:
-
-```nil
-transaction {
-    sale = Sale.create(...)
-    SaleItem.create(...)
-    Product.update(...)
-    Payment.create(...)
-}
-```
-
-একটাও step fail করলে:
+দরকার:
 
 ```text
-ROLLBACK
-```
-
-সবকিছু rollback।
-
-### অবশ্যই লাগবে
-
-* transactions
-* nested transactions / savepoint
-* prepared statement
-* parameter binding
-* connection pool
-* timeout
-* retry
-* deadlock handling
-* optimistic locking
-* pessimistic locking
-* eager loading
-* lazy loading
-* joins
-* aggregates
-* group by
-* raw SQL escape hatch
-* migrations
-* seed
-* indexes
-* constraints
-
----
-
-# ৫. Money system-এ float পুরোপুরি সরাতে হবে
-
-এটা POS-এর জন্য অত্যন্ত গুরুত্বপূর্ণ।
-
-বর্তমান Money system আছে—এটা ভালো। কিন্তু `float64`-ভিত্তিক constructor/multiplication production financial core-এ রাখা যাবে না।
-
-অর্থাৎ এ ধরনের API:
-
-```text
-Money.Mul(float64)
-NewMoneyFromMajor(float64)
-```
-
-শেষ পর্যন্ত core calculation থেকে সরাতে হবে।
-
-বরং:
-
-```nil
-money
-decimal
-quantity
-percentage
-tax
-discount
-```
-
-সব fixed-point / Decimal ভিত্তিক হবে।
-
-উদাহরণ:
-
-```nil
-subtotal = price * quantity
-discount = subtotal * discount_rate
-tax = taxable_amount * tax_rate
-total = subtotal - discount + tax
-```
-
-এগুলোর প্রতিটি calculation deterministic হতে হবে।
-
----
-
-# ৬. Quantity-কে আলাদা numeric type করতে হবে
-
-POS শুধু integer quantity নয়।
-
-```text
-1 item
-2 item
-0.5 kg
-1.250 litre
-3.75 meter
+2 pcs
+1.5 kg
+0.750 litre
+12 metre
 ```
 
 তাই:
 
 ```nil
-quantity
-```
-
-কে money থেকে আলাদা semantics দিতে হবে।
-
-যেমন:
-
-```nil
-quantity: decimal
-unit_price: money
-```
-
-এবং:
-
-```nil
-line_total = unit_price * quantity
-```
-
-compiler যেন type mismatch ধরে।
-
----
-
-# ৭. Tax engine চাই
-
-POS-এর অন্যতম core module।
-
-```text
-Tax
-TaxRate
-TaxCategory
-TaxRule
-Inclusive tax
-Exclusive tax
-Compound tax
-Exemption
-Rounding
-```
-
-যেমন:
-
-```nil
-tax = Tax.calculate(
-    amount,
-    rate,
-    inclusive: false
-)
-```
-
-একই codebase-এ দেশ/রাজ্য/পণ্যের ধরন অনুযায়ী tax rule বদলানো যাবে।
-
----
-
-# ৮. Discount engine চাই
-
-শুধু:
-
-```text
-price - discount
-```
-
-না।
-
-লাগবে:
-
-```text
-percentage discount
-fixed discount
-item discount
-cart discount
-category discount
-customer discount
-coupon
-buy X get Y
-tier pricing
-time-based promotion
-```
-
-এগুলো business-rule engine হিসেবে বানাতে হবে।
-
----
-
-# ৯. POS Cart-কে first-class runtime object করতে হবে
-
-এটা অত্যন্ত গুরুত্বপূর্ণ।
-
-```nil
-cart {
-    items
-    subtotal
-    discount
-    tax
-    total
-}
-```
-
-কিন্তু আরও:
-
-```text
-addItem
-removeItem
-changeQuantity
-applyDiscount
-removeDiscount
-hold
-resume
-clear
-calculate
-```
-
-এবং state update reactive হতে হবে।
-
-উদাহরণ:
-
-```nil
-cart.add(product, quantity: 2)
-
-cart.total
-```
-
-বদলালেই UI-এর relevant অংশ automatically rerender হবে।
-
----
-
-# ১০. Reactive state system অনেক শক্তিশালী করতে হবে
-
-POS-এ এরকম dependency থাকবে:
-
-```text
-Product search
-      ↓
-Selected product
-      ↓
-Cart
-      ↓
-Subtotal
-      ↓
-Discount
-      ↓
-Tax
-      ↓
-Grand Total
-      ↓
-Payment due
-      ↓
-Change
-```
-
-এখানে React-এর মতো granular reactivity দরকার।
-
-Alap-এ থাকতে হবে:
-
-```nil
-state
-computed
-derived
-watch
-effect
-async state
-resource
-cache
-```
-
-যেমন:
-
-```nil
-computed total = cart.subtotal + cart.tax - cart.discount
-```
-
-`cart` বদলালে total নিজে update হবে।
-
----
-
-# ১১. Async programming model ঠিক করতে হবে
-
-Next/Node application-এ async হলো মূল বিষয়।
-
-NilLang-এ থাকতে হবে:
-
-```nil
-async function loadProducts()
-await Product.find(...)
-```
-
-এবং:
-
-```nil
-try {
-    await saveSale()
-} catch error {
-    ...
+quantity {
+    amount: Decimal
+    unit: Unit
 }
 ```
 
 এর সঙ্গে:
 
 ```text
-Promise/Future
-Cancellation
-Timeout
-Retry
-Parallel execution
-Race handling
-Task
-Scheduler
+Unit
+UnitConversion
+Precision
+Rounding
 ```
 
-প্রয়োজন।
+দরকার।
+
+উদাহরণ:
+
+```text
+1 kg = 1000 g
+```
+
+কিন্তু product-এর stock এবং sale quantity-র unit compatibility validate করতে হবে।
 
 ---
 
-# ১২. Form system বানাতে হবে
+# ৩. Database/ORM এখন বড় priority
 
-POS UI-এর অর্ধেকই form।
+এখন POS-এর data সত্যিই persist করতে হবে।
 
-Alap-এ first-class:
+প্রথম target:
+
+> **SQLite**
+
+তারপর PostgreSQL।
+
+Minimum database stack:
 
 ```text
-Form
-Field
-Input
-Select
-Combobox
-Autocomplete
-Checkbox
-Radio
-Date
-Time
-Number
-MoneyInput
-BarcodeInput
+SQLite
+ ├── connection
+ ├── prepared statements
+ ├── transaction
+ ├── rollback
+ ├── commit
+ ├── migrations
+ ├── indexes
+ ├── constraints
+ └── query builder
 ```
 
-এবং:
+তার উপর:
+
+```text
+ORM
+ ├── create
+ ├── find
+ ├── findBy
+ ├── where
+ ├── order
+ ├── limit
+ ├── offset
+ ├── paginate
+ ├── update
+ ├── delete
+ └── relations
+```
+
+যেমন:
 
 ```nil
-form ProductForm {
-    sku required
-    name required minLength 2
-    price money required
-}
+product = Product.findBy(sku: "ABC123")
+
+products = Product
+    .where(active: true)
+    .order("name")
+    .paginate(1, 50)
 ```
 
-Validation client এবং server দুই জায়গাতেই একই definition থেকে হবে।
+### সবচেয়ে গুরুত্বপূর্ণ
+
+Checkout অবশ্যই database transaction-এর মধ্যে হবে।
+
+```text
+BEGIN
+
+create Sale
+create SaleItems
+create Payments
+decrease Inventory
+create AuditLog
+create Receipt
+
+COMMIT
+```
+
+কোনো একটা ব্যর্থ হলে:
+
+```text
+ROLLBACK
+```
 
 ---
 
-# ১৩. Table/DataGrid না থাকলে POS অসম্ভব
+# ৪. POS-এর canonical Entity model বানাও
 
-Full POS-এ লাগবে:
+এখন এলোমেলো struct না করে domain model স্থির করো।
 
-```text
-DataGrid
-Virtual scrolling
-Column resize
-Column reorder
-Sorting
-Filtering
-Multi-select
-Keyboard navigation
-Inline edit
-Pagination
-Sticky header
-Frozen column
-Empty state
-Loading state
-Error state
-```
-
-এটা অত্যন্ত polished হতে হবে।
-
-কারণ:
+কমপক্ষে:
 
 ```text
-Sales
-Products
-Customers
+Organization
+Store
+Register
+Shift
+
+User
+Role
+Permission
+
+Category
+Brand
+Unit
+Product
+ProductVariant
+
 Inventory
-Purchases
-Suppliers
-Reports
+StockMovement
+Warehouse
+
+Customer
+Supplier
+
+Purchase
+PurchaseItem
+
+Sale
+SaleItem
+Payment
+
+Refund
+RefundItem
+
+Tax
+Discount
+Promotion
+
+Receipt
+AuditLog
+
+SyncOperation
 ```
 
-সবই table-heavy।
+### Product
+
+```text
+Product
+ ├── id
+ ├── sku
+ ├── barcode
+ ├── name
+ ├── description
+ ├── category
+ ├── brand
+ ├── cost
+ ├── price
+ ├── unit
+ ├── tax
+ ├── active
+ ├── created_at
+ └── updated_at
+```
 
 ---
 
-# ১৪. Combobox + instant search অত্যন্ত শক্তিশালী করতে হবে
+# ৫. Inventory-তে একটা গুরুত্বপূর্ণ পরিবর্তন করো
 
-Cashier-এর workflow:
-
-```text
-barcode scan
-→ product
-→ cart
-```
-
-অথবা:
+Stock সরাসরি:
 
 ```text
-search "rice"
-→ results
-→ click
-→ cart
+stock = stock - 2
 ```
 
-UI-তে milliseconds-level interaction দরকার।
+এভাবে পরিচালনা করা উচিত নয়।
 
-তাই Alap UI runtime-এ:
+বরং ledger:
 
 ```text
-debounced search
-cancel previous request
-keyboard selection
-highlight match
-virtualized result
-barcode input
+StockMovement
 ```
 
-support দরকার।
+ব্যবহার করো।
+
+উদাহরণ:
+
+```text
+Opening +100
+Purchase   +50
+Sale        -2
+Damage      -1
+Adjustment  +3
+Return      +1
+----------------
+Current    151
+```
+
+অর্থাৎ:
+
+```text
+Inventory
+    ↓
+StockMovement Ledger
+    ↓
+Current Stock
+```
+
+এতে audit এবং reconciliation অনেক শক্ত হবে।
 
 ---
 
-# ১৫. Router-কে Next.js-level application router-এর দিকে নিতে হবে
+# ৬. এবার আসল POS engine
 
-শুধু route registration যথেষ্ট নয়।
+এটা তোমার সবচেয়ে গুরুত্বপূর্ণ অংশ।
 
-লাগবে:
+একটা:
 
 ```text
-nested routes
-dynamic routes
-route params
-query params
-layouts
-loading
-error
-not-found
-guards
-redirect
-navigation state
-prefetch
-data loading
+Cart
+```
+
+first-class domain object বানাও।
+
+তার API:
+
+```text
+cart.add(product)
+cart.remove(item)
+cart.setQuantity(item, quantity)
+
+cart.applyDiscount(...)
+cart.removeDiscount(...)
+
+cart.subtotal
+cart.discount
+cart.tax
+cart.total
+```
+
+তারপর pricing engine:
+
+```text
+Product price
+      ↓
+Quantity
+      ↓
+Line subtotal
+      ↓
+Discount
+      ↓
+Tax
+      ↓
+Final total
+```
+
+---
+
+# ৭. Tax engine আলাদা করো
+
+Tax calculation cart-এর মধ্যে hard-code করো না।
+
+Tax engine:
+
+```text
+Tax
+ ├── rate
+ ├── inclusive
+ ├── exclusive
+ ├── compound
+ ├── exemption
+ └── rounding
 ```
 
 উদাহরণ:
 
 ```text
-/
- /login
- /pos
- /products
- /products/:id
- /inventory
- /sales
- /sales/:id
- /customers
- /suppliers
- /reports
- /settings
+Price       1000
+Tax 5%        50
+----------------
+Total       1050
+```
+
+কিন্তু tax-inclusive pricing-ও support করতে হবে।
+
+---
+
+# ৮. Discount engine
+
+এটাও আলাদা service হওয়া উচিত।
+
+Minimum:
+
+```text
+Percentage
+Fixed amount
+Per-item
+Cart-wide
+Category
+Customer
+Coupon
+Buy X Get Y
+Tiered
+Time-based
+```
+
+এখানে সবচেয়ে গুরুত্বপূর্ণ হলো **deterministic calculation**।
+
+একই input দিলে সবসময় একই result।
+
+---
+
+# ৯. Checkout service-কে কেন্দ্র বানাও
+
+তোমার POS-এর heart হবে:
+
+```text
+CheckoutService
+```
+
+Flow:
+
+```text
+Cart
+ ↓
+Validate
+ ↓
+Calculate
+ ↓
+Check Stock
+ ↓
+Create Sale
+ ↓
+Create Sale Items
+ ↓
+Create Payment
+ ↓
+Decrease Inventory
+ ↓
+Create Receipt
+ ↓
+Audit
+ ↓
+Commit
+```
+
+একটা successful checkout-এর পর database-এ সবকিছু consistent থাকতে হবে।
+
+---
+
+# ১০. Payment system
+
+Minimum:
+
+```text
+Cash
+Card
+UPI
+Wallet
+Other
+```
+
+এবং:
+
+```text
+Split Payment
+```
+
+যেমন:
+
+```text
+Total = ₹1000
+
+Cash = ₹400
+UPI  = ₹600
+```
+
+Cash-এর ক্ষেত্রে:
+
+```text
+Received = ₹1500
+Total    = ₹1000
+Change   = ₹500
+```
+
+Change calculation-ও Money/Decimal দিয়ে exact হতে হবে।
+
+---
+
+# ১১. Register + Shift এখন যোগ করো
+
+এটা বাস্তব POS-এর জন্য অত্যন্ত গুরুত্বপূর্ণ।
+
+```text
+Register
+ ├── Store
+ ├── Device
+ └── Status
+
+Shift
+ ├── Register
+ ├── Cashier
+ ├── Opening Cash
+ ├── Closing Cash
+ ├── Started At
+ ├── Closed At
+ └── Status
+```
+
+Flow:
+
+```text
+Open Register
+      ↓
+Start Shift
+      ↓
+Sales
+      ↓
+Cash movements
+      ↓
+Close Shift
+      ↓
+Cash reconciliation
 ```
 
 ---
 
-# ১৬. Middleware architecture চাই
+# ১২. Authentication + Permission
 
-Node ecosystem-এর মতো:
+শুধু login থাকলেই হবে না।
 
-```text
-request
- ↓
-middleware
- ↓
-auth
- ↓
-permission
- ↓
-validation
- ↓
-handler
- ↓
-response
-```
-
-NilLang-এ declarative করা যায়:
-
-```nil
-middleware auth {
-    require session
-}
-
-middleware manager {
-    require role "manager"
-}
-```
-
----
-
-# ১৭. Authentication + Authorization সম্পূর্ণ করতে হবে
-
-POS-এ login যথেষ্ট নয়।
-
-লাগবে:
+RBAC:
 
 ```text
-User
-Role
-Permission
-Session
-Refresh token
-Password hashing
-MFA-ready architecture
-Device/session management
-Logout
-Session expiry
+Admin
+Manager
+Cashier
+Inventory Manager
+Accountant
 ```
 
 Permissions:
@@ -777,20 +543,23 @@ Permissions:
 ```text
 sale.create
 sale.refund
+product.create
 product.edit
 inventory.adjust
+purchase.create
 report.view
 user.manage
-settings.manage
+register.open
+register.close
 ```
 
-এবং UI ও API দুই জায়গায় enforce হবে।
+তারপর API এবং UI—দুই জায়গাতেই permission enforce করতে হবে।
 
 ---
 
-# ১৮. Audit log বাধ্যতামূলক
+# ১৩. Audit log বাধ্যতামূলক
 
-কে কী করল:
+যে কোনো গুরুত্বপূর্ণ mutation:
 
 ```text
 User
@@ -808,2039 +577,70 @@ Reason
 উদাহরণ:
 
 ```text
-Rahim
-Refund Sale #10234
-₹500
-09:42 AM
+Cashier A
+changed product price
+৳100 → ৳120
+09:31 PM
 ```
 
-POS-এর জন্য এটা optional luxury নয়।
-
----
-
-# ১৯. Bengali support-কে শুধু Unicode support ভাবা যাবে না
-
-“বাংলা সাপোর্ট” মানে:
-
-```text
-Unicode
-UTF-8
-Bengali fonts
-Bengali locale
-Translation
-Plural rules
-Number formatting
-Currency formatting
-Date formatting
-Time formatting
-Calendar formatting
-Input methods
-RTL-ready architecture
-```
-
-যদিও বাংলা LTR।
-
-Alap i18n system:
-
-```nil
-t("sale.total")
-```
-
-আর locale:
-
-```text
-bn-BD
-bn-IN
-en-IN
-en-US
-```
-
-Translation:
-
-```text
-sale.total = "মোট"
-sale.pay = "পরিশোধ"
-sale.change = "ফেরত"
-```
-
----
-
-# ২০. বাংলা সংখ্যা formatting-ও চাই
-
-যেমন:
-
-```text
-৳ 1,250.00
-```
-
-বা locale অনুযায়ী:
-
-```text
-₹ ১,২৫০.০০
-```
-
-এগুলো formatting layer-এ controlled হওয়া চাই।
-
-কোথাও manually string concatenate করা যাবে না।
-
----
-
-# ২১. UI Design System বানাতে হবে
-
-এটাই “সুন্দর UI”-এর ভিত্তি।
-
-Alap-এর মধ্যে first-class:
-
-```text
-Theme
-Color tokens
-Typography
-Spacing
-Radius
-Shadow
-Motion
-Icon
-Breakpoint
-Density
-Dark mode
-```
-
-POS-এর জন্য বিশেষ:
-
-```text
-compact mode
-touch mode
-keyboard mode
-large-screen mode
-mobile mode
-```
-
-অর্থাৎ একই application:
-
-```text
-Desktop cashier
-Tablet cashier
-Mobile manager
-```
-
-সবখানেই usable।
-
----
-
-# ২২. Keyboard-first interaction লাগবে
-
-POS operator mouse দিয়ে সব করবে না।
-
-যেমন:
-
-```text
-F2 → Search
-F4 → Payment
-F6 → Hold
-F8 → Customer
-Esc → Close
-Enter → Confirm
-Delete → Remove item
-↑ ↓ → navigate
-Ctrl+P → print
-```
-
-Framework-level keyboard shortcut system চাই:
-
-```nil
-shortcut "F4" {
-    open payment
-}
-```
-
-এটাই Alap-কে POS-ready করবে।
-
----
-
-# ২৩. Focus management ঠিক করতে হবে
-
-POS-এ barcode scanner সাধারণ keyboard-এর মতো input পাঠাতে পারে।
-
-তাই:
-
-```text
-focus
-blur
-restore focus
-trap focus
-dialog focus
-scanner focus
-```
-
-framework-এর built-in behaviour হওয়া উচিত।
-
----
-
-# ২৪. Barcode subsystem চাই
-
-কমপক্ষে:
-
-```text
-USB scanner
-Bluetooth scanner
-Camera scanner
-EAN-13
-EAN-8
-UPC
-Code128
-QR
-```
-
-Device abstraction:
-
-```nil
-barcode.onScan {
-    product = Product.findByBarcode(value)
-}
-```
-
----
-
-# ২৫. Printer abstraction চাই
-
-POS-এর ক্ষেত্রে PDF generate করলেই শেষ নয়।
-
-লাগবে:
-
-```text
-Thermal printer
-80mm
-58mm
-USB
-Network
-Bluetooth
-ESC/POS
-```
-
-Framework API:
-
-```nil
-printer.receipt.print(receipt)
-```
-
-আর receipt template আলাদা।
-
----
-
-# ২৬. Cash drawer support
-
-Payment complete হলে:
-
-```text
-print receipt
-+
-open drawer
-```
-
-একই transaction flow-এর অংশ।
-
-Alap device API:
-
-```nil
-cashDrawer.open()
-```
-
----
-
-# ২৭. Offline-first architecture করতে হবে
-
-এটাই TypeScript/Next implementation-এর সঙ্গে সত্যিকারের parity আনার অন্যতম বড় জায়গা।
-
-দোকানে internet চলে গেলে POS বন্ধ হওয়া যাবে না।
-
-Architecture:
-
-```text
-UI
- ↓
-Local State
- ↓
-Local Database
- ↓
-Sync Engine
- ↓
-Server
-```
-
-অর্থাৎ:
-
-```text
-sale locally committed
-↓
-queue
-↓
-internet returns
-↓
-sync
-```
-
----
-
-# ২৮. Local database প্রথমে SQLite
-
-তোর POS target-এর জন্য:
-
-```text
-SQLite
-```
-
-অবশ্যই first-class target কর।
-
-Schema:
-
-```text
-products
-inventory
-customers
-sales
-sale_items
-payments
-users
-shifts
-registers
-audit_logs
-sync_queue
-```
-
-তারপর PostgreSQL server backend।
-
----
-
-# ২৯. Sync engine আলাদা subsystem হবে
-
-```text
-local mutation
- ↓
-sync queue
- ↓
-server
- ↓
-ack
- ↓
-remove queue item
-```
-
-Conflict handling:
-
-```text
-version
-timestamp
-device id
-operation id
-```
-
-অবশ্যই লাগবে।
-
----
-
-# ৩০. POS transaction model নির্দিষ্ট করতে হবে
-
-এটা:
-
-```text
-Cart
- ↓
-Checkout
- ↓
-Payment
- ↓
-Sale
- ↓
-Inventory decrement
- ↓
-Receipt
-```
-
-একটি atomic business operation হতে হবে।
-
-যেমন:
-
-```text
-BEGIN
-
-create sale
-create sale items
-create payment
-decrement stock
-record audit
-create receipt record
-
-COMMIT
-```
-
-failure:
-
-```text
-ROLLBACK
-```
-
----
-
-# ৩১. Payment architecture আলাদা করতে হবে
-
-```text
-Cash
-Card
-UPI
-Wallet
-Mixed payment
-Split payment
-Refund
-Partial refund
-```
-
-Payment provider abstraction:
-
-```nil
-payment.process(...)
-```
-
-কিন্তু provider implementation আলাদা।
-
----
-
-# ৩২. Shift/Register system চাই
-
-একটা প্রকৃত POS-এ:
-
-```text
-Register
-Shift
-Opening cash
-Cash in
-Cash out
-Closing cash
-Expected cash
-Actual cash
-Variance
-```
-
-এসব না থাকলে application POS হলেও complete retail POS হয় না।
-
----
-
-# ৩৩. Inventory engine চাই
-
-কমপক্ষে:
-
-```text
-stock on hand
-stock reserved
-stock available
-stock adjustment
-stock movement
-stock transfer
-low stock
-reorder level
-opening stock
-purchase
-sale
-return
-```
-
-Stock history:
-
-```text
-+100 purchase
--2 sale
--1 damage
-+5 adjustment
-```
-
----
-
-# ৩৪. Product catalogue পূর্ণাঙ্গ করতে হবে
-
-```text
-Product
-Variant
-SKU
-Barcode
-Category
-Brand
-Unit
-Cost
-Price
-Tax
-Discount
-Image
-Stock
-Supplier
-```
-
-Variant support:
-
-```text
-T-Shirt
- ├── Small
- ├── Medium
- └── Large
-```
-
----
-
-# ৩৫. Customer subsystem
-
-```text
-Customer
-Phone
-Email
-Address
-Loyalty
-Credit
-Purchase history
-Returns
-```
-
-এবং search instant হতে হবে।
-
----
-
-# ৩৬. Supplier + Purchase subsystem
-
-```text
-Supplier
-Purchase Order
-Goods Received
-Purchase Invoice
-Supplier Payment
-Purchase Return
-```
-
----
-
-# ৩৭. Returns/refunds ঠিকভাবে implement করতে হবে
-
-POS-এর আসল কঠিন অংশগুলোর একটি।
-
-```text
-full refund
-partial refund
-item refund
-quantity refund
-payment refund
-stock return
-exchange
-reason
-authorization
-```
-
----
-
-# ৩৮. Reporting engine চাই
-
-কমপক্ষে:
-
-```text
-Daily sales
-Hourly sales
-Product sales
-Category sales
-Cashier sales
-Payment breakdown
-Tax
-Discount
-Profit
-Inventory
-Low stock
-Refund
-Void
-```
-
-Query/API দুই স্তরেই reusable হতে হবে।
-
----
-
-# ৩৯. Dashboard chart subsystem চাই
-
-Alap UI-তে:
-
-```text
-Line chart
-Bar chart
-Pie/donut
-KPI cards
-Table
-Trend
-```
-
-তারপর:
-
-```nil
-chart SalesByDay {
-    ...
-}
-```
-
----
-
-# ৪০. File/image upload system চাই
-
-Products-এ image লাগবে।
-
-অতএব:
-
-```text
-File
-Upload
-Multipart
-Storage
-Resize
-Thumbnail
-Cache
-Delete
-```
-
-এবং local/server storage abstraction।
-
----
-
-# ৪১. Next.js-এর মতো SSR/CSR distinction-এর সমতুল্য architecture চাই
-
-Alap web target-এ শুধু client rendering করলে চলবে না।
-
-প্রয়োজন অনুযায়ী:
-
-```text
-server-rendered page
-client-reactive component
-server action
-API endpoint
-static page
-```
-
-architecture থাকতে হবে।
-
----
-
-# ৪২. NilLang compiler-এর কাজ এখন সবচেয়ে গুরুত্বপূর্ণ
-
-তুই যতই framework বানাস, compiler যদি production-grade না হয়, সবকিছু কাগজে থাকবে।
-
-তোর current compiler tree:
-
-```text
-lexer
-parser
-AST
-types
-typecheck
-HIR
-MIR
-compiler
-VM
-WASM
-```
-
-এখন এটাকে একটানা validated pipeline করতে হবে:
-
-```text
-.nil
- ↓
-Lexer
- ↓
-Parser
- ↓
-AST
- ↓
-Name resolution
- ↓
-Type checking
- ↓
-Lowering
- ↓
-HIR
- ↓
-MIR
- ↓
-Optimization
- ↓
-Backend
- ├── Native
- ├── JVM? [প্রয়োজনে পরে]
- ├── WASM
- └── Bytecode/VM
-```
-
-সবচেয়ে বড় কাজ:
-
-**প্রতিটি stage-এর মধ্যে একই semantics বজায় রাখা।**
-
----
-
-# ৪৩. Type system শক্ত করতে হবে
-
-POS-এর জন্য অন্তত:
-
-```text
-bool
-int
-decimal
-money
-string
-datetime
-date
-duration
-uuid
-bytes
-list<T>
-map<K,V>
-optional<T>
-result<T,E>
-entity
-relation
-```
-
-এবং:
-
-```text
-generic
-interface
-trait
-enum
-union
-pattern matching
-```
-
----
-
-# ৪৪. Error handling production-grade হওয়া চাই
-
-শুধু generic exception না।
-
-```nil
-result SaleReceipt =
-    checkout(cart)
-```
-
-এবং:
-
-```nil
-match result {
-    Ok(receipt) => ...
-    Err(PaymentFailed(error)) => ...
-    Err(StockChanged(error)) => ...
-}
-```
-
-POS-এর business errors type-safe হওয়া দরকার।
-
----
-
-# ৪৫. Concurrency model-ও ঠিক করতে হবে
-
-তোর ভাষার “modern concurrent” লক্ষ্য আছে।
-
-POS backend-এ:
-
-```text
-requests
-sync workers
-background jobs
-printing
-notifications
-inventory updates
-```
-
-concurrently চলবে।
-
-কিন্তু database mutation safe হতে হবে।
-
----
-
-# ৪৬. Background job runtime চাই
-
-```text
-daily report
-sync
-backup
-cleanup
-receipt retry
-low stock notification
-```
-
-এর জন্য:
-
-```nil
-job DailyReport {
-    ...
-}
-```
-
----
-
-# ৪৭. Cache layer চাই
-
-```text
-memory cache
-local cache
-HTTP cache
-database cache
-```
-
-কিন্তু cache invalidation deterministic হতে হবে।
-
----
-
-# ৪৮. Networking abstraction চাই
-
-```nil
-http.get(...)
-http.post(...)
-websocket(...)
-```
-
-এবং:
-
-```text
-request
-response
-headers
-cookies
-multipart
-stream
-timeout
-retry
-```
-
----
-
-# ৪৯. API client generation চাই
-
-Entity থেকেই:
-
-```text
-server API
-+
-typed client
-+
-validation
-```
-
-generate হবে।
-
-এটা NilLang/Alap-এর বড় competitive advantage হতে পারে।
-
----
-
-# ৫০. Serialization system চাই
-
-```text
-JSON
-binary
-form-data
-query parameters
-```
-
-type-aware serializer:
-
-```nil
-Money
-DateTime
-Decimal
-UUID
-Optional
-Entity
-```
-
-সব properly serialize করবে।
-
----
-
-# ৫১. Environment/config system চাই
-
-```text
-development
-test
-production
-```
-
-যেমন:
-
-```text
-DATABASE_URL
-APP_ENV
-PORT
-SECRET_KEY
-PRINTER
-```
-
-NilLang/Alap-এ standard config API চাই।
-
----
-
-# ৫২. Secrets management
-
-Source code-এ:
-
-```text
-password
-API key
-secret
-token
-```
-
-রাখা যাবে না।
-
-Runtime secret injection লাগবে।
-
----
-
-# ৫৩. Testing framework লাগবে
-
-TypeScript-এর Jest/Vitest style equivalent দরকার।
-
-NilLang-এ:
-
-```nil
-test "cart total" {
-    ...
-}
-```
-
-তার সঙ্গে:
-
-```text
-unit test
-integration test
-database test
-API test
-UI test
-snapshot test
-property test
-```
-
----
-
-# ৫৪. End-to-end testing
-
-যে POS application বানাবি সেখানে পুরো workflow machine-testable হতে হবে:
-
-```text
-login
-→ search product
-→ add cart
-→ discount
-→ checkout
-→ cash
-→ sale saved
-→ stock reduced
-→ receipt generated
-```
-
----
-
-# ৫৫. UI snapshot/visual regression system চাই
-
-কারণ তুই বলেছিস:
-
-> “হুবহু দেখতে কার্যকর পিওএস অ্যাপের মতো”
-
-তাই visual regression অত্যন্ত দরকার।
-
-```text
-render page
-↓
-screenshot
-↓
-compare
-↓
-detect visual regression
-```
-
----
-
-# ৫৬. Accessibility
-
-Production UI-তে:
-
-```text
-keyboard
-focus
-screen reader
-contrast
-labels
-ARIA-equivalent semantics
-```
-
-প্রয়োজন।
-
----
-
-# ৫৭. Responsive layout engine যথেষ্ট শক্তিশালী করতে হবে
-
-```text
-desktop
-tablet
-mobile
-```
-
-এবং:
-
-```text
-grid
-flex
-stack
-split panel
-sidebar
-bottom sheet
-```
-
-first-class component হওয়া উচিত।
-
----
-
-# ৫৮. Animation runtime “60 FPS” লেখা থাকলেই হবে না
-
-বাস্তবে benchmark চাই।
-
-```text
-1000 rows
-10000 products
-100 cart updates
-rapid typing
-modal opening
-large table scrolling
-```
-
-সব benchmark করতে হবে।
-
----
-
-# ৫৯. Performance profiling
-
-NilLang/Alap-এ:
-
-```text
-nil profile
-```
-
-আছে—এটাকে বাস্তব profiling system বানাতে হবে।
-
-Measure:
-
-```text
-startup
-compile
-render
-database query
-API latency
-memory
-GC
-frame time
-```
-
----
-
-# ৬০. Dev server-কে Next.js-এর মতো developer experience দিতে হবে
-
-বর্তমান `nil dev`, web live server/hot reload এগিয়েছে।
-
-এখন চাই:
-
-```text
-nil dev
-```
-
-চালালেই:
-
-```text
-watch
-compile
-incremental build
-HMR
-browser reload
-error overlay
-source mapping
-terminal diagnostics
-```
-
----
-
-# ৬১. Error message-কে অসাধারণ করতে হবে
-
-যেমন:
-
-```text
-error[NL2304]:
-
-Expected Money but got Float64
-
-  18 | total = price * quantity
-                     ^^^^^^^^
-
-price: Money
-quantity: Float64
-
-Hint:
-Convert quantity to Decimal or use Money × Decimal.
-```
-
-Compiler error এমন হতে হবে যাতে নতুন developer বুঝতে পারে।
-
----
-
-# ৬২. Debugger চাই
-
-```text
-breakpoint
-step over
-step into
-watch
-stack
-variables
-```
-
-ভবিষ্যতে VS Code extension-এর জন্য DAP-level integration করা উচিত।
-
----
-
-# ৬৩. Package manager বাস্তব করতে হবে
-
-বর্তমান `nilpkg` concept আছে।
-
-এখন চাই:
-
-```text
-registry
-versioning
-dependency resolution
-lock file
-integrity
-signature
-cache
-offline packages
-```
-
----
-
-# ৬৪. Framework SDK আলাদা করা উচিত
-
-আমি architecture-এ এভাবে ভাগ করতাম:
-
-```text
-nilLang
-    ↓
-Alap Core
-    ↓
-Alap UI
-    ↓
-Alap Web
-    ↓
-Alap Server
-    ↓
-Alap Data
-    ↓
-Alap Device
-    ↓
-Alap POS
-```
-
-যাতে language আর POS logic এক জিনিস না হয়ে যায়।
-
----
-
-# ৬৫. সবচেয়ে গুরুত্বপূর্ণ—POS app-কে framework-এর integration test বানাও
-
-এখানে তোর জন্য আসল পথটা আছে।
-
-একটা **reference TypeScript POS** বানাবি।
-
-তার feature list হবে canonical specification।
-
-তারপর:
-
-```text
-Reference POS
-      ↓
-Behaviour specification
-      ↓
-Alap implementation
-      ↓
-NilLang implementation
-```
-
----
-
-# ৬৬. দুইটা implementation পাশাপাশি রাখতে হবে
-
-Repository structure:
-
-```text
-pos/
-├── reference/
-│   └── typescript-next-node/
-│
-├── nilang/
-│   └── alap-pos/
-│
-├── shared-spec/
-│   ├── entities/
-│   ├── workflows/
-│   ├── validation/
-│   ├── fixtures/
-│   └── scenarios/
-│
-└── conformance/
-    ├── api/
-    ├── database/
-    ├── business/
-    └── ui/
-```
-
-এটা করলে:
-
-**“TypeScript POS works, NilLang POS almost works”** ধরনের আত্মপ্রবঞ্চনা থাকবে না।
-
----
-
-# ৬৭. Behaviour parity test বানাতে হবে
-
-উদাহরণ:
-
-```text
-Scenario: cash sale
-
-Given product A = 100
-quantity = 2
-discount = 10
-tax = 5
-
-When checkout with cash 200
-
-Then:
-subtotal = 200
-discount = 10
-tax = ...
-total = ...
-change = ...
-inventory -= 2
-sale exists
-payment exists
-receipt exists
-```
-
-এই একই test:
-
-```text
-TypeScript
-```
-
-এবং:
-
-```text
-NilLang
-```
-
-দুই implementation-এ run হবে।
-
----
-
-# ৬৮. “একই UI” অর্জনের বাস্তব পদ্ধতি
-
-তুই TypeScript POS-এর UI আগে pixel-level polish করবি।
-
-ধর:
-
-```text
-Sidebar
-Topbar
-Product grid
-Cart
-Payment panel
-Modal
-Tables
-Forms
-Dashboard
-```
-
-তারপর প্রতিটি screen-এর জন্য:
-
-```text
-layout spec
-spacing spec
-typography spec
-interaction spec
-state spec
-```
-
-বানাবি।
-
-তারপর Alap-এ একই screen rebuild।
-
----
-
-# ৬৯. UI component parity matrix বানাতে হবে
-
-যেমন:
-
-| TypeScript/Next | Alap              |
-| --------------- | ----------------- |
-| Button          | Alap Button       |
-| Input           | Alap Input        |
-| Select          | Alap Select       |
-| Combobox        | Alap Combobox     |
-| Dialog          | Alap Dialog       |
-| Drawer          | Alap Drawer       |
-| Table           | Alap DataGrid     |
-| Toast           | Alap Toast        |
-| Form            | Alap Form         |
-| Tabs            | Alap Tabs         |
-| Sidebar         | Alap Sidebar      |
-| Chart           | Alap Chart        |
-| Modal           | Alap Modal        |
-| Date Picker     | Alap DatePicker   |
-| Barcode input   | Alap BarcodeInput |
-
-**একটার replacement না থাকলে POS development থামবে।**
-
----
-
-# ৭০. POS-specific Alap components আলাদা package কর
-
-আমি করতাম:
-
-```text
-pkg/alap/pos/
-├── cart
-├── cashier
-├── checkout
-├── payment
-├── receipt
-├── barcode
-├── inventory
-├── product
-├── customer
-├── register
-├── shift
-└── reporting
-```
-
-এগুলো generic UI-এর উপর build হবে।
-
----
-
-# ৭১. NilLang syntax-এর লক্ষ্য
-
-শেষে developer experience যেন এমন হয়:
-
-```nil
-page POS {
-    layout split {
-        ProductSearch()
-        Cart()
-    }
-
-    on barcode.scan(code) {
-        cart.add(Product.byBarcode(code))
-    }
-
-    on checkout {
-        sale.checkout()
-    }
-}
-```
-
-এটা ideally এমন কাজ করবে:
-
-```text
-UI
-state
-events
-routing
-API
-DB
-```
-
-সব framework runtime handle করবে।
-
----
-
-# ৭২. কিন্তু business logic language-এ explicit থাকবে
-
-Framework magic অতিরিক্ত করা যাবে না।
-
-যেমন:
-
-```nil
-service CheckoutService {
-
-    checkout(cart, payment) -> Result<Sale, CheckoutError> {
-        transaction {
-            ...
-        }
-    }
-}
-```
-
-এটা maintainable।
-
----
-
-# ৭৩. “Generated magic” এবং “custom code” আলাদা রাখতে হবে
-
-Entity declaration:
-
-```nil
-entity Product {...}
-```
-
-থেকে generated code হবে।
-
-কিন্তু:
-
-```nil
-service PricingService {...}
-```
-
-মানুষ লিখবে।
-
-এতে framework flexible থাকবে।
-
----
-
-# ৭৪. POS-এর domain model আগে lock করতে হবে
-
-আমি canonical domain এভাবে ধরতাম:
-
-```text
-Organization
-Store
-Register
-Shift
-
-User
-Role
-Permission
-
-Product
-Category
-Brand
-Unit
-ProductVariant
-
-Inventory
-StockMovement
-Warehouse
-
-Customer
-Supplier
-
-Purchase
-PurchaseItem
-
-Sale
-SaleItem
-Payment
-Refund
-RefundItem
-
-Discount
-Tax
-
-Receipt
-
-AuditLog
-
-SyncJob
-```
-
-এগুলো ছাড়া UI আগে polished করলে পরে architecture ভাঙতে হবে।
-
----
-
-# ৭৫. যে জিনিসগুলো এখনই বন্ধ/পিছিয়ে রাখবি
-
-এই পর্যায়ে নতুন করে আর:
-
-```text
-আরও AI feature
-আরও exotic compiler feature
-আরও OS abstraction
-আরও experimental distributed system
-আরও rendering feature
-```
-
-যোগ করা উচিত নয়—যতক্ষণ না:
-
-```text
-DB
-+
-API
-+
-UI
-+
-POS
-+
-Offline
-+
-Printer
-+
-Testing
-```
-
-বাস্তবে কাজ করে।
-
-তোর repository-তে AI Compiler Oracle, HIR/MIR, WASM ইত্যাদি ইতিমধ্যে ঢুকে গেছে; এখন **breadth নয়, integration depth** দরকার।
-
----
-
-# ৭৬. আমি কাজটাকে এই ৮টা milestone-এ ভাগ করতাম
-
-### M1 — Language Core
-
-```text
-type system
-async
-error handling
-generics
-pattern matching
-collections
-datetime
-decimal
-money
-```
-
-### M2 — Application Core
-
-```text
-router
-state
-form
-validation
-i18n
-HTTP
-API
-auth
-```
-
-### M3 — Data Core
-
-```text
-SQLite
-PostgreSQL
-ORM
-transactions
-relations
-migration
-query builder
-```
-
-### M4 — UI Core
-
-```text
-DataGrid
-Form
-Modal
-Drawer
-Combobox
-DatePicker
-Charts
-Keyboard
-Responsive
-Theme
-```
-
-### M5 — Device Core
-
-```text
-barcode
-printer
-cash drawer
-camera
-USB/Bluetooth
-```
-
-### M6 — POS Domain
-
-```text
-products
-inventory
-cart
-sales
-payment
-customer
-supplier
-purchase
-tax
-discount
-shift
-register
-refund
-receipt
-reports
-```
-
-### M7 — Production
-
-```text
-offline
-sync
-audit
-permissions
-backup
-logging
-monitoring
-testing
-security
-```
-
-### M8 — Reference Parity
-
-```text
-TypeScript POS
-          ↕
-Conformance suite
-          ↕
-NilLang/Alap POS
-```
-
----
-
-# ৭৭. আর সবচেয়ে গুরুত্বপূর্ণ সিদ্ধান্ত
-
-**Reference application আগে বানাবি, framework পরে তার gaps পূরণ করবে।**
-
-মানে:
-
-### ভুল পথ
-
-```text
-আগে Alap-এ ২০০ feature
-তারপর POS
-```
-
-### সঠিক পথ
-
-```text
-Real POS requirement
-        ↓
-একটা workflow
-        ↓
-Alap/NilLang-এ প্রয়োজনীয় primitive
-        ↓
-Implement
-        ↓
-Test
-        ↓
-পরের workflow
-```
-
----
-
-# ৭৮. প্রথম vertical slice ঠিক কেমন হবে
-
-আমি প্রথমেই পুরো POS বানাতে যাব না।
-
-প্রথম production-grade slice:
-
-```text
-LOGIN
-  ↓
-PRODUCT SEARCH
-  ↓
-BARCODE SCAN
-  ↓
-ADD TO CART
-  ↓
-CHANGE QUANTITY
-  ↓
-DISCOUNT
-  ↓
-TAX
-  ↓
-TOTAL
-  ↓
-CASH PAYMENT
-  ↓
-CHANGE
-  ↓
-ATOMIC SALE TRANSACTION
-  ↓
-STOCK DECREMENT
-  ↓
-RECEIPT
-  ↓
-PRINT
-  ↓
-AUDIT LOG
-```
-
-এটা **TypeScript version এবং NilLang version দুইটাতেই 100% কাজ করাতে হবে**।
-
-তারপর:
-
-```text
-refund
-purchase
-inventory
-customer
-reports
-offline sync
-```
-
----
-
-# ৭৯. শেষ target architecture
-
-শেষে আমি তোর ecosystem-কে এভাবে দেখতে চাই:
-
-```text
-                    NILANG
-                       │
-             ┌─────────┴─────────┐
-             │                   │
-         Compiler             Runtime
-             │                   │
-        HIR → MIR         ┌───────┴────────┐
-             │            │                │
-        Native/WASM      Alap             VM
-                          │
-        ┌─────────────────┼──────────────────┐
-        │                 │                  │
-      Alap UI         Alap Server        Alap Data
-        │                 │                  │
-        ├── Forms         ├── HTTP           ├── SQLite
-        ├── Tables        ├── Auth           ├── PostgreSQL
-        ├── Charts        ├── WebSocket      ├── ORM
-        ├── Modal         ├── Jobs           ├── Migration
-        └── Theme         └── API            └── Sync
-                          │
-                     Alap Device
-                          │
-              ┌───────────┼───────────┐
-              │           │           │
-           Barcode     Printer     Cash Drawer
-                          │
-                       Alap POS
-                          │
-       ┌──────────────────┼───────────────────┐
-       │                  │                   │
-    Sales              Inventory          Reporting
-       │                  │                   │
-       └──────────────────┼───────────────────┘
-                          │
-                   Production POS
-```
-
-## তাহলে “TypeScript POS = NilLang Alap POS” সত্যি কীভাবে প্রমাণ হবে?
-
-শুধু screenshot দিয়ে নয়।
-
-এই ৫টা জিনিস একসঙ্গে pass করতে হবে:
-
-```text
-1. Visual parity
-2. Interaction parity
-3. Business-logic parity
-4. Data/API parity
-5. Performance/reliability parity
-```
-
-তখন বলতে পারবি:
-
-> **এই POS-এর reference implementation TypeScript/Next.js/Node.js-এ আছে; একই product contract NilLang + Alap-এও পূর্ণভাবে implement করা হয়েছে।**
-
-আর তখন NilLang আর “toy language” থাকবে না।
-**তখন NilLang + Alap নিজেই একটি application platform হবে।**
-
-তোর বর্তমান `nilLang`-এর অবস্থান দেখে আমার মতে **সবচেয়ে জরুরি নতুন feature এখন আর “আরেকটা compiler feature” নয়—Alap-এর মধ্যে `UI + state + data + transaction + device + POS domain`-এর production integration শেষ করা।** সর্বশেষ `pos-app` commit-টাও এই দিকেই গেছে।
-
-পরের বাস্তব কাজ হিসেবে আমি চাইলে এই লক্ষ্য ধরে **`nilLang` repo-র জন্য একটি সম্পূর্ণ “TypeScript/Next.js POS → NilLang/Alap parity specification”** বানিয়ে দিতে পারি—ফাইল/ডিরেক্টরি, NilLang syntax, Alap API, database schema, UI component তালিকা, compiler changes এবং implementation order সহ।
-
-
-অবশ্যই। এবার এটাকে **আলাপ-ভিত্তিক POS বানানোর সম্পূর্ণ engineering specification** হিসেবে ধরছি—শুধু feature list নয়, **কোন layer-এ কী পরিবর্তন, কোন ফাইল/প্যাকেজ লাগবে, NilLang syntax কেমন হবে, এবং কোন ক্রমে implement করলে TypeScript/Next.js/Node POS-এর সঙ্গে parity পাওয়া যাবে**—সব।
-
-# NilLang + Alap POS — Production Parity Specification
-
-Reference target:
-
-[বর্তমান NilLang repository](https://github.com/joysriramsarkar/nilLang?utm_source=chatgpt.com)
-
-বর্তমান repo-তে ইতিমধ্যে Entity, data/ORM/migration/Money, routing, compiler-এর HIR/MIR/WASM pipeline এবং POS-oriented CLI scaffolding এসেছে। তাই আমরা একেবারে শূন্য থেকে শুরু করছি না। এখন লক্ষ্য হলো এগুলোকে **একটি coherent runtime-এর মধ্যে জোড়া দেওয়া**।
-
----
-
-# ১. চূড়ান্ত architecture
-
-```text
-nilLang/
-│
-├── cmd/
-│   ├── nil/
-│   ├── nilc/
-│   ├── nil-runner/
-│   ├── nilpkg/
-│   ├── nilkey/
-│   └── softbusd/
-│
-├── compiler/
-│   ├── token/
-│   ├── lexer/
-│   ├── ast/
-│   ├── parser/
-│   ├── types/
-│   ├── typecheck/
-│   ├── diagnostics/
-│   ├── hir/
-│   ├── mir/
-│   ├── optimizer/
-│   ├── compiler/
-│   ├── code/
-│   ├── vm/
-│   └── wasm/
-│
-├── runtime/
-│   ├── async/
-│   ├── errors/
-│   ├── collections/
-│   ├── datetime/
-│   ├── decimal/
-│   ├── money/
-│   ├── serialization/
-│   ├── io/
-│   └── process/
-│
-├── pkg/
-│   └── alap/
-│       ├── core/
-│       ├── ui/
-│       ├── state/
-│       ├── forms/
-│       ├── routing/
-│       ├── data/
-│       ├── entity/
-│       ├── server/
-│       ├── security/
-│       ├── realtime/
-│       ├── i18n/
-│       ├── device/
-│       ├── storage/
-│       ├── sync/
-│       ├── jobs/
-│       ├── testing/
-│       └── pos/
-│
-├── templates/
-│   ├── web/
-│   └── pos/
-│
-├── examples/
-│   └── pos/
-│
-└── docs/
-    ├── language/
-    ├── alap/
-    ├── pos/
-    └── conformance/
-```
-
----
-
-# ২. প্রথম বড় পরিবর্তন: Alap Core
-
-বর্তমান component/state ভিত্তিকে expand করে:
-
-```text
-Alap Core
-├── Component
-├── Props
-├── State
-├── Computed
-├── Effect
-├── Event
-├── Context
-├── Lifecycle
-├── Async
-├── Resource
-├── Error
-└── Dependency Injection
-```
-
-## NilLang API
-
-```nil
-component ProductCard {
-    prop product: Product
-
-    render {
-        Card {
-            Text(product.name)
-            MoneyText(product.price)
-
-            Button("যোগ করুন") {
-                emit addToCart(product)
-            }
-        }
-    }
-}
-```
-
-এখানে `component`, `state`, `render`, `emit` যেন language-level বা framework-level first-class construct হয়।
-
----
-
-# ৩. Reactive state engine
-
-React-এর state-এর equivalent শুধু `state` keyword দিয়ে শেষ নয়।
-
-প্রয়োজন:
-
-```nil
-state cart: Cart
-state search: string = ""
-
-computed subtotal = cart.subtotal
-computed total = cart.total
-
-effect {
-    if cart.changed {
-        saveDraft()
-    }
-}
-```
-
-Runtime-এ dependency graph:
-
-```text
-cart.items
-   ↓
-subtotal
-   ↓
-discount
-   ↓
-tax
-   ↓
-total
-   ↓
-paymentDue
-   ↓
-change
-```
-
-শুধু যেটা পরিবর্তিত হয়েছে সেটাই rerender হবে।
-
 ---
 
-# ৪. Component lifecycle
-
-```nil
-component POS {
-    on mount {
-        loadProducts()
-    }
-
-    on unmount {
-        cancelRequests()
-    }
-
-    on focus {
-        focusBarcode()
-    }
-}
-```
-
-Runtime:
-
-```text
-mount
-update
-render
-effect
-focus
-blur
-unmount
-```
-
----
+# ১৪. এখন UI বানাও — কিন্তু generic UI আগে
 
-# ৫. UI primitive library
+এখানে এখন সবচেয়ে বেশি কাজ বাকি।
 
-Alap-এর মধ্যে প্রথম-class components:
+Alap-এর UI primitives তৈরি করো:
 
 ```text
 Button
-IconButton
 Input
 NumberInput
 MoneyInput
 SearchInput
-BarcodeInput
-
 Select
 Combobox
-Autocomplete
-Checkbox
-Radio
-Switch
-
-Form
-FormField
-ValidationMessage
-
-Table
-DataGrid
-VirtualList
-Pagination
-
-Card
-Panel
-Stack
-Grid
-SplitPane
-
 Modal
 Dialog
 Drawer
-Popover
-Tooltip
-
-Tabs
-Accordion
-Menu
-Dropdown
-
 Toast
-Alert
-Banner
-
+Table
+DataGrid
+Card
+Panel
+Tabs
+Dropdown
 DatePicker
-TimePicker
-DateTimePicker
+```
 
-Image
-Avatar
-Badge
-Progress
-Spinner
+তারপর layout:
 
-Chart
-KPI
-StatCard
+```text
+Stack
+Row
+Column
+Grid
+SplitPane
+Sidebar
+Responsive
 ```
 
 ---
 
-# ৬. POS-specific UI components
+# ১৫. তারপর POS-specific UI
 
-তারপর:
+এগুলো বানাও:
 
 ```text
 POSLayout
 ProductSearch
 ProductGrid
 ProductCard
+
 Cart
 CartItem
 CartSummary
 
 PaymentPanel
-PaymentMethod
 CashPayment
 CardPayment
 UPIPayment
@@ -2851,1655 +651,775 @@ DiscountEditor
 TaxSummary
 
 ReceiptPreview
-ReceiptTemplate
 
 RegisterStatus
 ShiftPanel
-CashDrawerControl
-
-BarcodeScanner
 ```
 
 ---
 
-# ৭. Design system
+# ১৬. POS screen-এর প্রথম বাস্তব version
 
-এক জায়গায়:
-
-```nil
-theme POS {
-    typography ...
-    spacing ...
-    radius ...
-    density ...
-    motion ...
-}
-```
-
-Support:
+আমি প্রথমে এমন UI বানাতাম:
 
 ```text
-light
-dark
-high-contrast
-compact
-comfortable
-touch
-keyboard
+┌──────────────────────────────────────────────┐
+│ Store        Register #1       Cashier      │
+├────────────────────────┬─────────────────────┤
+│                        │                     │
+│ Search / Barcode       │ Cart                │
+│                        │                     │
+│ Product  Product       │ Rice       ×2       │
+│ Product  Product       │ Soap       ×1       │
+│ Product  Product       │ Milk       ×3       │
+│                        │                     │
+│                        ├─────────────────────┤
+│                        │ Subtotal             │
+│                        │ Discount             │
+│                        │ Tax                  │
+│                        │ TOTAL                │
+│                        │                     │
+│                        │ [PAY]                │
+└────────────────────────┴─────────────────────┘
 ```
+
+এটাই হবে প্রথম **real POS vertical slice**।
 
 ---
 
-# ৮. Layout system
+# ১৭. Barcode
 
-Next.js/Tailwind-এর উপর নির্ভর না করে Alap-এর নিজের layout primitives:
+প্রথমে সবচেয়ে সহজ বাস্তব implementation:
 
-```nil
-layout POS {
-    sidebar width: 240px
+### USB/Bluetooth scanner
 
-    main {
-        ProductArea()
-    }
+বেশিরভাগ barcode scanner keyboard-এর মতো input পাঠায়।
 
-    aside width: 380px {
-        Cart()
-    }
-}
-```
-
-Responsive:
-
-```nil
-when width < 900 {
-    Cart -> Drawer
-}
-```
-
----
-
-# ৯. Form system
-
-```nil
-form ProductForm {
-    sku: string required
-    name: string required minLength 2
-    price: money required min 0
-    stock: decimal min 0
-}
-```
-
-একই schema:
+তাই:
 
 ```text
-UI validation
-+
-server validation
-+
-database validation
-+
-API validation
+BarcodeInput
 ```
 
----
-
-# ১০. Validation engine
-
-Built-in:
+এমনভাবে বানাও যাতে:
 
 ```text
-required
-min
-max
-minLength
-maxLength
-email
-regex
-uuid
-url
-numeric
-integer
-decimal
-money
-date
-custom
+scanner → keyboard event → barcode → Product.findByBarcode()
 ```
 
-Custom:
+হয়।
 
-```nil
-validate sku {
-    unique Product.sku
-}
-```
-
----
-
-# ১১. Entity system-এর নতুন পূর্ণ syntax
-
-তোর বর্তমান Entity system-এর উপর:
-
-```nil
-entity Product {
-    id: uuid primary
-
-    sku: string {
-        required
-        unique
-        indexed
-        searchable
-    }
-
-    name: string {
-        required
-        searchable
-    }
-
-    description: string?
-    category: Category
-
-    cost: money
-    price: money
-
-    stock: quantity
-    unit: Unit
-
-    active: bool = true
-
-    created_at: datetime auto
-    updated_at: datetime auto
-}
-```
-
-এটা generate করবে:
+এরপর:
 
 ```text
-SQL
-ORM
-REST
-JSON
-Type model
-Forms
-Tables
-Validation
-Search
-API docs
+Camera barcode scanning
 ```
+
+যোগ করো।
 
 ---
 
-# ১২. Relations
+# ১৮. Receipt
 
-```nil
-entity Sale {
-    customer: Customer?
-    items: SaleItem[]
-    payments: Payment[]
-}
-```
-
-এখানে compiler/type system বুঝবে:
+Receipt model:
 
 ```text
-Customer?
-SaleItem[]
-Payment[]
-```
-
----
-
-# ১৩. ORM API
-
-```nil
-Product.find(id)
-
-Product.findBy(sku: "ABC123")
-
-Product.where(active: true)
-
-Product
-    .where(category: categoryID)
-    .order(name: asc)
-    .paginate(page: 1, size: 50)
-```
-
-CRUD:
-
-```nil
-product = Product.create({...})
-
-product.update({...})
-
-product.delete()
-```
-
----
-
-# ১৪. Query builder
-
-প্রয়োজন:
-
-```nil
-Product
-    .select(...)
-    .where(...)
-    .join(...)
-    .groupBy(...)
-    .having(...)
-    .order(...)
-    .limit(...)
-    .offset(...)
-```
-
-Prepared statements বাধ্যতামূলক।
-
----
-
-# ১৫. Transaction API
-
-সবচেয়ে গুরুত্বপূর্ণ:
-
-```nil
-transaction {
-    sale = Sale.create(data)
-
-    for item in cart.items {
-        SaleItem.create(...)
-        Inventory.decrease(...)
-    }
-
-    Payment.create(...)
-}
-```
-
-যেকোনো error:
-
-```text
-ROLLBACK
-```
-
-সব operation atomic।
-
----
-
-# ১৬. Database targets
-
-প্রথম:
-
-```text
-SQLite
-```
-
-তারপর:
-
-```text
-PostgreSQL
-```
-
-Architecture:
-
-```text
-Alap Data API
-       │
-       ├── SQLite Driver
-       └── PostgreSQL Driver
-```
-
-Application code driver-specific হবে না।
-
----
-
-# ১৭. Migration system
-
-```nil
-migration "create_products" {
-    up {
-        ...
-    }
-
-    down {
-        ...
-    }
-}
-```
-
-CLI:
-
-```text
-nil db migrate
-nil db rollback
-nil db status
-nil db create
-```
-
-তোর বর্তমান CLI-র `db migrate|rollback` ভিত্তিটা এখানেই expand করতে হবে।
-
----
-
-# ১৮. Money + Decimal redesign
-
-বর্তমান `Money` ভালো ভিত্তি।
-
-কিন্তু final API:
-
-```nil
-price: money
-quantity: decimal
-rate: decimal
-```
-
-Operations:
-
-```nil
-subtotal = price * quantity
-discount = subtotal * rate
-tax = taxable * taxRate
-total = subtotal - discount + tax
-```
-
-**Financial calculation-এর core path-এ float64 থাকবে না।**
-
----
-
-# ১৯. POS domain schema
-
-এটাই canonical schema:
-
-```text
-Organization
-Store
-Register
-Shift
-
-User
-Role
-Permission
-
-Category
-Brand
-Unit
-Product
-ProductVariant
-
-Inventory
-StockMovement
-Warehouse
-
-Customer
-
-Supplier
-Purchase
-PurchaseItem
-
-Sale
-SaleItem
-Payment
-Refund
-RefundItem
-
-Tax
-Discount
-Promotion
-
 Receipt
-
-AuditLog
-
-SyncOperation
+ ├── Sale
+ ├── Invoice Number
+ ├── Store
+ ├── Items
+ ├── Tax
+ ├── Discount
+ ├── Total
+ ├── Payment
+ └── Timestamp
 ```
 
----
-
-# ২০. Sale model
-
-```nil
-entity Sale {
-    id: uuid primary
-    invoice_number: string unique
-
-    register: Register
-    cashier: User
-    customer: Customer?
-
-    subtotal: money
-    discount: money
-    tax: money
-    total: money
-
-    status: SaleStatus
-
-    items: SaleItem[]
-    payments: Payment[]
-
-    created_at: datetime auto
-}
-```
-
----
-
-# ২১. Sale state machine
+প্রথমে:
 
 ```text
-Draft
-  ↓
-PendingPayment
-  ↓
-Paid
-  ↓
-Completed
+HTML/PDF receipt
 ```
-
-Alternative:
-
-```text
-Cancelled
-Refunded
-PartiallyRefunded
-```
-
-Invalid transitions compiler/runtime reject করবে।
-
----
-
-# ২২. Cart
-
-```nil
-cart.add(product, quantity: 2)
-
-cart.remove(item)
-
-cart.setQuantity(item, 3)
-
-cart.applyDiscount(...)
-
-cart.subtotal
-cart.tax
-cart.total
-```
-
-Cart হবে reactive state object।
-
----
-
-# ২৩. Checkout service
-
-```nil
-service Checkout {
-
-    execute(cart, payments) -> Result<Receipt, CheckoutError> {
-
-        transaction {
-            validateStock(cart)
-            calculate(cart)
-            createSale(cart)
-            createPayments(payments)
-            decrementInventory(cart)
-            createAudit()
-            createReceipt()
-        }
-    }
-}
-```
-
-এটাই POS-এর heart।
-
----
-
-# ২৪. Payment model
-
-```nil
-enum PaymentMethod {
-    Cash
-    Card
-    UPI
-    Wallet
-    Other
-}
-```
-
-একাধিক payment:
-
-```nil
-payments [
-    cash: 500,
-    upi: 250
-]
-```
-
----
-
-# ২৫. Cash calculation
-
-```nil
-due = sale.total
-
-received = cashReceived
-
-change = received - due
-```
-
-Negative হলে payment incomplete।
-
----
-
-# ২৬. Inventory transaction
-
-Sale সফল হলে:
-
-```text
-StockMovement:
-    type = SALE
-    quantity = -2
-```
-
-Purchase:
-
-```text
-quantity = +100
-```
-
-Refund:
-
-```text
-quantity = +2
-```
-
-Manual adjustment:
-
-```text
-quantity = +/-N
-```
-
-Stock কখনো সরাসরি mutate না করে movement ledger-এর মাধ্যমে পরিবর্তন করা ভালো।
-
----
-
-# ২৭. Barcode
-
-API:
-
-```nil
-barcode.onScan(code) {
-    product = Product.findByBarcode(code)
-
-    if product != null {
-        cart.add(product)
-    } else {
-        notify("পণ্য পাওয়া যায়নি")
-    }
-}
-```
-
-প্রথমে keyboard-emulation scanner support কর।
 
 তারপর:
+
+```text
+ESC/POS
+```
+
+support।
+
+---
+
+# ১৯. Printer integration
+
+বাস্তব POS-এর জন্য:
+
+```text
+58mm thermal printer
+80mm thermal printer
+```
+
+support করা দরকার।
+
+Connection:
 
 ```text
 USB
 Bluetooth
-Camera
+Network
 ```
+
+প্রথম target আমি রাখতাম:
+
+> **Network/USB ESC/POS**
+
+তারপর Bluetooth।
 
 ---
 
-# ২৮. Printer
+# ২০. Offline-first — এটা বাদ দেওয়া যাবে না
 
-```nil
-receipt.print()
-```
+তোমার Onuron/Alap ecosystem-এর বড় advantage এখানেই হতে পারে।
 
-Device abstraction:
+Architecture:
 
 ```text
-Printer
- ├── ESC/POS
- ├── Network
- ├── USB
- └── Bluetooth
+             ┌─────────────┐
+             │ POS UI      │
+             └──────┬──────┘
+                    ↓
+             ┌─────────────┐
+             │ App State   │
+             └──────┬──────┘
+                    ↓
+             ┌─────────────┐
+             │ Repository  │
+             └──────┬──────┘
+                    ↓
+             ┌─────────────┐
+             │ SQLite      │
+             └──────┬──────┘
+                    ↓
+             Sync Queue
+                    ↓
+                Server
+                    ↓
+              PostgreSQL
 ```
 
-Receipt width:
+Internet না থাকলেও:
 
 ```text
-58mm
-80mm
+Product search
+Cart
+Checkout
+Payment record
+Receipt
+Inventory
 ```
+
+চলবে।
 
 ---
 
-# ২৯. Cash drawer
+# ২১. Sync system
 
-```nil
-cashDrawer.open()
-```
-
-Checkout success-এর পর configurable hook:
-
-```nil
-on sale.completed {
-    printer.print(receipt)
-    cashDrawer.open()
-}
-```
-
----
-
-# ৩০. Offline architecture
-
-এটা আলাদা করে বানাতে হবে:
-
-```text
-Alap POS UI
-      ↓
-Application State
-      ↓
-Local Repository
-      ↓
-SQLite
-      ↓
-Sync Queue
-      ↓
-Server API
-      ↓
-PostgreSQL
-```
-
-Internet নেই:
-
-```text
-Sale → SQLite → Sync Queue
-```
-
-Internet ফিরে এলে:
-
-```text
-Sync Queue → Server
-```
-
----
-
-# ৩১. Sync protocol
-
-প্রতিটি mutation-এর:
+প্রতিটি mutation-এর জন্য:
 
 ```text
 operation_id
 device_id
 entity_id
 entity_type
-operation
 version
 timestamp
 payload
 ```
 
-থাকবে।
+রাখো।
 
-Server idempotent হতে হবে।
-
-একই operation দুবার পাঠালেও duplicate sale হবে না।
-
----
-
-# ৩২. Authentication
-
-```nil
-login(username, password)
-logout()
-currentUser()
-```
-
-Session:
+Server-এ:
 
 ```text
-access
-refresh
-expiry
-device
+operation_id
 ```
 
-Password hashing server runtime-এর দায়িত্ব।
+দিয়ে idempotency নিশ্চিত করো।
+
+অর্থাৎ একই sale দুইবার sync হলেও যেন দুইবার sale তৈরি না হয়।
 
 ---
 
-# ৩৩. RBAC
+# ২২. Background jobs
 
-```nil
-role Cashier {
-    allow sale.create
-    allow customer.read
-}
+সর্বশেষ commit-এ job infrastructure এসেছে—এখন এটাকে বাস্তব কাজের সঙ্গে যুক্ত করতে হবে।
 
-role Manager {
-    allow sale.*
-    allow inventory.*
-    allow report.*
-}
-
-role Admin {
-    allow *
-}
-```
-
----
-
-# ৩৪. UI permission
-
-যদি:
+Jobs:
 
 ```text
-sale.refund
+SyncJob
+BackupJob
+ReceiptRetryJob
+LowStockJob
+ReportJob
+CleanupJob
 ```
-
-permission না থাকে:
-
-```nil
-if can("sale.refund") {
-    RefundButton()
-}
-```
-
-কিন্তু **শুধু UI hide করা যাবে না**।
-
-API/service layer-এও permission check হবে।
 
 ---
 
-# ৩৫. Audit
+# ২৩. Bengali support-কে শেষের cosmetic feature বানিও না
 
-```nil
-audit.record {
-    action: "sale.refund"
-    entity: sale.id
-    reason: reason
-}
-```
-
-Before/after snapshot রাখার ব্যবস্থা থাকবে।
-
----
-
-# ৩৬. i18n
-
-```nil
-Text(t("sale.total"))
-```
-
-Translation:
+শুরু থেকেই:
 
 ```text
-locales/
-├── bn-BD/
-│   └── pos.json
-├── bn-IN/
-│   └── pos.json
-└── en-IN/
-    └── pos.json
+bn-BD
+bn-IN
+en-IN
 ```
 
----
-
-# ৩৭. Bengali formatting
-
-একটি central locale service:
-
-```nil
-format.money(amount)
-format.number(quantity)
-format.date(date)
-format.time(time)
-```
-
-তাহলে UI-তে:
-
-```text
-৳ 1,250.00
-```
-
-এর formatting manually করতে হবে না।
-
----
-
-# ৩৮. Routing
-
-```text
-/login
-
-/pos
-
-/products
-/products/:id
-
-/inventory
-/inventory/movements
-
-/sales
-/sales/:id
-
-/purchases
-/purchases/:id
-
-/customers
-/suppliers
-
-/reports
-
-/settings
-```
-
-Nested layout ও route guards লাগবে।
-
----
-
-# ৩৯. API
-
-Entity থেকে automatic CRUD হলেও POS business operation আলাদা explicit service API হবে।
+support করো।
 
 যেমন:
 
 ```text
-GET    /api/products
-GET    /api/products/:id
-
-POST   /api/sales
-POST   /api/sales/:id/refund
-
-POST   /api/checkout
-
-GET    /api/reports/daily-sales
+sale.total
+sale.subtotal
+sale.discount
+sale.tax
+sale.payment
+sale.change
 ```
 
----
-
-# ৪০. Realtime
-
-যদি দুই cashier একই inventory ব্যবহার করে:
+তারপর:
 
 ```text
-Cashier A sells Product X
-        ↓
-Server
-        ↓
-Cashier B
-        ↓
-stock update
+t("sale.total")
 ```
 
-WebSocket/SSE abstraction লাগবে।
+UI-তে।
+
+### Number formatting
+
+```text
+৳1,250.00
+```
+
+### Bengali UI
+
+```text
+মোট
+ছাড়
+কর
+পরিশোধ
+ফেরত
+পণ্য
+স্টক
+বিক্রয়
+```
+
+সব translation file-এ থাকবে।
 
 ---
 
-# ৪১. Notification system
+# ২৪. NilLang-এর compiler-এ POS feature ঢোকানোর সঠিক পদ্ধতি
+
+এখানে একটা ভুল করো না।
+
+শুধু Go runtime-এ POS API লিখে:
 
 ```nil
-notify.success("বিক্রয় সম্পন্ন হয়েছে")
-notify.error("স্টক যথেষ্ট নেই")
-notify.warning("স্টক কমে এসেছে")
+checkout(...)
 ```
 
-Toast runtime-level component।
+চালিয়ে দিলে হবে না।
+
+যে feature NilLang-এর language feature হিসেবে ঘোষণা করবে তার পুরো pipeline থাকতে হবে:
+
+```text
+Source
+ ↓
+Lexer
+ ↓
+Parser
+ ↓
+AST
+ ↓
+Type Checker
+ ↓
+HIR
+ ↓
+MIR
+ ↓
+Bytecode/WASM
+ ↓
+Runtime
+ ↓
+Alap
+```
+
+Definition of Done:
+
+> Parser-এ আছে → Type system-এ আছে → HIR/MIR-এ আছে → runtime-এ আছে → Alap API-তে আছে → test আছে → documentation আছে।
 
 ---
 
-# ৪২. Keyboard system
+# ২৫. এখন compiler-এ যেসব language construct দরকার
+
+পর্যায়ক্রমে:
+
+```text
+async
+await
+Result
+Error
+Optional
+generic
+match
+query
+transaction
+component
+entity
+service
+page
+form
+job
+```
+
+সব একসঙ্গে করো না।
+
+POS-এর জন্য যেটা আগে প্রয়োজন সেটাই আগে।
+
+---
+
+# ২৬. `Entity` system-কে সত্যিকার compiler feature বানাও
+
+তোমার বর্তমান Entity infrastructure আছে। এখন লক্ষ্য হওয়া উচিত:
 
 ```nil
-shortcut "F2" {
-    focus(productSearch)
-}
-
-shortcut "F4" {
-    open(payment)
-}
-
-shortcut "F6" {
-    holdCart()
-}
-
-shortcut "ESC" {
-    closeCurrentDialog()
+entity Product {
+    id: uuid primary
+    sku: string required unique
+    name: string required
+    price: money
+    stock: quantity
 }
 ```
 
-Global + scoped shortcut দুটোই চাই।
-
----
-
-# ৪৩. Focus system
-
-```nil
-focus(barcodeInput)
-restoreFocus()
-trapFocus(dialog)
-```
-
-Cashier workflow-এর জন্য অত্যন্ত গুরুত্বপূর্ণ।
-
----
-
-# ৪৪. DataGrid
-
-এটাকে খুব গুরুত্ব দে।
-
-Required:
+থেকে automaticভাবে:
 
 ```text
-virtualization
-sorting
-filtering
-pagination
-column resize
-column visibility
-keyboard navigation
-selection
-inline edit
-loading
-empty
-error
-```
-
-হাজার হাজার product render করেও UI sluggish হওয়া চলবে না।
-
----
-
-# ৪৫. Search engine
-
-Product search-এর জন্য:
-
-```text
-SKU
-Barcode
-Name
-Category
-Brand
-```
-
-prefix + fuzzy search support করা যায়।
-
-প্রথমে database indexed search যথেষ্ট।
-
----
-
-# ৪৬. Reporting
-
-Query layer-এর উপর:
-
-```text
-SalesReport
-ProductReport
-InventoryReport
-PaymentReport
-TaxReport
-CashierReport
-ProfitReport
-```
-
-একই report data:
-
-```text
-Dashboard
+SQL schema
+ORM model
+JSON model
+API
+Validation
+Client model
+Form
 Table
-Chart
-Export
+Documentation
 ```
 
-সবখানে ব্যবহার হবে।
+generate করা।
+
+এটাই NilLang/Alap-এর অন্যতম killer feature হতে পারে।
 
 ---
 
-# ৪৭. Export
+# ২৭. Testing-এ এবার খুব কঠোর হও
 
-কমপক্ষে:
+POS-এ শুধু unit test যথেষ্ট নয়।
+
+### Unit
 
 ```text
-CSV
-JSON
-PDF
-Print
+Decimal
+Money
+Tax
+Discount
+Cart
+Pricing
 ```
 
-Export API framework-level হওয়া ভালো।
-
----
-
-# ৪৮. Error architecture
-
-```nil
-Result<T, E>
-```
-
-Business errors:
+### Integration
 
 ```text
-ProductNotFound
-InsufficientStock
-InvalidQuantity
-PaymentInsufficient
-PaymentFailed
-Unauthorized
-Conflict
-DatabaseError
-SyncConflict
+Checkout + SQLite
+Checkout + Inventory
+Checkout + Payment
 ```
 
----
-
-# ৪৯. Async
-
-NilLang-এ:
-
-```nil
-async function loadProducts() {
-    return await Product.query(...)
-}
-```
-
-এবং cancellation:
-
-```nil
-task.cancel()
-```
-
-Search-এর ক্ষেত্রে:
-
-```text
-query A
-query B
-query C
-```
-
-A/B cancel করে শুধু C-এর result ব্যবহার করা যাবে।
-
----
-
-# ৫০. Background jobs
-
-```nil
-job Sync {
-    sync.pending()
-}
-
-job DailyBackup {
-    backup.database()
-}
-```
-
----
-
-# ৫১. Testing
-
-NilLang test syntax:
-
-```nil
-test "cash checkout" {
-    product = fixture.product(price: 100)
-
-    cart.add(product, 2)
-
-    result = checkout(cart, cash: 250)
-
-    assert result.total == 200
-    assert result.change == 50
-}
-```
-
----
-
-# ৫২. Conformance test
-
-এটাই TypeScript parity-এর মূল ব্যবস্থা।
-
-```text
-conformance/
-├── checkout/
-├── discount/
-├── tax/
-├── inventory/
-├── refund/
-├── payment/
-└── authentication/
-```
-
-প্রতিটি scenario:
-
-```text
-input
-expected state
-expected response
-expected database state
-```
-
-TypeScript implementation ও NilLang implementation দুইটিতে চালানো হবে।
-
----
-
-# ৫৩. Visual parity test
-
-প্রতিটি screen:
+### E2E
 
 ```text
 Login
-POS
-Products
-Inventory
-Sales
-Customers
-Reports
-Settings
+→ Search Product
+→ Add Cart
+→ Payment
+→ Receipt
 ```
 
-এর screenshot comparison থাকবে।
+### Conformance
 
-Target:
+সবচেয়ে গুরুত্বপূর্ণ:
+
+একই test দুই implementation-এ চালাও।
 
 ```text
-reference screenshot
-        ↕
-Alap screenshot
+TypeScript POS
+       ↕
+shared fixtures
+       ↕
+NilLang + Alap POS
 ```
-
----
-
-# ৫৪. Performance target
-
-POS-এর জন্য target metrics define কর:
-
-```text
-Initial UI load       < 2 sec
-Product search        < 100 ms local
-Cart update           < 16 ms target
-Checkout UI response  < 100 ms
-SQLite transaction    < 50 ms typical
-1000 product list     smooth
-10,000 product list   virtualized
-```
-
-এগুলো absolute hardware-independent guarantee নয়—benchmark target।
-
----
-
-# ৫৫. CLI
-
-বর্তমান CLI-কে POS workflow-এর জন্য বাড়ানো যায়:
-
-```text
-nil create pos my-store
-
-nil dev
-
-nil db migrate
-
-nil db seed
-
-nil test
-
-nil test:e2e
-
-nil test:visual
-
-nil build --target web
-
-nil build --target android
-
-nil build --target desktop
-```
-
----
-
-# ৫৬. POS project scaffold
-
-`nil create pos` দিলে:
-
-```text
-my-store/
-├── alap.yaml
-├── app.nil
-├── entities/
-│   ├── product.nil
-│   ├── sale.nil
-│   ├── customer.nil
-│   └── inventory.nil
-│
-├── pages/
-│   ├── login.nil
-│   ├── pos.nil
-│   ├── products.nil
-│   ├── sales.nil
-│   └── reports.nil
-│
-├── services/
-│   ├── checkout.nil
-│   ├── pricing.nil
-│   └── inventory.nil
-│
-├── migrations/
-│
-├── locales/
-│   ├── bn-BD/
-│   └── en-IN/
-│
-└── tests/
-```
-
----
-
-# ৫৭. `alap.yaml`
 
 যেমন:
 
-```yaml
-name: my-store
-type: pos
+```text
+Input:
+Product = ৳100
+Quantity = 3
+Discount = 10%
+Tax = 5%
 
-runtime:
-  target: web
-
-database:
-  driver: sqlite
-
-locale:
-  default: bn-BD
-
-features:
-  offline: true
-  barcode: true
-  printer: true
-  cash_drawer: true
-  realtime: true
+Expected:
+Subtotal = 300
+Discount = 30
+...
 ```
+
+দুই system-এর result identical হতে হবে।
 
 ---
 
-# ৫৮. Android target
+# ২৮. Performance benchmark
 
-পরে:
+তারপর মাপবে:
 
 ```text
-NilLang
- ↓
-Alap
- ↓
-Android runtime
- ↓
-APK
+Product search
+Cart update
+Checkout
+SQLite transaction
+UI rendering
+Startup
+Memory
 ```
 
-POS Android app-এ:
+Target হিসেবে:
+
+```text
+Local product search <100ms
+Cart update ≈ 16ms target
+Checkout UI response <100ms
+```
+
+ধরতে পারো।
+
+কিন্তু benchmark না করে “fast” দাবি করো না।
+
+---
+
+# ২৯. Android নিয়ে এখন কী করবে
+
+তোমার কাছে PinePhone নেই এবং S25-তে OS flash করা বাস্তবসম্মত নয়—তাই **OnuronOS hardware-কে এখন blocker বানিও না।**
+
+প্রথমে:
+
+```text
+Alap POS
+   ↓
+Android APK
+   ↓
+Samsung S25
+```
+
+চালাও।
+
+Android-এর native bridge:
 
 ```text
 SQLite
-Bluetooth printer
-Bluetooth scanner
-camera
-network
+Camera
+Barcode
+Bluetooth
+USB
+Printer
+Network
 ```
 
-native bridge-এর মাধ্যমে expose করতে হবে।
+আলাদা করে তৈরি করো।
+
+অর্থাৎ:
+
+```text
+NilLang/Alap POS
+       │
+       ├── Web
+       ├── Windows
+       ├── Linux
+       └── Android
+```
+
+একই application model।
+
+OnuronOS পরে native target হবে।
 
 ---
 
-# ৫৯. Web target
+# ৩০. OnuronOS-কে এখন POS development-এর blocker বানিও না
 
-Browser-এর জন্য:
+এটা খুব গুরুত্বপূর্ণ।
+
+বর্তমান priority:
 
 ```text
 NilLang
- ↓
-Alap Web
- ↓
-WASM / JS-compatible runtime
+   ↓
+Alap
+   ↓
+POS
+   ↓
+Android/Web/Desktop
+   ↓
+OnuronOS integration
 ```
 
-তবে device functionality browser limitations অনুযায়ী abstraction-এর মাধ্যমে handle হবে।
+উল্টোটা নয়।
+
+মানে:
+
+> “OnuronOS আগে complete না হলে POS বানাব না”—এমন করা উচিত নয়।
 
 ---
 
-# ৬০. Native desktop target
+# ৩১. AI/compiler/SoftBus/Vulkan নিয়ে আপাতত কী করবে?
 
-POS-এর জন্য desktop খুব গুরুত্বপূর্ণ:
+এগুলো বন্ধ করার কথা বলছি না।
 
-```text
-Windows
-Linux
-```
+কিন্তু priority কমাও।
 
-তাই:
+বর্তমানে:
 
 ```text
-nil build --target windows
+POS core             ██████████
+Alap UI              ██████████
+Database             ██████████
+Offline              ████████
+Device integration   ███████
+Compiler             █████
+AI                   ██
+SoftBus              ██
+Vulkan               ██
 ```
 
-দিয়ে native POS binary/package পাওয়া উচিত।
+তোমার সবচেয়ে বড় ভুল হতে পারে:
+
+> আজ POS অসম্পূর্ণ রেখে কাল AI Compiler Oracle, পরশু নতুন rendering backend, তার পরদিন নতুন OS subsystem বানানো।
+
+এতে repository বড় হবে, কিন্তু usable product হবে না।
 
 ---
 
-# ৬১. এখন সবচেয়ে গুরুত্বপূর্ণ compiler changes
+# ৩২. আমি হলে পরবর্তী commit-গুলো এভাবে সাজাতাম
 
-এগুলো না করলে উপরের সুন্দর syntax শুধু syntax থাকবে।
-
-Compiler-এ implement করতে হবে:
+### Commit 1
 
 ```text
-AST:
-  ComponentDeclaration
-  EntityDeclaration
-  ServiceDeclaration
-  PageDeclaration
-  FormDeclaration
-  JobDeclaration
-
-Expressions:
-  await
-  match
-  optional
-  generic
-  query
-  transaction
-
-Types:
-  Money
-  Decimal
-  Date
-  DateTime
-  UUID
-  Entity
-  Relation
-  Result
-  Optional
+fix(finance): make Decimal/Money exact
 ```
 
-তারপর HIR/MIR lowering।
-
----
-
-# ৬২. Compiler-এ framework intrinsics
-
-Alap-এর runtime call যেন compiler বুঝতে পারে:
+### Commit 2
 
 ```text
-render
-state
-emit
-await
-transaction
-query
-route
-permission
+feat(db): production SQLite transaction layer
 ```
 
-তাহলে compiler optimization করতে পারবে।
-
----
-
-# ৬৩. Type safety example
-
-এই code:
-
-```nil
-price: money
-quantity: decimal
-
-total = price * quantity
-```
-
-valid।
-
-কিন্তু:
-
-```nil
-price + quantity
-```
-
-invalid।
-
-Compiler:
+### Commit 3
 
 ```text
-Money + Decimal is not defined.
+feat(orm): complete Product/Category/Inventory ORM
 ```
 
-এটাই production language-এর behaviour।
-
----
-
-# ৬৪. Source maps/debugging
-
-Compiled code থেকে runtime error যেন:
+### Commit 4
 
 ```text
-checkout.nil:42
+feat(pos): production cart and pricing engine
 ```
 
-দেখায়।
-
-না যে:
+### Commit 5
 
 ```text
-vm.go:1837
+feat(pos): tax and discount engine
 ```
 
-Developer-এর কাছে।
-
----
-
-# ৬৫. Package structure
-
-Generic Alap এবং POS আলাদা:
+### Commit 6
 
 ```text
-pkg/alap/
-pkg/alap/pos/
+feat(pos): transactional checkout
 ```
 
-এতে অন্য developer POS ছাড়াও Alap দিয়ে CRM, ERP, accounting, SaaS বানাতে পারবে।
-
-এটাই দীর্ঘমেয়াদে তোর framework-এর আসল শক্তি।
-
----
-
-# ৬৬. কোনটা আগে করবি — একদম নির্দিষ্ট order
-
-এখানে ভুল করলে আবার project ছড়িয়ে যাবে।
-
-## Phase 1 — Foundation
+### Commit 7
 
 ```text
-1. Decimal
-2. Money
-3. Quantity
-4. DateTime
-5. Result/Error
-6. Async/Await
-7. Type system
+feat(pos): payment and split payment
 ```
 
-## Phase 2 — Data
+### Commit 8
 
 ```text
-8. SQLite driver
-9. ORM
-10. Transactions
-11. Relations
-12. Migration
-13. Query builder
+feat(pos): register and shift management
 ```
 
-## Phase 3 — Application
+### Commit 9
 
 ```text
-14. Router
-15. HTTP
-16. API
-17. Forms
-18. Validation
-19. Auth
-20. Permissions
-21. i18n
+feat(alap-ui): POS layout and product search
 ```
 
-## Phase 4 — UI
+### Commit 10
 
 ```text
-22. Layout
-23. Input
-24. Form
-25. Modal
-26. Combobox
-27. DataGrid
-28. Toast
-29. Charts
-30. Keyboard
-31. Focus
+feat(alap-ui): production cart and payment UI
 ```
 
-## Phase 5 — POS
+### Commit 11
 
 ```text
-32. Product
-33. Inventory
-34. Cart
-35. Pricing
-36. Tax
-37. Discount
-38. Sale
-39. Payment
-40. Receipt
-41. Customer
-42. Register
-43. Shift
-44. Refund
+feat(device): barcode scanner
 ```
 
-## Phase 6 — Devices
+### Commit 12
 
 ```text
-45. Barcode
-46. Printer
-47. Cash drawer
-48. Camera
-49. Bluetooth
+feat(device): ESC/POS printer
 ```
 
-## Phase 7 — Production
+### Commit 13
 
 ```text
-50. Offline
-51. Sync
-52. Audit
-53. Backup
-54. Jobs
-55. Realtime
-56. Monitoring
+feat(pos): receipt generation
 ```
 
-## Phase 8 — Parity
+### Commit 14
 
 ```text
-57. Reference TypeScript POS
-58. Shared fixtures
-59. API conformance
-60. Business conformance
-61. UI snapshots
-62. Performance benchmarks
+feat(i18n): Bengali POS localization
+```
+
+### Commit 15
+
+```text
+feat(sync): offline-first synchronization
+```
+
+### Commit 16
+
+```text
+test(pos): end-to-end checkout conformance suite
 ```
 
 ---
 
-# ৬৭. সবচেয়ে গুরুত্বপূর্ণ প্রথম milestone
+# ৩৩. শেষ পর্যন্ত যে vertical slice-টা অবশ্যই কাজ করতে হবে
 
-সব feature একসঙ্গে লিখবি না।
-
-প্রথমে এইটা **পুরোপুরি কাজ করাবি**:
+এটাই এখন তোমার **North Star**:
 
 ```text
-                 POS VERTICAL SLICE #1
-
-Login
-  ↓
-Product database
-  ↓
-Product search
-  ↓
-Barcode
-  ↓
-Add to cart
-  ↓
-Quantity
-  ↓
-Discount
-  ↓
-Tax
-  ↓
-Total
-  ↓
-Cash payment
-  ↓
-Change
-  ↓
-SQLite transaction
-  ↓
-Sale
-  ↓
-Inventory decrement
-  ↓
-Receipt
-  ↓
-Printer
-  ↓
-Audit
+                 LOGIN
+                   │
+                   ▼
+             PRODUCT DATABASE
+                   │
+                   ▼
+             PRODUCT SEARCH
+                   │
+                   ▼
+                BARCODE
+                   │
+                   ▼
+              ADD TO CART
+                   │
+                   ▼
+                QUANTITY
+                   │
+                   ▼
+               DISCOUNT
+                   │
+                   ▼
+                  TAX
+                   │
+                   ▼
+                 TOTAL
+                   │
+                   ▼
+             CASH PAYMENT
+                   │
+                   ▼
+              CALCULATE CHANGE
+                   │
+                   ▼
+             SQLITE TRANSACTION
+                   │
+          ┌────────┼────────┐
+          ▼        ▼        ▼
+        SALE    PAYMENT  INVENTORY
+          │                 │
+          └────────┬────────┘
+                   ▼
+                RECEIPT
+                   │
+                   ▼
+                PRINT
+                   │
+                   ▼
+                 AUDIT
 ```
 
-এটা শেষ হলে তোর Alap আর “demo framework” থাকবে না।
+**এই পুরো pipeline একবার NilLang + Alap-এ বাস্তবে চললে তোমার project-এর maturity এক লাফে অনেকটা বেড়ে যাবে।**
 
 ---
 
-# ৬৮. Definition of Done
+## সবচেয়ে গুরুত্বপূর্ণ অগ্রাধিকার
 
-কোনো feature “done” বলা যাবে না যতক্ষণ না:
+আমি তোমার বর্তমান অবস্থায় কাজগুলোকে এভাবে rank করব:
 
-```text
-[ ] NilLang syntax exists
-[ ] Parser supports it
-[ ] Type checker supports it
-[ ] HIR supports it
-[ ] MIR supports it
-[ ] Runtime supports it
-[ ] Alap API supports it
-[ ] Tests exist
-[ ] Documentation exists
-[ ] POS uses it
-[ ] Error handling exists
-[ ] Bengali UI works
-[ ] Web target works
-[ ] Desktop/Android target considered
-```
+| Priority | কাজ                         |
+| -------- | --------------------------- |
+| 🔴 P0    | Decimal/Money exactness     |
+| 🔴 P0    | SQLite + transaction        |
+| 🔴 P0    | Product/Inventory ORM       |
+| 🔴 P0    | Cart + pricing              |
+| 🔴 P0    | Tax + discount              |
+| 🔴 P0    | Transactional checkout      |
+| 🔴 P0    | Payment                     |
+| 🔴 P0    | POS UI                      |
+| 🟠 P1    | Register/Shift              |
+| 🟠 P1    | Receipt                     |
+| 🟠 P1    | Barcode                     |
+| 🟠 P1    | Printer                     |
+| 🟠 P1    | Bengali i18n                |
+| 🟠 P1    | Authentication/RBAC         |
+| 🟠 P1    | Audit                       |
+| 🟡 P2    | Offline SQLite architecture |
+| 🟡 P2    | Sync                        |
+| 🟡 P2    | Android native bridges      |
+| 🟡 P2    | PostgreSQL                  |
+| 🟢 P3    | Realtime                    |
+| 🟢 P3    | Advanced AI                 |
+| 🟢 P3    | SoftBus expansion           |
+| 🟢 P3    | Advanced rendering          |
+| 🟢 P3    | OnuronOS deep integration   |
 
----
+### এক কথায়
 
-# ৬৯. এবং তোর মূল লক্ষ্যটি এভাবেই লিখে রাখ
+**এখন নীলাংকে আর “আরও feature-rich programming language” বানানোর পেছনে ছুটবে না।**
 
-```text
-                    REFERENCE POS
-                         │
-          ┌──────────────┴──────────────┐
-          │                             │
- TypeScript/Next.js/Node            NilLang/Alap
-          │                             │
-          └──────────────┬──────────────┘
-                         │
-                 SAME CONTRACT
-                         │
-          ┌──────────────┼──────────────┐
-          │              │              │
-        SAME UI       SAME BEHAVIOR   SAME DATA
-          │              │              │
-          └──────────────┼──────────────┘
-                         │
-                    SAME RESULT
-```
+এখন লক্ষ্য হবে:
 
-**এটাই হবে “TypeScript Next POS = NilLang Alap POS”।**
+> **“NilLang + Alap দিয়ে এমন একটি POS বানাও যেটা দিয়ে সত্যিই দোকানে বিক্রি করা যায়।”**
 
-আর একটা জিনিস বিশেষভাবে বলি: তোর বর্তমান repo-তে `pos-app` commit, Entity, ORM/data, Money/Decimal এবং compiler pipeline ইতিমধ্যেই আছে। তাই এগুলো আবার নতুন করে ছড়িয়ে ছিটিয়ে বানানোর দরকার নেই। **এখন কাজ হলো existing pieces-কে এই architecture অনুযায়ী refactor/integrate করা এবং প্রথম vertical slice-টা সত্যিকারের end-to-end করা।**
+তারপর সেই POS-ই হবে তোমার framework-এর সবচেয়ে শক্তিশালী integration test।
 
-**পরবর্তী বাস্তব ধাপ:** `nilLang`-এর বর্তমান codebase ধরে আমি এই specification-টাকে এবার **ফাইল-by-file implementation plan**-এ নামিয়ে দিতে পারি—মানে `compiler/...`, `pkg/alap/...`, কোন নতুন `.go` file হবে, কোন existing file modify হবে, এবং **প্রথম Product → Cart → Checkout slice-এর জন্য ঠিক কী code/API/syntax লিখতে হবে**। সেটাই হবে সরাসরি coding শুরু করার blueprint।
+`TypeScript + Next.js + Node.js` দিয়ে যে POS করা যায়, **সেটাই যদি NilLang + Alap দিয়ে করা যায়—এবং একই business/test fixtures-এ দুই implementation-এর ফল মিলে যায়—তখনই “NilLang + Alap production application framework” দাবিটা বাস্তব ভিত্তি পাবে।**

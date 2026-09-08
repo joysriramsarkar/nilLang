@@ -18,6 +18,7 @@ type POSEngine struct {
 	Reports   *ReportingEngine
 	SyncQueue *sync.SyncQueue
 	Sync      *sync.SyncEngine
+	DBPool    *data.DBPool
 }
 
 // NewPOSEngine constructs a fully wired POS application engine
@@ -55,6 +56,14 @@ func NewPOSEngine() *POSEngine {
 	})
 
 	return engine
+}
+
+// SetDBPool configures database persistence pool for atomic relational transactions
+func (pe *POSEngine) SetDBPool(pool *data.DBPool) {
+	pe.DBPool = pool
+	if pe.Checkout != nil {
+		pe.Checkout.SetDBPool(pool)
+	}
 }
 
 // SeedDefaultEnterpriseData seeds baseline categories, products, and customers
@@ -186,6 +195,13 @@ func (pe *POSEngine) SeedDefaultEnterpriseData() {
 		LowStockMin: data.NewDecimalFromInt(30),
 		Active:      true,
 	})
+
+	// Record opening balances in Inventory Ledger for audit reconciliation
+	if pe.Inventory != nil {
+		for _, p := range pe.Catalog.AllProducts() {
+			pe.Inventory.RecordOpeningStock(p.ID, p.Stock, p.Cost)
+		}
+	}
 
 	// Baseline Customers
 	pe.Customers.AddCustomer(&Customer{

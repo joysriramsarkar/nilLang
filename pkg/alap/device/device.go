@@ -3,6 +3,8 @@ package device
 import (
 	"bytes"
 	"fmt"
+	"html"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -249,4 +251,96 @@ func (cd *CashDrawer) IsOpen() bool {
 	cd.mu.Lock()
 	defer cd.mu.Unlock()
 	return cd.isOpen
+}
+
+// ─── NETWORK THERMAL PRINTER CLIENT (web-implications.md Section 19) ─────────
+
+// NetworkPrinter provides TCP socket transport for Network/Ethernet ESC/POS printers
+type NetworkPrinter struct {
+	Address string // e.g. "192.168.1.100:9100"
+	Timeout time.Duration
+}
+
+// NewNetworkPrinter creates a network printer client
+func NewNetworkPrinter(address string) *NetworkPrinter {
+	return &NetworkPrinter{
+		Address: address,
+		Timeout: 3 * time.Second,
+	}
+}
+
+// PrintRaw sends raw bytes to the printer over TCP
+func (np *NetworkPrinter) PrintRaw(data []byte) error {
+	conn, err := net.DialTimeout("tcp", np.Address, np.Timeout)
+	if err != nil {
+		return fmt.Errorf("failed to connect to printer at %s: %w", np.Address, err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(np.Timeout)); err != nil {
+		return err
+	}
+
+	_, err = conn.Write(data)
+	return err
+}
+
+// PrintReceipt formats and sends a receipt to the network printer
+func (np *NetworkPrinter) PrintReceipt(payload ReceiptPayload, width PrinterWidth) error {
+	formatter := NewESCPOSFormatter(width)
+	bytes := formatter.BuildESCPOSBytes(payload)
+	return np.PrintRaw(bytes)
+}
+
+// ─── HTML RECEIPT GENERATOR (web-implications.md Section 18) ────────────────
+
+// GenerateHTMLReceipt formats receipt data as styled thermal slip HTML
+func GenerateHTMLReceipt(data ReceiptPayload, widthMm int) string {
+	if widthMm <= 0 {
+		widthMm = 58
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(`<div class="thermal-receipt" style="width:%dmm; font-family:'JetBrains Mono', monospace; font-size:12px; color:#000; background:#fff; padding:10px; margin:auto; box-shadow:0 2px 8px rgba(0,0,0,0.15);">`, widthMm))
+	sb.WriteString(fmt.Sprintf(`<div style="text-align:center; font-weight:bold; font-size:14px;">%s</div>`, html.EscapeString(data.StoreName)))
+	if data.StoreSubtitle != "" {
+		sb.WriteString(fmt.Sprintf(`<div style="text-align:center; font-size:11px; margin-bottom:6px;">%s</div>`, html.EscapeString(data.StoreSubtitle)))
+	}
+	sb.WriteString(`<div style="border-top:1px dashed #000; margin:6px 0;"></div>`)
+	sb.WriteString(fmt.Sprintf(`<div>Invoice: <strong>%s</strong></div>`, html.EscapeString(data.InvoiceNo)))
+	sb.WriteString(fmt.Sprintf(`<div>Date: %s</div>`, html.EscapeString(data.DateStr)))
+	if data.Cashier != "" {
+		sb.WriteString(fmt.Sprintf(`<div>Cashier: %s</div>`, html.EscapeString(data.Cashier)))
+	}
+	if data.Customer != "" {
+		sb.WriteString(fmt.Sprintf(`<div>Customer: %s</div>`, html.EscapeString(data.Customer)))
+	}
+	sb.WriteString(`<div style="border-top:1px dashed #000; margin:6px 0;"></div>`)
+
+	for _, it := range data.Items {
+		sb.WriteString(fmt.Sprintf(`<div>%s</div>`, html.EscapeString(it.Name)))
+		sb.WriteString(fmt.Sprintf(`<div style="display:flex; justify-content:space-between; font-size:11px;"><span>%s x %s</span><span>%s</span></div>`,
+			html.EscapeString(it.Quantity), html.EscapeString(it.Price), html.EscapeString(it.Total)))
+	}
+
+	sb.WriteString(`<div style="border-top:1px dashed #000; margin:6px 0;"></div>`)
+	sb.WriteString(fmt.Sprintf(`<div style="display:flex; justify-content:space-between;"><span>Subtotal:</span><span>%s</span></div>`, html.EscapeString(data.Subtotal)))
+	if data.Discount != "" && data.Discount != "৳0.00" {
+		sb.WriteString(fmt.Sprintf(`<div style="display:flex; justify-content:space-between;"><span>Discount:</span><span>-%s</span></div>`, html.EscapeString(data.Discount)))
+	}
+	if data.Tax != "" && data.Tax != "৳0.00" {
+		sb.WriteString(fmt.Sprintf(`<div style="display:flex; justify-content:space-between;"><span>Tax:</span><span>%s</span></div>`, html.EscapeString(data.Tax)))
+	}
+	sb.WriteString(fmt.Sprintf(`<div style="display:flex; justify-content:space-between; font-weight:bold; font-size:13px; margin:4px 0;"><span>TOTAL:</span><span>%s</span></div>`, html.EscapeString(data.GrandTotal)))
+	if data.PaidAmount != "" {
+		sb.WriteString(fmt.Sprintf(`<div style="display:flex; justify-content:space-between;"><span>%s Paid:</span><span>%s</span></div>`, html.EscapeString(data.PaymentMethod), html.EscapeString(data.PaidAmount)))
+	}
+	if data.ChangeDue != "" && data.ChangeDue != "৳0.00" {
+		sb.WriteString(fmt.Sprintf(`<div style="display:flex; justify-content:space-between;"><span>Change:</span><span>%s</span></div>`, html.EscapeString(data.ChangeDue)))
+	}
+	sb.WriteString(`<div style="border-top:1px dashed #000; margin:6px 0;"></div>`)
+	if data.FooterNote != "" {
+		sb.WriteString(fmt.Sprintf(`<div style="text-align:center; font-size:11px;">%s</div>`, html.EscapeString(data.FooterNote)))
+	}
+	sb.WriteString(`</div>`)
+	return sb.String()
 }

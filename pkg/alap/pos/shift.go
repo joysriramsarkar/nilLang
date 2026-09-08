@@ -27,12 +27,30 @@ type Shift struct {
 	CashSalesMinor      int64       `json:"cash_sales_minor"`
 	CardSalesMinor      int64       `json:"card_sales_minor"`
 	MFSSalesMinor       int64       `json:"mfs_sales_minor"` // bKash/Nagad
-	TotalSalesMinor     int64       `json:"total_sales_minor"`
-	TotalOrders         int64       `json:"total_orders"`
-	ExpectedCashMinor   int64       `json:"expected_cash_minor"`
-	ActualCashMinor     int64       `json:"actual_cash_minor"`
-	CashDifferenceMinor int64       `json:"cash_difference_minor"` // (Actual - Expected)
-	Notes               string      `json:"notes,omitempty"`
+	TotalSalesMinor     int64          `json:"total_sales_minor"`
+	TotalOrders         int64          `json:"total_orders"`
+	ExpectedCashMinor   int64          `json:"expected_cash_minor"`
+	ActualCashMinor     int64          `json:"actual_cash_minor"`
+	CashDifferenceMinor int64          `json:"cash_difference_minor"` // (Actual - Expected)
+	Movements           []CashMovement `json:"movements,omitempty"`
+	Notes               string         `json:"notes,omitempty"`
+}
+
+type CashMovementType string
+
+const (
+	CashMovementIn  CashMovementType = "CASH_IN"  // Cash float addition
+	CashMovementOut CashMovementType = "CASH_OUT" // Cash drop to safe / payout
+)
+
+// CashMovement logs cash drops or additions during an open shift
+type CashMovement struct {
+	ID          string           `json:"id"`
+	ShiftID     string           `json:"shift_id"`
+	Type        CashMovementType `json:"type"`
+	AmountMinor int64            `json:"amount_minor"`
+	Reason      string           `json:"reason"`
+	Timestamp   time.Time        `json:"timestamp"`
 }
 
 // ShiftManager manages register open/close workflows
@@ -136,4 +154,37 @@ func (sm *ShiftManager) CloseShift(actualCashMinor int64, notes string) (*Shift,
 	sm.currentShift = nil
 
 	return shift, nil
+}
+
+// RecordCashMovement records cash addition or drop in active shift
+func (sm *ShiftManager) RecordCashMovement(moveType CashMovementType, amountMinor int64, reason string) (*CashMovement, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.currentShift == nil || sm.currentShift.Status != ShiftOpen {
+		return nil, fmt.Errorf("no active open shift for cash movement")
+	}
+
+	if amountMinor <= 0 {
+		return nil, fmt.Errorf("amount must be positive")
+	}
+
+	mov := CashMovement{
+		ID:          fmt.Sprintf("cmov-%d", time.Now().UnixNano()),
+		ShiftID:     sm.currentShift.ID,
+		Type:        moveType,
+		AmountMinor: amountMinor,
+		Reason:      reason,
+		Timestamp:   time.Now(),
+	}
+
+	sm.currentShift.Movements = append(sm.currentShift.Movements, mov)
+
+	if moveType == CashMovementIn {
+		sm.currentShift.ExpectedCashMinor += amountMinor
+	} else {
+		sm.currentShift.ExpectedCashMinor -= amountMinor
+	}
+
+	return &mov, nil
 }

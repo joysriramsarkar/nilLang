@@ -19,6 +19,8 @@ const (
 	TypeMarkdown FieldType = "Markdown"
 	TypeDate     FieldType = "Date"
 	TypeRelation FieldType = "Relation"
+	TypeMoney    FieldType = "Money"
+	TypeQuantity FieldType = "Quantity"
 )
 
 // Field represents an attribute in an Entity model
@@ -93,8 +95,8 @@ func (e *Entity) GenerateSQL(dialect string) string {
 			if f.Type == TypeMarkdown {
 				sqlType = "TEXT"
 			}
-		case TypeInt:
-			sqlType = "INTEGER"
+		case TypeInt, TypeMoney, TypeQuantity:
+			sqlType = "BIGINT"
 		case TypeFloat:
 			sqlType = "DOUBLE PRECISION"
 		case TypeBool:
@@ -157,10 +159,12 @@ func (e *Entity) GenerateClientModel(target string) string {
 		for _, f := range e.Fields {
 			tsType := "string"
 			switch f.Type {
-			case TypeInt, TypeFloat:
+			case TypeInt, TypeFloat, TypeMoney:
 				tsType = "number"
 			case TypeBool:
 				tsType = "boolean"
+			case TypeQuantity:
+				tsType = "string"
 			case TypeRelation:
 				tsType = f.TargetEntity
 			}
@@ -176,7 +180,11 @@ func (e *Entity) GenerateClientModel(target string) string {
 		sb.WriteString(fmt.Sprintf("struct %s {\n", e.Name))
 		for _, f := range e.Fields {
 			nilType := string(f.Type)
-			if f.Type == TypeRelation {
+			if f.Type == TypeMoney {
+				nilType = "money"
+			} else if f.Type == TypeQuantity {
+				nilType = "quantity"
+			} else if f.Type == TypeRelation {
 				nilType = f.TargetEntity
 			}
 			sb.WriteString(fmt.Sprintf("    %s: %s\n", f.Name, nilType))
@@ -214,11 +222,17 @@ func (e *Entity) Validate(data map[string]interface{}) []string {
 			if !ok || !emailRegex.MatchString(s) {
 				errors = append(errors, fmt.Sprintf("field %q must be a valid email address", f.Name))
 			}
-		case TypeInt:
+		case TypeInt, TypeMoney:
 			switch val.(type) {
 			case int, int64, int32:
 			default:
-				errors = append(errors, fmt.Sprintf("field %q must be an integer", f.Name))
+				errors = append(errors, fmt.Sprintf("field %q must be an integer (minor units)", f.Name))
+			}
+		case TypeQuantity:
+			switch val.(type) {
+			case string, int, int64, float64:
+			default:
+				errors = append(errors, fmt.Sprintf("field %q must be a valid quantity", f.Name))
 			}
 		case TypeBool:
 			if _, ok := val.(bool); !ok {

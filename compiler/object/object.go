@@ -26,6 +26,7 @@ const (
 	HASH_OBJ              = "HASH"
 	COMPILED_FUNCTION_OBJ = "COMPILED_FUNCTION"
 	CLOSURE_OBJ           = "CLOSURE"
+	ENTITY_OBJ            = "ENTITY"
 )
 
 type Object interface {
@@ -239,4 +240,31 @@ func (e *Environment) Assign(name string, val Object) bool {
 
 func (e *Environment) Store() map[string]Object {
 	return e.store
+}
+
+// ─── ENTITY OBJECT (web-implications.md Section 26) ─────────────────────────
+
+type EntityFieldObj struct {
+	Name         string
+	Type         string
+	IsPrimary    bool
+	IsRequired   bool
+	IsUnique     bool
+	TargetEntity string
+}
+
+type Entity struct {
+	Name   string
+	Fields []EntityFieldObj
+}
+
+func (e *Entity) Type() ObjectType { return ENTITY_OBJ }
+func (e *Entity) Inspect() string {
+	var out bytes.Buffer
+	out.WriteString(fmt.Sprintf("entity %s {\n", e.Name))
+	for _, f := range e.Fields {
+		out.WriteString(fmt.Sprintf("  %s: %s\n", f.Name, f.Type))
+	}
+	out.WriteString("}")
+	return out.String()
 }

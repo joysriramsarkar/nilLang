@@ -224,6 +224,71 @@ func CSRFMiddleware(cookieName string) routing.Middleware {
 
 // ─── RBAC AUTHORIZATION ─────────────────────────────────────────────────────
 
+type Role string
+
+const (
+	RoleAdmin            Role = "admin"
+	RoleManager          Role = "manager"
+	RoleCashier          Role = "cashier"
+	RoleInventoryManager Role = "inventory_manager"
+	RoleAccountant       Role = "accountant"
+)
+
+type Permission string
+
+const (
+	PermSaleCreate      Permission = "sale.create"
+	PermSaleRefund      Permission = "sale.refund"
+	PermProductCreate   Permission = "product.create"
+	PermProductEdit     Permission = "product.edit"
+	PermInventoryAdjust Permission = "inventory.adjust"
+	PermPurchaseCreate  Permission = "purchase.create"
+	PermReportView      Permission = "report.view"
+	PermUserManage      Permission = "user.manage"
+	PermRegisterOpen    Permission = "register.open"
+	PermRegisterClose   Permission = "register.close"
+)
+
+// DefaultRolePermissions maps standard roles to their allowed granular permissions
+var DefaultRolePermissions = map[Role][]Permission{
+	RoleAdmin: {
+		PermSaleCreate, PermSaleRefund, PermProductCreate, PermProductEdit,
+		PermInventoryAdjust, PermPurchaseCreate, PermReportView, PermUserManage,
+		PermRegisterOpen, PermRegisterClose,
+	},
+	RoleManager: {
+		PermSaleCreate, PermSaleRefund, PermProductCreate, PermProductEdit,
+		PermInventoryAdjust, PermPurchaseCreate, PermReportView,
+		PermRegisterOpen, PermRegisterClose,
+	},
+	RoleCashier: {
+		PermSaleCreate, PermSaleRefund, PermRegisterOpen, PermRegisterClose,
+	},
+	RoleInventoryManager: {
+		PermProductCreate, PermProductEdit, PermInventoryAdjust, PermPurchaseCreate,
+	},
+	RoleAccountant: {
+		PermReportView,
+	},
+}
+
+// RoleHasPermission checks if a role has the specified permission
+func RoleHasPermission(role Role, perm Permission) bool {
+	if role == RoleAdmin {
+		return true
+	}
+	perms, ok := DefaultRolePermissions[role]
+	if !ok {
+		return false
+	}
+	for _, p := range perms {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
 // RequireRole ensures context has the required role
 func RequireRole(requiredRole string) routing.Middleware {
 	return func(next routing.HandlerFunc) routing.HandlerFunc {
@@ -239,12 +304,37 @@ func RequireRole(requiredRole string) routing.Middleware {
 			}
 
 			for _, r := range roles {
-				if r == requiredRole || r == "admin" {
+				if r == requiredRole || r == string(RoleAdmin) {
 					return next(ctx)
 				}
 			}
 
 			return nil, fmt.Errorf("403: access denied, role %q required", requiredRole)
+		}
+	}
+}
+
+// RequirePermission ensures context has a role that possesses the required permission
+func RequirePermission(perm Permission) routing.Middleware {
+	return func(next routing.HandlerFunc) routing.HandlerFunc {
+		return func(ctx *routing.Context) (interface{}, error) {
+			rolesRaw, ok := ctx.Store["roles"]
+			if !ok {
+				return nil, errors.New("403: access denied, no roles assigned")
+			}
+
+			roles, ok := rolesRaw.([]string)
+			if !ok {
+				return nil, errors.New("403: invalid roles data")
+			}
+
+			for _, r := range roles {
+				if RoleHasPermission(Role(r), perm) {
+					return next(ctx)
+				}
+			}
+
+			return nil, fmt.Errorf("403: access denied, permission %q required", perm)
 		}
 	}
 }

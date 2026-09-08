@@ -546,3 +546,38 @@ func (is *ImportStatement) String() string {
 	out.WriteString(";")
 	return out.String()
 }
+
+// ─── ENTITY STATEMENT (web-implications.md Section 26) ──────────────────────
+
+// EntityField represents a single field inside an entity declaration
+type EntityField struct {
+	Name         string
+	Type         string
+	IsPrimary    bool
+	IsRequired   bool
+	IsUnique     bool
+	TargetEntity string
+}
+
+// EntityStatement represents "entity Product { ... }"
+type EntityStatement struct {
+	Token  token.Token // token.ENTITY
+	Name   *Identifier
+	Fields []EntityField
+}
+
+func (es *EntityStatement) statementNode()       {}
+func (es *EntityStatement) TokenLiteral() string { return es.Token.Literal }
+func (es *EntityStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("entity ")
+	if es.Name != nil {
+		out.WriteString(es.Name.String() + " ")
+	}
+	out.WriteString("{\n")
+	for _, f := range es.Fields {
+		out.WriteString("    " + f.Name + ": " + f.Type + "\n")
+	}
+	out.WriteString("}")
+	return out.String()
+}

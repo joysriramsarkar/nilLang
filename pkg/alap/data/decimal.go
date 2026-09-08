@@ -26,6 +26,19 @@ func NewDecimalFromInt(i int64) Decimal {
 	return Decimal{Value: i * DecimalScale}
 }
 
+// DecimalFromMinor creates a Decimal from integer minor units (e.g. 1250 with scale 100 -> 12.5000)
+func DecimalFromMinor(minor int64, scale int64) Decimal {
+	if scale <= 0 {
+		scale = 100 // Default 2 decimal places (cents / paisa)
+	}
+	return Decimal{Value: (minor * DecimalScale) / scale}
+}
+
+// DecimalFromString parses a numeric string into Decimal
+func DecimalFromString(s string) (Decimal, error) {
+	return ParseDecimal(s)
+}
+
 // ParseDecimal parses a numeric string into Decimal (e.g. "12.5", "0.05", "100")
 func ParseDecimal(s string) (Decimal, error) {
 	s = strings.TrimSpace(s)
@@ -119,6 +132,49 @@ func (d Decimal) IsZero() bool {
 
 func (d Decimal) IsNegative() bool {
 	return d.Value < 0
+}
+
+// Round rounds the Decimal to the specified number of decimal places (0 to 4) using Half-Up rounding
+func (d Decimal) Round(decimals int) Decimal {
+	if decimals >= 4 {
+		return d
+	}
+	if decimals < 0 {
+		decimals = 0
+	}
+	var step int64 = 1
+	for i := 0; i < (4 - decimals); i++ {
+		step *= 10
+	}
+	half := step / 2
+	if d.Value >= 0 {
+		return Decimal{Value: ((d.Value + half) / step) * step}
+	}
+	return Decimal{Value: ((d.Value - half) / step) * step}
+}
+
+// Abs returns absolute value
+func (d Decimal) Abs() Decimal {
+	if d.Value < 0 {
+		return Decimal{Value: -d.Value}
+	}
+	return d
+}
+
+// Min returns minimum of two decimals
+func MinDecimal(a, b Decimal) Decimal {
+	if a.Cmp(b) <= 0 {
+		return a
+	}
+	return b
+}
+
+// Max returns maximum of two decimals
+func MaxDecimal(a, b Decimal) Decimal {
+	if a.Cmp(b) >= 0 {
+		return a
+	}
+	return b
 }
 
 func (d Decimal) String() string {

@@ -14,7 +14,9 @@ const (
 	MethodBKash  PaymentMethod = "BKASH"
 	MethodNagad  PaymentMethod = "NAGAD"
 	MethodUPI    PaymentMethod = "UPI"
+	MethodWallet PaymentMethod = "WALLET"
 	MethodCredit PaymentMethod = "CREDIT" // Due balance on customer account
+	MethodOther  PaymentMethod = "OTHER"
 )
 
 // PaymentRecord represents an individual payment transaction line
