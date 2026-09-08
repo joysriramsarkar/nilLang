@@ -83,3 +83,39 @@ jobs:
       - name: Test Declarative UI Render
         run: |
           ./bin/nil render || .\bin\nil.exe render
+
+  postgres-integration:
+    name: PostgreSQL Integration Tests
+    needs: test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nilang_test
+          POSTGRES_USER: nilang
+          POSTGRES_PASSWORD: nilang_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Run PostgreSQL integration tests
+        run: |
+          go test -v -tags integration -count=1 -race ./pkg/alap/data/...
+        env:
+          TEST_POSTGRES_DSN: postgres://nilang:nilang_test@localhost:5432/nilang_test?sslmode=disable

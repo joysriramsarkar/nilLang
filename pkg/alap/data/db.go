@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGO required)
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver — registers "pgx" with database/sql
+	_ "modernc.org/sqlite"             // pure-Go SQLite driver (no CGO required)
 )
 
 // ─── REAL DATABASE POOL ───────────────────────────────────────────────────────
@@ -56,18 +58,23 @@ func OpenSQLite(dsn string) (*RealDBPool, error) {
 	return &RealDBPool{db: db, driver: DriverSQLite, dsn: dsn}, nil
 }
 
-// OpenPostgres opens a PostgreSQL database connection.
+// OpenPostgres opens a PostgreSQL database connection via the pgx/v5 stdlib adapter.
+// DSN format: postgres://user:pass@host:5432/dbname?sslmode=disable
 func OpenPostgres(dsn string) (*RealDBPool, error) {
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("pgx", dsn) // "pgx" registered by pgx/v5/stdlib
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(2 * time.Minute)
 
-	if err := db.PingContext(context.Background()); err != nil {
-		return nil, fmt.Errorf("ping postgres: %w", err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping postgres (%s): %w", dsn, err)
 	}
 	return &RealDBPool{db: db, driver: DriverPostgres, dsn: dsn}, nil
 }
@@ -320,6 +327,11 @@ func (q *QueryBuilder) whereSQL(startIdx int) (string, []interface{}) {
 // ─── REAL MIGRATION RUNNER ────────────────────────────────────────────────────
 
 // RealMigrationRunner executes DDL migrations against a real sql.DB.
+// It supports both SQLite and PostgreSQL with dialect-aware placeholders.
+// On PostgreSQL it acquires a session-level advisory lock so concurrent
+// processes (rolling deploys) cannot run migrations simultaneously.
+// Each migration runs inside its own transaction: a partial failure rolls
+// back only that migration, leaving already-applied ones intact.
 type RealMigrationRunner struct {
 	db         *RealDBPool
 	migrations []Migration
@@ -334,7 +346,7 @@ func NewRealMigrationRunner(pool *RealDBPool) *RealMigrationRunner {
 	}
 }
 
-// Register registers a migration to be run.
+// Register appends a migration and keeps the list sorted by version.
 func (mr *RealMigrationRunner) Register(m Migration) *RealMigrationRunner {
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
@@ -345,13 +357,54 @@ func (mr *RealMigrationRunner) Register(m Migration) *RealMigrationRunner {
 	return mr
 }
 
-// Up creates the schema_migrations table (if needed) and runs all pending migrations.
+// ph returns the SQL parameter placeholder appropriate for the driver.
+// PostgreSQL requires $N (1-indexed); SQLite uses ?.
+func (mr *RealMigrationRunner) ph(n int) string {
+	if mr.db.driver == DriverPostgres {
+		return fmt.Sprintf("$%d", n)
+	}
+	return "?"
+}
+
+// acquireAdvisoryLock acquires a PostgreSQL session-level advisory lock so
+// that at most one process runs migrations at a time. It is a no-op on SQLite.
+// Returns a release function that must be deferred by the caller.
+func (mr *RealMigrationRunner) acquireAdvisoryLock() (func(), error) {
+	if mr.db.driver != DriverPostgres {
+		return func() {}, nil
+	}
+	// Stable 32-bit FNV hash of "nilLang-migrations" used as advisory lock key.
+	h := fnv.New32a()
+	h.Write([]byte("nilLang-migrations"))
+	lockID := int64(h.Sum32())
+
+	var acquired bool
+	if err := mr.db.QueryRow("SELECT pg_try_advisory_lock($1)", lockID).Scan(&acquired); err != nil {
+		return nil, fmt.Errorf("pg_try_advisory_lock: %w", err)
+	}
+	if !acquired {
+		return nil, fmt.Errorf("migration already in progress — pg advisory lock held by another connection")
+	}
+	return func() {
+		_ = mr.db.QueryRow("SELECT pg_advisory_unlock($1)", lockID).Scan(new(bool))
+	}, nil
+}
+
+// Up creates the schema_migrations table (if needed) and runs all pending
+// migrations in version order. Each migration is wrapped in its own
+// transaction so a failure never leaves the schema half-applied.
 func (mr *RealMigrationRunner) Up() error {
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
 
-	// Ensure tracking table exists
-	_, err := mr.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+	release, err := mr.acquireAdvisoryLock()
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	// Tracking table — same DDL works for SQLite and PostgreSQL.
+	_, err = mr.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version    INTEGER PRIMARY KEY,
 		name       TEXT NOT NULL,
 		applied_at TEXT NOT NULL
@@ -362,34 +415,58 @@ func (mr *RealMigrationRunner) Up() error {
 
 	for _, m := range mr.migrations {
 		var count int
-		row := mr.db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=?", m.Version)
-		if err := row.Scan(&count); err != nil {
+		if err := mr.db.QueryRow(
+			fmt.Sprintf("SELECT COUNT(*) FROM schema_migrations WHERE version=%s", mr.ph(1)),
+			m.Version,
+		).Scan(&count); err != nil {
 			return fmt.Errorf("check migration %d: %w", m.Version, err)
 		}
 		if count > 0 {
-			continue // already applied
+			continue // already applied — idempotent
 		}
 
-		// Execute the UP SQL (may contain multiple statements)
-		statements := splitStatements(m.UpSQL)
-		for _, stmt := range statements {
-			stmt = strings.TrimSpace(stmt)
-			if stmt == "" {
-				continue
-			}
-			if _, err := mr.db.Exec(stmt); err != nil {
-				return fmt.Errorf("migration %d (%s) statement error: %w\nSQL: %s", m.Version, m.Name, err, stmt)
-			}
+		// Run DDL statements inside an atomic transaction.
+		if err := mr.execMigrationTx(m.Version, m.Name, m.UpSQL); err != nil {
+			return err
 		}
 
-		// Record migration
-		_, err := mr.db.Exec(
-			"INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+		// Record the applied migration.
+		if _, err := mr.db.Exec(
+			fmt.Sprintf(
+				"INSERT INTO schema_migrations (version, name, applied_at) VALUES (%s, %s, %s)",
+				mr.ph(1), mr.ph(2), mr.ph(3),
+			),
 			m.Version, m.Name, time.Now().UTC().Format(time.RFC3339),
-		)
-		if err != nil {
+		); err != nil {
 			return fmt.Errorf("record migration %d: %w", m.Version, err)
 		}
+	}
+	return nil
+}
+
+// execMigrationTx executes one migration's SQL inside a database transaction.
+// On failure the transaction is rolled back and an error is returned.
+func (mr *RealMigrationRunner) execMigrationTx(version int, name, sqlStr string) error {
+	isoLevel := sql.LevelDefault
+	if mr.db.driver == DriverPostgres {
+		isoLevel = sql.LevelSerializable
+	}
+	tx, err := mr.db.BeginTx(isoLevel)
+	if err != nil {
+		return fmt.Errorf("migration %d begin tx: %w", version, err)
+	}
+	for _, stmt := range splitStatements(sqlStr) {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if _, err := tx.Exec(stmt); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("migration %d (%s) failed: %w\nSQL: %s", version, name, err, stmt)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migration %d (%s) commit: %w", version, name, err)
 	}
 	return nil
 }
@@ -401,33 +478,65 @@ func (mr *RealMigrationRunner) Down() error {
 
 	var version int
 	var name string
-	row := mr.db.QueryRow("SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1")
+	row := mr.db.QueryRow(
+		"SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1",
+	)
 	if err := row.Scan(&version, &name); err != nil {
 		return fmt.Errorf("no migrations to rollback: %w", err)
 	}
 
-	// Find and run the DownSQL
 	for _, m := range mr.migrations {
-		if m.Version == version {
-			if m.DownSQL == "" {
-				return fmt.Errorf("migration %d (%s) has no DownSQL", version, name)
-			}
-			statements := splitStatements(m.DownSQL)
-			for _, stmt := range statements {
-				stmt = strings.TrimSpace(stmt)
-				if stmt == "" {
-					continue
-				}
-				if _, err := mr.db.Exec(stmt); err != nil {
-					return fmt.Errorf("rollback migration %d: %w", version, err)
-				}
-			}
-			break
+		if m.Version != version {
+			continue
 		}
+		if m.DownSQL == "" {
+			return fmt.Errorf("migration %d (%s) has no DownSQL", version, name)
+		}
+		if err := mr.execMigrationTx(version, name+" (down)", m.DownSQL); err != nil {
+			return err
+		}
+		break
 	}
 
-	_, err := mr.db.Exec("DELETE FROM schema_migrations WHERE version=?", version)
+	_, err := mr.db.Exec(
+		fmt.Sprintf("DELETE FROM schema_migrations WHERE version=%s", mr.ph(1)),
+		version,
+	)
 	return err
+}
+
+// RollbackN rolls back the N most recent migrations in reverse version order.
+func (mr *RealMigrationRunner) RollbackN(n int) error {
+	for i := 0; i < n; i++ {
+		if err := mr.Down(); err != nil {
+			return fmt.Errorf("rollback step %d/%d: %w", i+1, n, err)
+		}
+	}
+	return nil
+}
+
+// Status returns applied migrations ordered by version ascending.
+// Unlike the in-memory MigrationRunner.Status(), this queries the real DB.
+func (mr *RealMigrationRunner) Status() ([]MigrationRecord, error) {
+	rows, err := mr.db.Query(
+		"SELECT version, name, applied_at FROM schema_migrations ORDER BY version ASC",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("migration status query: %w", err)
+	}
+	defer rows.Close()
+
+	var records []MigrationRecord
+	for rows.Next() {
+		var r MigrationRecord
+		var appliedAt string
+		if err := rows.Scan(&r.Version, &r.Name, &appliedAt); err != nil {
+			return nil, err
+		}
+		r.AppliedAt, _ = time.Parse(time.RFC3339, appliedAt)
+		records = append(records, r)
+	}
+	return records, rows.Err()
 }
 
 // splitStatements splits a multi-statement SQL string on semicolons.
