@@ -13,6 +13,7 @@ type Scope struct {
 	variables map[string]types.Type
 	functions map[string]*types.FunctionType
 	structs   map[string]*types.StructType
+	entities  map[string]*types.EntityType
 }
 
 func NewScope(parent *Scope) *Scope {
@@ -21,6 +22,7 @@ func NewScope(parent *Scope) *Scope {
 		variables: make(map[string]types.Type),
 		functions: make(map[string]*types.FunctionType),
 		structs:   make(map[string]*types.StructType),
+		entities:  make(map[string]*types.EntityType),
 	}
 }
 
@@ -48,6 +50,20 @@ func (s *Scope) GetFunc(name string) (*types.FunctionType, bool) {
 	}
 	if s.parent != nil {
 		return s.parent.GetFunc(name)
+	}
+	return nil, false
+}
+
+func (s *Scope) SetEntity(name string, ent *types.EntityType) {
+	s.entities[name] = ent
+}
+
+func (s *Scope) GetEntity(name string) (*types.EntityType, bool) {
+	if ent, ok := s.entities[name]; ok {
+		return ent, true
+	}
+	if s.parent != nil {
+		return s.parent.GetEntity(name)
 	}
 	return nil, false
 }
@@ -183,7 +199,65 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 			c.checkStatement(nested)
 		}
 		c.currentScope = c.currentScope.parent
+
+	case *ast.EntityStatement:
+		c.checkEntityStatement(s)
 	}
+}
+
+func (c *Checker) checkEntityStatement(s *ast.EntityStatement) {
+	if s.Name == nil || s.Name.Value == "" {
+		c.report("E0201", "Entity declaration must have a valid identifier name", s.Token.Line, s.Token.Column)
+		return
+	}
+
+	entName := s.Name.Value
+	if _, exists := c.currentScope.GetEntity(entName); exists {
+		c.report("E0202", fmt.Sprintf("Duplicate entity declaration: %q already exists in scope", entName), s.Token.Line, s.Token.Column)
+		return
+	}
+
+	fieldDefs := make([]types.EntityFieldDef, 0, len(s.Fields))
+	fieldNames := make(map[string]bool)
+	primaryKeys := 0
+
+	for _, f := range s.Fields {
+		if fieldNames[f.Name] {
+			c.report("E0203", fmt.Sprintf("Duplicate field %q in entity %q", f.Name, entName), s.Token.Line, s.Token.Column)
+			continue
+		}
+		fieldNames[f.Name] = true
+
+		if f.IsPrimary {
+			primaryKeys++
+		}
+
+		ft, err := types.Parse(f.Type)
+		if err != nil {
+			c.report("E0204", fmt.Sprintf("Invalid type %q for field %q in entity %q: %v", f.Type, f.Name, entName, err), s.Token.Line, s.Token.Column)
+			ft = types.Any
+		}
+
+		fieldDefs = append(fieldDefs, types.EntityFieldDef{
+			Name:         f.Name,
+			Type:         ft,
+			IsPrimary:    f.IsPrimary,
+			IsRequired:   f.IsRequired,
+			IsUnique:     f.IsUnique,
+			TargetEntity: f.TargetEntity,
+		})
+	}
+
+	if primaryKeys > 1 {
+		c.report("E0205", fmt.Sprintf("Entity %q has %d primary keys; at most one primary key allowed", entName, primaryKeys), s.Token.Line, s.Token.Column)
+	}
+
+	entType := &types.EntityType{
+		Name:   entName,
+		Fields: fieldDefs,
+	}
+
+	c.currentScope.SetEntity(entName, entType)
 }
 
 func (c *Checker) inferExpression(expr ast.Expression) types.Type {

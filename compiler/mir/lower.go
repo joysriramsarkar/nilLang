@@ -52,6 +52,7 @@ func (l *Lowerer) terminate(term Terminator) {
 func (l *Lowerer) LowerHIR(p *hir.Program) *Program {
 	prog := &Program{
 		Functions: make(map[string]*Function),
+		Entities:  make(map[string]*EntityDef),
 	}
 	l.currentProg = prog
 
@@ -78,6 +79,26 @@ func (l *Lowerer) LowerHIR(p *hir.Program) *Program {
 
 func (l *Lowerer) lowerStatement(stmt hir.Statement) {
 	switch s := stmt.(type) {
+	case *hir.EntityDeclStmt:
+		fields := make([]EntityFieldDef, 0, len(s.Fields))
+		for _, f := range s.Fields {
+			fields = append(fields, EntityFieldDef{
+				Name:         f.Name,
+				Type:         f.Type.String(),
+				IsPrimary:    f.IsPrimary,
+				IsRequired:   f.IsRequired,
+				IsUnique:     f.IsUnique,
+				TargetEntity: f.TargetEntity,
+			})
+		}
+		ent := &EntityDef{
+			Name:   s.Name,
+			Fields: fields,
+		}
+		if l.currentProg != nil {
+			l.currentProg.Entities[s.Name] = ent
+		}
+
 	case *hir.LetStmt:
 		valOp := l.lowerExpression(s.Value)
 		l.emit(StoreVarInst{Name: s.Name, Src: valOp})

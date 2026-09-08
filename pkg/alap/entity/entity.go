@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/joysriramsarkar/nilLang/compiler/ast"
 )
 
 // FieldType represents supported entity field types
@@ -45,6 +47,60 @@ func NewEntity(name string) *Entity {
 		Name:   name,
 		Fields: []Field{},
 	}
+}
+
+// FromAST converts a compiler AST EntityStatement into a canonical runtime Entity model.
+func FromAST(stmt *ast.EntityStatement) (*Entity, error) {
+	if stmt == nil || stmt.Name == nil {
+		return nil, fmt.Errorf("entity statement or name cannot be nil")
+	}
+
+	ent := NewEntity(stmt.Name.Value)
+	for _, f := range stmt.Fields {
+		var ft FieldType
+		switch strings.ToLower(f.Type) {
+		case "uuid":
+			ft = TypeUUID
+		case "string":
+			ft = TypeString
+		case "email":
+			ft = TypeEmail
+		case "int", "integer":
+			ft = TypeInt
+		case "float", "double":
+			ft = TypeFloat
+		case "bool", "boolean":
+			ft = TypeBool
+		case "markdown", "text":
+			ft = TypeMarkdown
+		case "date", "datetime", "timestamp":
+			ft = TypeDate
+		case "money":
+			ft = TypeMoney
+		case "quantity":
+			ft = TypeQuantity
+		case "relation":
+			ft = TypeRelation
+		default:
+			if f.TargetEntity != "" {
+				ft = TypeRelation
+			} else {
+				ft = TypeString
+			}
+		}
+
+		field := Field{
+			Name:         f.Name,
+			Type:         ft,
+			IsPrimaryKey: f.IsPrimary || strings.EqualFold(f.Name, "id"),
+			IsRequired:   f.IsRequired,
+			IsUnique:     f.IsUnique,
+			TargetEntity: f.TargetEntity,
+		}
+		ent.Fields = append(ent.Fields, field)
+	}
+
+	return ent, nil
 }
 
 // AddField adds a field to the entity

@@ -130,6 +130,34 @@ func (s *WhileStmt) String() string {
 	return fmt.Sprintf("while (%s) %s", s.Condition.String(), s.Body.String())
 }
 
+// ─── ENTITY DECLARATION (web-implications.md Section 26) ────────────────────
+
+type EntityFieldDecl struct {
+	Name         string
+	Type         types.Type
+	IsPrimary    bool
+	IsRequired   bool
+	IsUnique     bool
+	TargetEntity string
+}
+
+type EntityDeclStmt struct {
+	Name       string
+	EntityType *types.EntityType
+	Fields     []EntityFieldDecl
+}
+
+func (s *EntityDeclStmt) stmtNode() {}
+func (s *EntityDeclStmt) String() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("entity %s {\n", s.Name))
+	for _, f := range s.Fields {
+		b.WriteString(fmt.Sprintf("  %s: %s;\n", f.Name, f.Type.String()))
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
 // ─── EXPRESSIONS ────────────────────────────────────────────────────────────
 
 type IntLit struct {

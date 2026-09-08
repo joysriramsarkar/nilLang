@@ -20,6 +20,7 @@ const (
 	KindFunction   TypeKind = "FUNCTION"
 	KindCapability TypeKind = "CAPABILITY"
 	KindEffect     TypeKind = "EFFECT"
+	KindEntity     TypeKind = "ENTITY"
 	KindAny        TypeKind = "ANY"
 )
 
@@ -62,13 +63,18 @@ func (p PrimitiveType) AssignableTo(target Type) bool {
 }
 
 var (
-	Int    = PrimitiveType{Name: "Int"}
-	Float  = PrimitiveType{Name: "Float"}
-	String = PrimitiveType{Name: "String"}
-	Bool   = PrimitiveType{Name: "Bool"}
-	Byte   = PrimitiveType{Name: "Byte"}
-	Null   = PrimitiveType{Name: "Null"}
-	Void   = PrimitiveType{Name: "Void"}
+	Int      = PrimitiveType{Name: "Int"}
+	Float    = PrimitiveType{Name: "Float"}
+	String   = PrimitiveType{Name: "String"}
+	Bool     = PrimitiveType{Name: "Bool"}
+	Byte     = PrimitiveType{Name: "Byte"}
+	Null     = PrimitiveType{Name: "Null"}
+	Void     = PrimitiveType{Name: "Void"}
+	UUID     = PrimitiveType{Name: "UUID"}
+	Email    = PrimitiveType{Name: "Email"}
+	Date     = PrimitiveType{Name: "Date"}
+	Money    = PrimitiveType{Name: "Money"}
+	Quantity = PrimitiveType{Name: "Quantity"}
 )
 
 // ─── ANY TYPE ───────────────────────────────────────────────────────────────
@@ -527,11 +533,72 @@ func Parse(s string) (Type, error) {
 		return Null, nil
 	case "Void":
 		return Void, nil
+	case "UUID":
+		return UUID, nil
+	case "Email":
+		return Email, nil
+	case "Date":
+		return Date, nil
+	case "Money":
+		return Money, nil
+	case "Quantity":
+		return Quantity, nil
 	case "Any":
 		return Any, nil
 	default:
 		return &StructType{Name: s}, nil
 	}
+}
+
+// ─── ENTITY TYPE (web-implications.md Section 26) ───────────────────────────
+
+type EntityFieldDef struct {
+	Name         string
+	Type         Type
+	IsPrimary    bool
+	IsRequired   bool
+	IsUnique     bool
+	TargetEntity string
+}
+
+type EntityType struct {
+	Name   string
+	Fields []EntityFieldDef
+}
+
+func (e *EntityType) Kind() TypeKind { return KindEntity }
+func (e *EntityType) String() string {
+	if len(e.Fields) == 0 {
+		return "entity " + e.Name
+	}
+	var f []string
+	for _, field := range e.Fields {
+		f = append(f, fmt.Sprintf("%s: %s", field.Name, field.Type.String()))
+	}
+	return fmt.Sprintf("entity %s { %s }", e.Name, strings.Join(f, ", "))
+}
+func (e *EntityType) Equals(other Type) bool {
+	if o, ok := other.(*EntityType); ok {
+		return e.Name == o.Name
+	}
+	return false
+}
+func (e *EntityType) AssignableTo(target Type) bool {
+	if target == nil {
+		return false
+	}
+	if _, ok := target.(AnyType); ok {
+		return true
+	}
+	return e.Equals(target)
+}
+func (e *EntityType) GetField(name string) (EntityFieldDef, bool) {
+	for _, f := range e.Fields {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return EntityFieldDef{}, false
 }
 
 func splitGenericArgs(s string) []string {

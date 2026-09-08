@@ -290,10 +290,16 @@ func (cs *CheckoutService) Execute(
 					if err != nil {
 						return fmt.Errorf("update customer balance: %w", err)
 					}
+
+					var newDueBalance int64
+					if err := tx.QueryRow(`SELECT due_balance_minor FROM customers WHERE id=?`, customerID).Scan(&newDueBalance); err != nil {
+						return fmt.Errorf("read updated customer due balance: %w", err)
+					}
+
 					ledgerID := fmt.Sprintf("cled-%s-%d", saleID, i)
 					_, err = tx.Exec(
 						`INSERT INTO customer_ledger (id,customer_id,type,amount_minor,balance_after,reference,notes,created_by,timestamp) VALUES (?,?,?,?,?,?,?,?,?)`,
-						ledgerID, customerID, "CREDIT_SALE", p.AmountMinor, 0,
+						ledgerID, customerID, "CREDIT_SALE", p.AmountMinor, newDueBalance,
 						invoiceNo, fmt.Sprintf("Baki on Invoice %s", invoiceNo), cashierID,
 						now.UTC().Format(time.RFC3339),
 					)

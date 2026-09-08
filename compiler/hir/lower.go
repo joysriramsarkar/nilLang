@@ -84,6 +84,46 @@ func (l *Lowerer) lowerStatement(stmt ast.Statement) Statement {
 	case *ast.BlockStatement:
 		return l.lowerBlock(s)
 
+	case *ast.EntityStatement:
+		name := ""
+		if s.Name != nil {
+			name = s.Name.Value
+		}
+		fields := make([]EntityFieldDecl, 0, len(s.Fields))
+		typeFields := make([]types.EntityFieldDef, 0, len(s.Fields))
+		for _, f := range s.Fields {
+			ft, err := types.Parse(f.Type)
+			if err != nil {
+				ft = types.Any
+			}
+			fields = append(fields, EntityFieldDecl{
+				Name:         f.Name,
+				Type:         ft,
+				IsPrimary:    f.IsPrimary,
+				IsRequired:   f.IsRequired,
+				IsUnique:     f.IsUnique,
+				TargetEntity: f.TargetEntity,
+			})
+			typeFields = append(typeFields, types.EntityFieldDef{
+				Name:         f.Name,
+				Type:         ft,
+				IsPrimary:    f.IsPrimary,
+				IsRequired:   f.IsRequired,
+				IsUnique:     f.IsUnique,
+				TargetEntity: f.TargetEntity,
+			})
+		}
+		entType := &types.EntityType{
+			Name:   name,
+			Fields: typeFields,
+		}
+		l.symbols[name] = entType
+		return &EntityDeclStmt{
+			Name:       name,
+			EntityType: entType,
+			Fields:     fields,
+		}
+
 	default:
 		return nil
 	}

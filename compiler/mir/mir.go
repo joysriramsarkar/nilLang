@@ -181,13 +181,43 @@ func (f *Function) String() string {
 	return b.String()
 }
 
+// ─── ENTITY DEFINITION (web-implications.md Section 26) ──────────────────────
+
+type EntityFieldDef struct {
+	Name         string
+	Type         string
+	IsPrimary    bool
+	IsRequired   bool
+	IsUnique     bool
+	TargetEntity string
+}
+
+type EntityDef struct {
+	Name   string
+	Fields []EntityFieldDef
+}
+
+func (e *EntityDef) String() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("entity %s {\n", e.Name))
+	for _, f := range e.Fields {
+		b.WriteString(fmt.Sprintf("    %s: %s\n", f.Name, f.Type))
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
 type Program struct {
 	Functions map[string]*Function
+	Entities  map[string]*EntityDef
 	Main      *Function
 }
 
 func (p *Program) String() string {
 	var b strings.Builder
+	for _, ent := range p.Entities {
+		b.WriteString(ent.String())
+	}
 	if p.Main != nil {
 		b.WriteString(p.Main.String())
 	}
