@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
 )
 
 // Job defines an executable background task
@@ -258,3 +260,132 @@ func NewCleanupJob(cleanupHandler func(ctx context.Context) error) Job {
 		},
 	}
 }
+
+// ─── DURABLE SQLITE-BACKED JOB STORE ────────────────────────────────────────
+
+// JobRecordStatus tracks persistent job lifecycle in SQLite
+type JobRecordStatus string
+
+const (
+	JobStatusPending    JobRecordStatus = "PENDING"
+	JobStatusProcessing JobRecordStatus = "PROCESSING"
+	JobStatusCompleted  JobRecordStatus = "COMPLETED"
+	JobStatusFailed     JobRecordStatus = "FAILED"
+)
+
+// JobRecord represents a persistent job row in the job_records table
+type JobRecord struct {
+	ID          string          `json:"id"`
+	JobType     string          `json:"job_type"`
+	Status      JobRecordStatus `json:"status"`
+	Payload     string          `json:"payload,omitempty"`
+	Attempt     int             `json:"attempt"`
+	MaxAttempts int             `json:"max_attempts"`
+	LastError   string          `json:"last_error,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	StartedAt   *time.Time      `json:"started_at,omitempty"`
+	FinishedAt  *time.Time      `json:"finished_at,omitempty"`
+}
+
+// DurableJobStore manages SQLite-persisted background job queues
+type DurableJobStore struct {
+	db *data.RealDBPool
+	mu sync.Mutex
+}
+
+// NewDurableJobStore creates a durable job store backed by SQLite
+func NewDurableJobStore(db *data.RealDBPool) *DurableJobStore {
+	return &DurableJobStore{db: db}
+}
+
+// Enqueue inserts a new job record into SQLite
+func (js *DurableJobStore) Enqueue(jobType, payload string, maxAttempts int) (*JobRecord, error) {
+	js.mu.Lock()
+	defer js.mu.Unlock()
+
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	now := time.Now()
+	nowStr := now.UTC().Format(time.RFC3339)
+	jobID := fmt.Sprintf("job-%d", now.UnixNano())
+
+	rec := &JobRecord{
+		ID:          jobID,
+		JobType:     jobType,
+		Status:      JobStatusPending,
+		Payload:     payload,
+		MaxAttempts: maxAttempts,
+		CreatedAt:   now,
+	}
+
+	_, err := js.db.Exec(
+		`INSERT INTO job_records (id, job_type, status, payload, attempt, max_attempts, created_at)
+		 VALUES (?, ?, ?, ?, 0, ?, ?)`,
+		rec.ID, rec.JobType, string(rec.Status), rec.Payload, rec.MaxAttempts, nowStr,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("enqueue job: %w", err)
+	}
+	return rec, nil
+}
+
+// FetchNextPending retrieves the oldest pending job and marks it PROCESSING
+func (js *DurableJobStore) FetchNextPending() (*JobRecord, error) {
+	js.mu.Lock()
+	defer js.mu.Unlock()
+
+	row := js.db.QueryRow(
+		`SELECT id, job_type, status, payload, attempt, max_attempts, created_at
+		 FROM job_records WHERE status = ? ORDER BY created_at ASC LIMIT 1`,
+		string(JobStatusPending),
+	)
+
+	var rec JobRecord
+	var status string
+	var createdStr string
+	err := row.Scan(&rec.ID, &rec.JobType, &status, &rec.Payload, &rec.Attempt, &rec.MaxAttempts, &createdStr)
+	if err != nil {
+		return nil, err // sql.ErrNoRows if empty
+	}
+	rec.Status = JobRecordStatus(status)
+	rec.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
+
+	now := time.Now()
+	nowStr := now.UTC().Format(time.RFC3339)
+	_, _ = js.db.Exec(
+		`UPDATE job_records SET status = ?, started_at = ?, attempt = attempt + 1 WHERE id = ?`,
+		string(JobStatusProcessing), nowStr, rec.ID,
+	)
+	rec.Attempt++
+	rec.Status = JobStatusProcessing
+	rec.StartedAt = &now
+	return &rec, nil
+}
+
+// MarkCompleted marks a job as successfully finished
+func (js *DurableJobStore) MarkCompleted(id string) error {
+	js.mu.Lock()
+	defer js.mu.Unlock()
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	_, err := js.db.Exec(
+		`UPDATE job_records SET status = ?, finished_at = ? WHERE id = ?`,
+		string(JobStatusCompleted), nowStr, id,
+	)
+	return err
+}
+
+// MarkFailed marks a job as failed, recording the error
+func (js *DurableJobStore) MarkFailed(id string, errMsg string) error {
+	js.mu.Lock()
+	defer js.mu.Unlock()
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	_, err := js.db.Exec(
+		`UPDATE job_records SET status = ?, last_error = ?, finished_at = ? WHERE id = ?`,
+		string(JobStatusFailed), errMsg, nowStr, id,
+	)
+	return err
+}
+

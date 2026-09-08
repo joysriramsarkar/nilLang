@@ -30,23 +30,29 @@ type PaymentRecord struct {
 
 // TenderResult calculates change and balance
 type TenderResult struct {
-	TotalDueMinor   int64 `json:"total_due_minor"`
-	TotalPaidMinor  int64 `json:"total_paid_minor"`
-	ChangeDueMinor  int64 `json:"change_due_minor"`
-	BalanceDueMinor int64 `json:"balance_due_minor"`
-	IsComplete      bool  `json:"is_complete"`
+	TotalDueMinor     int64 `json:"total_due_minor"`
+	TotalPaidMinor    int64 `json:"total_paid_minor"`
+	ChangeDueMinor    int64 `json:"change_due_minor"`
+	BalanceDueMinor   int64 `json:"balance_due_minor"`
+	IsComplete        bool  `json:"is_complete"`
+	TriggerCashDrawer bool  `json:"trigger_cash_drawer"` // true when at least one payment is CASH
 }
 
 // CalculateTender evaluates given payment against total due
 func CalculateTender(totalDueMinor int64, payments []PaymentRecord) TenderResult {
 	var totalPaid int64 = 0
+	hasCash := false
 	for _, p := range payments {
 		totalPaid += p.AmountMinor
+		if p.Method == MethodCash {
+			hasCash = true
+		}
 	}
 
 	res := TenderResult{
-		TotalDueMinor:  totalDueMinor,
-		TotalPaidMinor: totalPaid,
+		TotalDueMinor:     totalDueMinor,
+		TotalPaidMinor:    totalPaid,
+		TriggerCashDrawer: hasCash,
 	}
 
 	if totalPaid >= totalDueMinor {

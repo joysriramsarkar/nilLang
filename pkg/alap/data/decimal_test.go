@@ -32,3 +32,31 @@ func TestExtendedDecimal(t *testing.T) {
 		t.Errorf("Expected 11500, got %d", result.Minor)
 	}
 }
+
+func TestDecimalCheckedArithmetic(t *testing.T) {
+	d1, _ := ParseDecimal("100.5")
+	d2, _ := ParseDecimal("50.25")
+
+	sum, err := d1.AddChecked(d2)
+	if err != nil || sum.String() != "150.75" {
+		t.Fatalf("AddChecked: %v, sum=%s", err, sum.String())
+	}
+
+	diff, err := d1.SubChecked(d2)
+	if err != nil || diff.String() != "50.25" {
+		t.Fatalf("SubChecked: %v, diff=%s", err, diff.String())
+	}
+
+	mul, err := d1.MulChecked(NewDecimalFromInt(2))
+	if err != nil || mul.String() != "201.00" {
+		t.Fatalf("MulChecked: %v, mul=%s", err, mul.String())
+	}
+
+	// Overflow test
+	huge := Decimal{Value: 1 << 62}
+	_, err = huge.AddChecked(huge)
+	if err != ErrOverflow {
+		t.Fatalf("Expected ErrOverflow, got %v", err)
+	}
+}
+

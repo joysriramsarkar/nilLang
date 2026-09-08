@@ -3,6 +3,7 @@ package data
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // Dimension represents physical dimensional quantity types
@@ -22,7 +23,9 @@ type Unit struct {
 	NameBn         string    `json:"name_bn"`
 	Dimension      Dimension `json:"dimension"`
 	BaseMultiplier int64     `json:"base_multiplier"` // Multiplier to normalize to dimension base unit
+	IsCustom       bool      `json:"is_custom,omitempty"`
 }
+
 
 // Dimension Base Units:
 // Mass:   mg (1 g = 1,000 mg; 1 kg = 1,000,000 mg)
@@ -138,6 +141,36 @@ var standardUnits = []Unit{
 	UnitMm, UnitCm, UnitMetre,
 }
 
+var (
+	customUnitsLock sync.RWMutex
+	customUnits     = make(map[string]Unit)
+)
+
+// RegisterUnit explicitly registers a custom unit of measurement.
+func RegisterUnit(u Unit) {
+	customUnitsLock.Lock()
+	defer customUnitsLock.Unlock()
+	u.IsCustom = true
+	customUnits[strings.ToLower(strings.TrimSpace(u.Symbol))] = u
+	if u.Name != "" {
+		customUnits[strings.ToLower(strings.TrimSpace(u.Name))] = u
+	}
+	if u.NameBn != "" {
+		customUnits[strings.TrimSpace(u.NameBn)] = u
+	}
+}
+
+// IsStandardUnit returns true if the unit is a built-in canonical standard.
+func IsStandardUnit(s string) bool {
+	s = strings.TrimSpace(strings.ToLower(s))
+	for _, u := range standardUnits {
+		if strings.EqualFold(u.Symbol, s) || strings.EqualFold(u.Name, s) || u.NameBn == s {
+			return true
+		}
+	}
+	return false
+}
+
 // LookupUnit finds a registered Unit by symbol, English name, or Bengali name
 func LookupUnit(s string) (Unit, bool) {
 	s = strings.TrimSpace(strings.ToLower(s))
@@ -151,6 +184,15 @@ func LookupUnit(s string) (Unit, bool) {
 			return u, true
 		}
 	}
+
+	// Check registered custom units
+	customUnitsLock.RLock()
+	cu, exists := customUnits[s]
+	customUnitsLock.RUnlock()
+	if exists {
+		return cu, true
+	}
+
 	// Fallback for custom count units
 	return Unit{
 		Symbol:         s,
@@ -158,8 +200,10 @@ func LookupUnit(s string) (Unit, bool) {
 		NameBn:         s,
 		Dimension:      DimensionCount,
 		BaseMultiplier: 1,
+		IsCustom:       true,
 	}, true
 }
+
 
 // CanConvert returns whether two units belong to the same dimension and are compatible
 func CanConvert(u1, u2 Unit) bool {

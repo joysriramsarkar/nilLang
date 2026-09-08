@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NilLang POS — নীলাং পয়েন্ট অব সেল</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d2e;
+  --surface2: #242736;
+  --border: #2d3148;
+  --accent: #6c63ff;
+  --accent2: #a78bfa;
+  --green: #10b981;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --radius: 10px;
+  --font: 'Segoe UI', 'Noto Sans Bengali', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+/* HEADER */
+#header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 16px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+#header h1 { font-size: 16px; font-weight: 700; color: var(--accent2); }
+#shift-status { font-size: 12px; color: var(--muted); margin-left: auto; }
+#shift-cashier { color: var(--green); font-weight: 600; }
+#clock { font-size: 13px; color: var(--muted); min-width: 80px; text-align: right; }
+
+/* LAYOUT */
+#main { display: grid; grid-template-columns: 1fr 380px; flex: 1; overflow: hidden; }
+
+/* LEFT: products */
+#left-panel { display: flex; flex-direction: column; overflow: hidden; padding: 12px; gap: 10px; }
+
+#search-bar { position: relative; }
+#search-bar input { width: 100%; padding: 10px 14px 10px 40px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 15px; outline: none; transition: border-color .2s; }
+#search-bar input:focus { border-color: var(--accent); }
+#search-bar .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 16px; }
+#barcode-hint { font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }
+
+#categories { display: flex; gap: 6px; flex-wrap: wrap; }
+.cat-btn { padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; transition: all .15s; }
+.cat-btn.active, .cat-btn:hover { background: var(--accent); border-color: var(--accent); color: white; }
+
+#product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; overflow-y: auto; flex: 1; padding-right: 4px; }
+.product-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; cursor: pointer; transition: all .15s; user-select: none; }
+.product-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(108,99,255,.2); }
+.product-card.low-stock { border-color: var(--yellow); }
+.product-card.out-stock { opacity: .5; pointer-events: none; }
+.product-card .name { font-size: 13px; font-weight: 600; margin-bottom: 4px; line-height: 1.3; }
+.product-card .name-bn { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.product-card .price { color: var(--green); font-size: 15px; font-weight: 700; }
+.product-card .stock { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* RIGHT: cart + payment */
+#right-panel { background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+
+#cart-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+#cart-header h2 { font-size: 14px; font-weight: 700; }
+#cart-clear { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; color: var(--red); cursor: pointer; font-size: 12px; }
+#cart-clear:hover { background: var(--red); color: white; }
+
+#cart-items { flex: 1; overflow-y: auto; padding: 8px; }
+.cart-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; margin-bottom: 4px; background: var(--surface2); }
+.cart-item .ci-name { flex: 1; font-size: 13px; }
+.cart-item .ci-name small { display: block; color: var(--muted); font-size: 11px; }
+.cart-item .qty-ctrl { display: flex; align-items: center; gap: 6px; }
+.qty-btn { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+.qty-btn:hover { background: var(--accent); border-color: var(--accent); }
+.qty-display { min-width: 28px; text-align: center; font-size: 14px; font-weight: 600; }
+.cart-item .ci-total { min-width: 72px; text-align: right; font-size: 13px; font-weight: 600; color: var(--green); }
+.cart-item .ci-remove { color: var(--red); cursor: pointer; font-size: 16px; padding: 2px; }
+.empty-cart { text-align: center; color: var(--muted); padding: 40px 20px; font-size: 14px; }
+
+#cart-totals { padding: 12px 16px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.total-row { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; color: var(--muted); }
+.total-row.grand { color: var(--text); font-size: 17px; font-weight: 700; padding-top: 6px; border-top: 1px solid var(--border); margin-top: 4px; }
+.total-row.grand span:last-child { color: var(--green); }
+
+#payment-panel { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+.payment-methods { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pay-method-btn { padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s; }
+.pay-method-btn.active { border-color: var(--accent); background: rgba(108,99,255,.2); color: var(--accent2); }
+.pay-method-btn:hover { border-color: var(--accent); }
+
+#tender-row { display: flex; gap: 8px; }
+#tender-amount { flex: 1; padding: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 16px; text-align: right; outline: none; }
+#tender-amount:focus { border-color: var(--accent); }
+
+#change-display { font-size: 14px; color: var(--muted); text-align: center; min-height: 20px; }
+#change-display.positive { color: var(--green); font-weight: 600; }
+#change-display.negative { color: var(--red); }
+
+#checkout-btn { width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: var(--radius); color: white; font-size: 16px; font-weight: 700; cursor: pointer; transition: all .15s; }
+#checkout-btn:hover { background: var(--accent2); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(108,99,255,.4); }
+#checkout-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+/* MODALS */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+.modal-overlay.hidden { display: none; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; min-width: 400px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.modal h3 { font-size: 18px; margin-bottom: 16px; }
+.modal-close { float: right; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; }
+
+#receipt-content { white-space: pre; font-family: 'Courier New', monospace; font-size: 12px; background: white; color: black; padding: 20px; border-radius: 8px; line-height: 1.5; }
+#print-btn { margin-top: 12px; width: 100%; padding: 10px; background: var(--green); border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+.shift-form input { width: 100%; padding: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; margin-bottom: 8px; outline: none; }
+.modal-btn { width: 100%; padding: 12px; border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 4px; }
+.modal-btn.primary { background: var(--accent); }
+.modal-btn.danger  { background: var(--red); }
+
+/* TOAST */
+#toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; z-index: 200; transition: all .3s; opacity: 0; pointer-events: none; }
+#toast.show { opacity: 1; }
+#toast.success { background: var(--green); color: white; }
+#toast.error { background: var(--red); color: white; }
+
+#kbd-hints { font-size: 11px; color: var(--muted); padding: 4px 16px; border-top: 1px solid var(--border); display: flex; gap: 12px; flex-shrink: 0; background: var(--surface); }
+kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 10px; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🏪 NilLang POS</h1>
+  <span id="shift-status">Shift: <span id="shift-cashier">–</span></span>
+  <button onclick="openShiftModal()" style="background:none;border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;">⏱ Shift</button>
+  <span id="clock"></span>
+</div>
+
+<div id="main">
+  <div id="left-panel">
+    <div id="search-bar">
+      <span class="icon">🔍</span>
+      <input type="text" id="search-input" placeholder="F2 — Product search / barcode… (বাংলায় লিখুন)" autocomplete="off">
+      <div id="barcode-hint">USB scanner → auto-lookup on Enter</div>
+    </div>
+    <div id="categories"></div>
+    <div id="product-grid"></div>
+  </div>
+
+  <div id="right-panel">
+    <div id="cart-header">
+      <h2>🛒 Cart</h2>
+      <button id="cart-clear" onclick="clearCart()">Clear</button>
+    </div>
+    <div id="cart-items"><div class="empty-cart">Cart is empty<br><small>Click a product or scan barcode</small></div></div>
+    <div id="cart-totals">
+      <div class="total-row"><span>Subtotal</span><span id="t-sub">৳0.00</span></div>
+      <div class="total-row"><span>Discount</span><span id="t-disc" style="color:var(--red)">-৳0.00</span></div>
+      <div class="total-row"><span>Tax</span><span id="t-tax">৳0.00</span></div>
+      <div class="total-row grand"><span>TOTAL</span><span id="t-total">৳0.00</span></div>
+    </div>
+    <div id="payment-panel">
+      <div class="payment-methods">
+        <button class="pay-method-btn active" onclick="selectMethod('CASH')" id="pay-CASH">💵 Cash</button>
+        <button class="pay-method-btn" onclick="selectMethod('CARD')" id="pay-CARD">💳 Card</button>
+        <button class="pay-method-btn" onclick="selectMethod('UPI')" id="pay-UPI">📱 UPI</button>
+        <button class="pay-method-btn" onclick="selectMethod('WALLET')" id="pay-WALLET">📲 Wallet</button>
+      </div>
+      <div id="tender-row">
+        <input type="number" id="tender-amount" placeholder="Amount received (৳)" oninput="calcChange()">
+      </div>
+      <div id="change-display">Enter payment amount</div>
+      <button id="checkout-btn" onclick="doCheckout()">✓ Checkout — F8</button>
+    </div>
+  </div>
+</div>
+
+<div id="kbd-hints">
+  <span><kbd>F2</kbd> Search</span>
+  <span><kbd>F8</kbd> Pay</span>
+  <span><kbd>Esc</kbd> Clear</span>
+  <span><kbd>Enter</kbd> Scan / Confirm</span>
+</div>
+
+<!-- RECEIPT MODAL -->
+<div class="modal-overlay hidden" id="receipt-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('receipt-modal')">✕</button>
+    <h3>🧾 Receipt</h3>
+    <pre id="receipt-content"></pre>
+    <button id="print-btn" onclick="window.print()">🖨️ Print</button>
+    <button class="modal-btn" onclick="closeModal('receipt-modal');clearCart()" style="margin-top:8px;background:var(--accent)">✓ New Sale</button>
+  </div>
+</div>
+
+<!-- SHIFT MODAL -->
+<div class="modal-overlay hidden" id="shift-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('shift-modal')">✕</button>
+    <h3>⏱ Shift Management</h3>
+    <div id="shift-modal-body"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+var cart = [];
+var selectedMethod = 'CASH';
+var allProducts = [];
+var allCategories = [];
+var activeCategory = null;
+var barcodeBuffer = '';
+var barcodeTimer = null;
+
+function init() {
+  updateClock();
+  setInterval(updateClock, 1000);
+  loadCategories();
+  loadProducts();
+  loadShiftStatus();
+  document.getElementById('search-input').focus();
+}
+
+function updateClock() {
+  var now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('bn-BD', {hour:'2-digit', minute:'2-digit'});
+}
+
+function loadCategories() {
+  fetch('/api/categories').then(function(r){ return r.json(); }).then(function(data) {
+    allCategories = data || [];
+    renderCategories();
+  }).catch(function(){});
+}
+
+function renderCategories() {
+  var el = document.getElementById('categories');
+  var html = '<button class="cat-btn active" onclick="filterCategory(null, this)">All</button>';
+  (allCategories || []).sort(function(a,b){ return a.name.localeCompare(b.name); }).forEach(function(c) {
+    html += '<button class="cat-btn" onclick="filterCategory(\'' + c.id + '\', this)">' + (c.icon||'') + ' ' + (c.name_bn||c.name) + '</button>';
+  });
+  el.innerHTML = html;
+}
+
+function filterCategory(id, btn) {
+  activeCategory = id;
+  document.querySelectorAll('.cat-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderProducts();
+}
+
+function loadProducts() {
+  fetch('/api/products').then(function(r){ return r.json(); }).then(function(data) {
+    allProducts = data || [];
+    renderProducts();
+  }).catch(function(){});
+}
+
+function renderProducts(filtered) {
+  var products = filtered || allProducts;
+  var grid = document.getElementById('product-grid');
+  var visible = products.filter(function(p){
+    return p.active && (!activeCategory || p.category_id === activeCategory);
+  });
+
+  if (!visible.length) {
+    grid.innerHTML = '<div style="color:var(--muted);padding:20px;text-align:center">No products found</div>';
+    return;
+  }
+
+  grid.innerHTML = visible.map(function(p) {
+    var stock = Math.round(p.stock_raw / 10000);
+    var price = (p.price_minor / 100).toFixed(2);
+    var low = p.low_stock_raw > 0 && p.stock_raw <= p.low_stock_raw;
+    var out = p.stock_raw <= 0;
+    var cls = out ? 'out-stock' : low ? 'low-stock' : '';
+    var stockLabel = out ? '⚠️ Out' : (low ? '⚠️ Low: ' + stock : '📦 ' + stock);
+    return '<div class="product-card ' + cls + '" onclick="addToCart(\'' + p.id + '\')">' +
+      '<div class="name">' + (p.name_bn || p.name) + '</div>' +
+      '<div class="name-bn">' + (p.name_bn ? p.name : '') + '</div>' +
+      '<div class="price">৳' + price + '</div>' +
+      '<div class="stock">' + stockLabel + ' ' + (p.unit||'') + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function searchProducts(q) {
+  if (!q.trim()) { renderProducts(); return; }
+  fetch('/api/products/search?q=' + encodeURIComponent(q)).then(function(r){ return r.json(); }).then(function(data) {
+    renderProducts(data || []);
+  });
+}
+
+// Barcode scanner (keyboard emulation mode)
+document.addEventListener('keydown', function(e) {
+  var tag = document.activeElement.tagName;
+  if (tag === 'INPUT' && document.activeElement.id !== 'search-input') return;
+
+  if (e.key === 'Enter' && barcodeBuffer.length > 3) {
+    e.preventDefault();
+    lookupBarcode(barcodeBuffer.trim());
+    barcodeBuffer = '';
+    return;
+  }
+  if (e.key === 'F2') { e.preventDefault(); document.getElementById('search-input').focus(); return; }
+  if (e.key === 'F8') { e.preventDefault(); doCheckout(); return; }
+  if (e.key === 'Escape') { e.preventDefault(); clearCart(); return; }
+
+  if (tag !== 'INPUT' && e.key.length === 1) {
+    clearTimeout(barcodeTimer);
+    barcodeBuffer += e.key;
+    barcodeTimer = setTimeout(function(){ barcodeBuffer = ''; }, 80);
+  }
+});
+
+function lookupBarcode(barcode) {
+  fetch('/api/products/barcode/' + encodeURIComponent(barcode)).then(function(r) {
+    if (!r.ok) { showToast('Product not found: ' + barcode, 'error'); return null; }
+    return r.json();
+  }).then(function(p) {
+    if (!p) return;
+    addToCart(p.id);
+    showToast('✓ Added: ' + (p.name_bn || p.name), 'success');
+  });
+}
+
+function addToCart(productId) {
+  var p = allProducts.find(function(x){ return x.id === productId; });
+  if (!p) return;
+  var existing = cart.find(function(i){ return i.product.id === productId; });
+  if (existing) { existing.quantity += 1; }
+  else { cart.push({ product: p, quantity: 1 }); }
+  renderCart();
+  showToast('✓ ' + (p.name_bn || p.name), 'success');
+}
+
+function changeQty(productId, delta) {
+  var item = cart.find(function(i){ return i.product.id === productId; });
+  if (!item) return;
+  item.quantity += delta;
+  if (item.quantity <= 0) removeFromCart(productId);
+  else renderCart();
+}
+
+function removeFromCart(productId) {
+  cart = cart.filter(function(i){ return i.product.id !== productId; });
+  renderCart();
+}
+
+function clearCart() {
+  cart = [];
+  renderCart();
+}
+
+function renderCart() {
+  var el = document.getElementById('cart-items');
+  if (!cart.length) {
+    el.innerHTML = '<div class="empty-cart">Cart is empty<br><small>Click a product or scan barcode</small></div>';
+  } else {
+    el.innerHTML = cart.map(function(item) {
+      var p = item.product;
+      var lineTotal = (p.price_minor * item.quantity / 100).toFixed(2);
+      return '<div class="cart-item">' +
+        '<div class="ci-name">' + (p.name_bn || p.name) + '<small>' + (p.name_bn ? p.name : '') + ' · ' + (p.unit||'pcs') + '</small></div>' +
+        '<div class="qty-ctrl">' +
+          '<button class="qty-btn" onclick="changeQty(\'' + p.id + '\',-1)">−</button>' +
+          '<span class="qty-display">' + item.quantity + '</span>' +
+          '<button class="qty-btn" onclick="changeQty(\'' + p.id + '\',1)">+</button>' +
+        '</div>' +
+        '<div class="ci-total">৳' + lineTotal + '</div>' +
+        '<span class="ci-remove" onclick="removeFromCart(\'' + p.id + '\')">✕</span>' +
+      '</div>';
+    }).join('');
+  }
+  updateTotals();
+  calcChange();
+}
+
+function updateTotals() {
+  var sub = 0;
+  cart.forEach(function(i){ sub += i.product.price_minor * i.quantity; });
+  document.getElementById('t-sub').textContent = fmt(sub);
+  document.getElementById('t-disc').textContent = '-৳0.00';
+  document.getElementById('t-tax').textContent = '৳0.00';
+  document.getElementById('t-total').textContent = fmt(sub);
+  document.getElementById('checkout-btn').disabled = !cart.length;
+  if (selectedMethod !== 'CASH') {
+    document.getElementById('tender-amount').value = (sub / 100).toFixed(2);
+    calcChange();
+  }
+}
+
+function cartTotal() {
+  return cart.reduce(function(s, i){ return s + i.product.price_minor * i.quantity; }, 0);
+}
+
+function selectMethod(method) {
+  selectedMethod = method;
+  document.querySelectorAll('.pay-method-btn').forEach(function(b){ b.classList.remove('active'); });
+  var btn = document.getElementById('pay-' + method);
+  if (btn) btn.classList.add('active');
+  var total = cartTotal();
+  if (method !== 'CASH') {
+    document.getElementById('tender-amount').value = (total / 100).toFixed(2);
+  } else {
+    document.getElementById('tender-amount').value = '';
+  }
+  calcChange();
+}
+
+function calcChange() {
+  var total = cartTotal();
+  var tenderVal = parseFloat(document.getElementById('tender-amount').value) || 0;
+  var tender = Math.round(tenderVal * 100);
+  var change = tender - total;
+  var el = document.getElementById('change-display');
+  if (!cart.length) { el.textContent = 'Enter payment amount'; el.className = ''; return; }
+  if (tender <= 0) { el.textContent = 'কত দিলেন? (Amount received)'; el.className = ''; return; }
+  if (change >= 0) {
+    el.textContent = 'Change: ' + fmt(change);
+    el.className = 'positive';
+  } else {
+    el.textContent = 'Short: ' + fmt(-change);
+    el.className = 'negative';
+  }
+}
+
+function doCheckout() {
+  if (!cart.length) { showToast('Cart is empty', 'error'); return; }
+  var total = cartTotal();
+  var tenderVal = parseFloat(document.getElementById('tender-amount').value) || 0;
+  var tender = Math.round(tenderVal * 100);
+  if (selectedMethod === 'CASH' && tender < total) { showToast('Payment amount is insufficient', 'error'); return; }
+
+  var payload = {
+    items: cart.map(function(i){ return { product_id: i.product.id, quantity: String(i.quantity) }; }),
+    payments: [{ method: selectedMethod, amount_minor: selectedMethod === 'CASH' ? tender : total }],
+    cashier_id: 'cashier-01',
+    register_id: 'reg-01'
+  };
+
+  var btn = document.getElementById('checkout-btn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  fetch('/api/cart/checkout', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  }).then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+  .then(function(res) {
+    if (!res.ok) { showToast('Checkout failed: ' + (res.data.error||'Unknown'), 'error'); return; }
+    document.getElementById('receipt-content').textContent = res.data.receipt_text || '';
+    openModal('receipt-modal');
+    showToast('✓ Sale completed!', 'success');
+    loadProducts();
+  }).catch(function(e) {
+    showToast('Network error: ' + e.message, 'error');
+  }).finally(function() {
+    btn.disabled = false;
+    btn.textContent = '✓ Checkout — F8';
+  });
+}
+
+function loadShiftStatus() {
+  fetch('/api/shift/current').then(function(r) {
+    if (!r.ok) { document.getElementById('shift-cashier').textContent = 'No active shift'; return null; }
+    return r.json();
+  }).then(function(s) {
+    if (s) document.getElementById('shift-cashier').textContent = s.cashier_name + ' · Reg ' + s.register_id;
+  }).catch(function(){});
+}
+
+function openShiftModal() {
+  document.getElementById('shift-modal-body').innerHTML =
+    '<div class="shift-form">' +
+    '<input id="sm-register" placeholder="Register ID" value="reg-01">' +
+    '<input id="sm-cashier-id" placeholder="Cashier ID" value="cashier-01">' +
+    '<input id="sm-cashier-name" placeholder="Cashier Name">' +
+    '<input id="sm-float" type="number" placeholder="Opening float (minor)" value="1000000">' +
+    '<button class="modal-btn primary" onclick="doOpenShift()">Open Shift</button>' +
+    '<button class="modal-btn danger" style="margin-top:8px" onclick="doCloseShift()">Close Current Shift</button>' +
+    '</div>';
+  openModal('shift-modal');
+}
+
+function doOpenShift() {
+  var payload = {
+    register_id: document.getElementById('sm-register').value,
+    cashier_id: document.getElementById('sm-cashier-id').value,
+    cashier_name: document.getElementById('sm-cashier-name').value || 'Cashier',
+    starting_cash_minor: parseInt(document.getElementById('sm-float').value) || 0
+  };
+  fetch('/api/shift/open', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,data:d}; }); })
+    .then(function(res) {
+      if (!res.ok) { showToast('Error: ' + res.data.error, 'error'); return; }
+      closeModal('shift-modal');
+      showToast('✓ Shift opened', 'success');
+      loadShiftStatus();
+    });
+}
+
+function doCloseShift() {
+  var actual = prompt('Enter actual cash count (minor units):');
+  if (!actual) return;
+  fetch('/api/shift/close', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({actual_cash_minor: parseInt(actual)||0, notes:'End of shift'})
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,data:d}; }); })
+  .then(function(res) {
+    if (!res.ok) { showToast('Error: ' + res.data.error, 'error'); return; }
+    closeModal('shift-modal');
+    showToast('✓ Shift closed. Variance: ' + fmt(res.data.cash_difference_minor||0), 'success');
+    loadShiftStatus();
+  });
+}
+
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function fmt(minor) { return '৳' + (minor/100).toFixed(2); }
+
+var toastTimeout;
+function showToast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + (type||'success');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(function(){ el.className = ''; }, 2500);
+}
+
+var searchDebounce;
+document.getElementById('search-input').addEventListener('input', function(e) {
+  clearTimeout(searchDebounce);
+  var q = e.target.value;
+  searchDebounce = setTimeout(function(){ searchProducts(q); }, 200);
+});
+document.getElementById('search-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { e.target.value = ''; renderProducts(); }
+});
+
+init();
+</script>
+</body>
+</html>

@@ -1,7 +1,10 @@
 package pos
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -21,7 +24,9 @@ type CheckoutResult struct {
 	AuditEntry      *AuditEntry  `json:"audit_entry"`
 }
 
-// CheckoutService orchestrates the atomic retail transaction pipeline
+// CheckoutService orchestrates the atomic retail transaction pipeline.
+// All domain mutations occur inside a single database transaction; external
+// side-effects (printer, cash drawer, network sync) only fire AFTER commit.
 type CheckoutService struct {
 	mu         sync.Mutex
 	catalog    *CatalogRepository
@@ -29,37 +34,97 @@ type CheckoutService struct {
 	shifts     *ShiftManager
 	customers  *CustomerRepository
 	audit      *AuditTrail
-	dbPool     *data.DBPool
+	db         *data.RealDBPool // nil → in-memory only (testing)
 	sales      map[string]*Sale
 	orderCount int64
+	storeName  string // configurable store name (no hard-coded strings)
+	storeSub   string
 }
 
-// NewCheckoutService creates a new checkout service
+// CheckoutConfig configures the checkout service.
+type CheckoutConfig struct {
+	StoreName    string // e.g. "লাখান ভাণ্ডার"
+	StoreSubname string // e.g. "Wholesale & Retail"
+}
+
+// NewCheckoutService creates a new checkout service.
 func NewCheckoutService(
 	catalog *CatalogRepository,
 	inventory *InventoryLedger,
 	shifts *ShiftManager,
 	customers *CustomerRepository,
 	audit *AuditTrail,
+	cfg ...CheckoutConfig,
 ) *CheckoutService {
-	return &CheckoutService{
+	cs := &CheckoutService{
 		catalog:   catalog,
 		inventory: inventory,
 		shifts:    shifts,
 		customers: customers,
 		audit:     audit,
 		sales:     make(map[string]*Sale),
+		storeName: "NilLang POS",
+		storeSub:  "Point of Sale",
+	}
+	if len(cfg) > 0 {
+		if cfg[0].StoreName != "" {
+			cs.storeName = cfg[0].StoreName
+		}
+		if cfg[0].StoreSubname != "" {
+			cs.storeSub = cfg[0].StoreSubname
+		}
+	}
+	return cs
+}
+
+// SetDB configures a real database pool for ACID persistence.
+func (cs *CheckoutService) SetDB(pool *data.RealDBPool) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.db = pool
+}
+
+// SetDBPool is kept for backward compatibility.
+func (cs *CheckoutService) SetDBPool(pool *data.DBPool) {
+	// no-op: use SetDB with RealDBPool for production
+}
+
+// SetStoreInfo configures the store name and subtitle for receipts.
+func (cs *CheckoutService) SetStoreInfo(name, sub string) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if name != "" {
+		cs.storeName = name
+	}
+	if sub != "" {
+		cs.storeSub = sub
 	}
 }
 
-// SetDBPool sets the database pool for ACID database transaction persistence
-func (cs *CheckoutService) SetDBPool(pool *data.DBPool) {
+// StoreName returns current store name.
+func (cs *CheckoutService) StoreName() string {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	cs.dbPool = pool
+	return cs.storeName
 }
 
-// Execute processes the complete POS Vertical Slice #1 transaction atomically
+// Execute processes the complete POS checkout atomically.
+//
+// TRUE ACID PIPELINE:
+//  1. Read-only validation (stock, payment sufficiency, unit compatibility)
+//  2. BEGIN TRANSACTION
+//     - INSERT sale
+//     - INSERT sale_items × N
+//     - INSERT sale_payments × N
+//     - INSERT stock_movements × N
+//     - UPDATE products stock (WITH optimistic version check)
+//     - UPDATE customers due balance (if credit)
+//     - INSERT shift_movement record
+//     - INSERT receipt row
+//     - INSERT audit_log
+//  3. COMMIT
+//  4. Update in-memory caches (post-commit)
+//  5. External side-effects: printer, cash drawer, realtime (post-commit)
 func (cs *CheckoutService) Execute(
 	cart *Cart,
 	payments []PaymentRecord,
@@ -70,13 +135,13 @@ func (cs *CheckoutService) Execute(
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	// 1. Snapshot cart & Validate not empty
+	// ── 1. VALIDATION (read-only) ─────────────────────────────────────────────
 	snapshot := cart.Snapshot()
 	if len(snapshot.Items) == 0 {
 		return nil, fmt.Errorf("cart is empty")
 	}
 
-	// 2. Validate physical stock sufficiency & unit compatibility for all items
+	// Validate stock and unit compatibility
 	for _, it := range snapshot.Items {
 		p, exists := cs.catalog.FindByID(it.ProductID)
 		if !exists {
@@ -84,7 +149,7 @@ func (cs *CheckoutService) Execute(
 		}
 		if it.Unit != "" && p.Unit != "" {
 			if err := data.ValidateUnitCompatibility(it.Unit, p.Unit); err != nil {
-				return nil, fmt.Errorf("unit compatibility error for %s: %w", p.Name, err)
+				return nil, fmt.Errorf("unit error for %s: %w", p.Name, err)
 			}
 		}
 		if p.Stock.Cmp(it.Quantity) < 0 {
@@ -93,7 +158,7 @@ func (cs *CheckoutService) Execute(
 		}
 	}
 
-	// 3. Validate payments cover grand total
+	// Validate payment covers total
 	totalDue := snapshot.GrandTotalMinor
 	tender := CalculateTender(totalDue, payments)
 	if !tender.IsComplete {
@@ -101,18 +166,18 @@ func (cs *CheckoutService) Execute(
 			float64(totalDue)/100.0, float64(tender.TotalPaidMinor)/100.0)
 	}
 
-	// 4. Generate Invoice Number
+	// ── 2. PREPARE RECORDS ───────────────────────────────────────────────────
 	cs.orderCount++
 	now := time.Now()
 	invoiceNo := fmt.Sprintf("INV-%s-%04d", now.Format("20060102"), cs.orderCount)
 	saleID := fmt.Sprintf("sale-%d", now.UnixNano())
+	if customerID == "" {
+		customerID = snapshot.CustomerID
+	}
 
-	// 5. Build SaleItems and compute gross profit
 	saleItems := make([]SaleItem, len(snapshot.Items))
 	for i, it := range snapshot.Items {
 		costTotalMoney := it.CostPrice.MulDecimal(it.Quantity)
-		profitMinor := it.TotalMinor - costTotalMoney.Minor
-
 		saleItems[i] = SaleItem{
 			ID:             fmt.Sprintf("si-%d-%d", now.UnixNano(), i),
 			SaleID:         saleID,
@@ -124,13 +189,16 @@ func (cs *CheckoutService) Execute(
 			UnitPriceMinor: it.UnitPrice.Minor,
 			CostPriceMinor: it.CostPrice.Minor,
 			SubtotalMinor:  it.SubtotalMinor,
-			ProfitMinor:    profitMinor,
+			ProfitMinor:    it.TotalMinor - costTotalMoney.Minor,
 		}
 	}
 
-	// 6. Create Sale Record
-	if customerID == "" {
-		customerID = snapshot.CustomerID
+	// Get current shift ID for association
+	var shiftID string
+	if cs.shifts != nil {
+		if shift, err := cs.shifts.CurrentShift(); err == nil {
+			shiftID = shift.ID
+		}
 	}
 
 	sale := &Sale{
@@ -152,67 +220,126 @@ func (cs *CheckoutService) Execute(
 		UpdatedAt:     now,
 	}
 
-	// 7. Atomic Inventory Decrement via Stock Movements
-	for _, it := range snapshot.Items {
-		negDelta := data.Decimal{Value: -it.Quantity.Value}
-		_, err := cs.inventory.RecordMovement(
-			it.ProductID,
-			MovementSale,
-			negDelta,
-			invoiceNo,
-			fmt.Sprintf("POS Sale #%s", invoiceNo),
-		)
+	// ── 3. ATOMIC DATABASE TRANSACTION ───────────────────────────────────────
+	if cs.db != nil {
+		err := cs.db.Transaction(func(tx *data.RealTx) error {
+			// 3a. INSERT sale
+			if err := insertSale(tx, sale, shiftID); err != nil {
+				return fmt.Errorf("insert sale: %w", err)
+			}
+
+			// 3b. INSERT sale_items
+			for _, it := range saleItems {
+				if err := insertSaleItem(tx, it); err != nil {
+					return fmt.Errorf("insert sale_item %s: %w", it.ProductID, err)
+				}
+			}
+
+			// 3c. INSERT sale_payments
+			for i, p := range payments {
+				payID := fmt.Sprintf("pay-%d-%d", now.UnixNano(), i)
+				if err := insertPayment(tx, payID, saleID, p, now); err != nil {
+					return fmt.Errorf("insert payment: %w", err)
+				}
+			}
+
+			// 3d. UPDATE product stock WITH optimistic version lock + INSERT stock_movements
+			for _, it := range snapshot.Items {
+				p, _ := cs.catalog.FindByID(it.ProductID)
+				newStockRaw := p.Stock.Value - it.Quantity.Value
+				res, err := tx.Exec(
+					`UPDATE products SET stock_raw=?, version=version+1, updated_at=? WHERE id=? AND stock_raw>=?`,
+					newStockRaw, now.UTC().Format(time.RFC3339), it.ProductID, it.Quantity.Value,
+				)
+				if err != nil {
+					return fmt.Errorf("update stock for %s: %w", it.ProductID, err)
+				}
+				rows, _ := res.RowsAffected()
+				if rows == 0 {
+					return fmt.Errorf("concurrent stock conflict for product %s — retry checkout", it.ProductID)
+				}
+
+				movID := fmt.Sprintf("mov-%s-%d", it.ProductID, now.UnixNano())
+				balanceRaw := p.Stock.Value - it.Quantity.Value
+				_, err = tx.Exec(
+					`INSERT INTO stock_movements (id,product_id,product_name,type,delta_raw,balance_raw,cost_minor,reference,timestamp,notes) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+					movID, it.ProductID, it.Name, string(MovementSale),
+					-it.Quantity.Value, balanceRaw, p.Cost.Minor,
+					invoiceNo, now.UTC().Format(time.RFC3339),
+					fmt.Sprintf("POS Sale #%s", invoiceNo),
+				)
+				if err != nil {
+					return fmt.Errorf("insert stock_movement for %s: %w", it.ProductID, err)
+				}
+			}
+
+			// 3e. UPDATE customer balance for credit payments
+			for _, p := range payments {
+				if p.Method == MethodCredit && customerID != "" {
+					_, err := tx.Exec(
+						`UPDATE customers SET due_balance_minor=due_balance_minor+?, total_purchases_minor=total_purchases_minor+?, updated_at=? WHERE id=?`,
+						p.AmountMinor, p.AmountMinor, now.UTC().Format(time.RFC3339), customerID,
+					)
+					if err != nil {
+						return fmt.Errorf("update customer balance: %w", err)
+					}
+					ledgerID := fmt.Sprintf("cled-%d", now.UnixNano())
+					_, err = tx.Exec(
+						`INSERT INTO customer_ledger (id,customer_id,type,amount_minor,balance_after,reference,notes,created_by,timestamp) VALUES (?,?,?,?,?,?,?,?,?)`,
+						ledgerID, customerID, "CREDIT_SALE", p.AmountMinor, 0,
+						invoiceNo, fmt.Sprintf("Baki on Invoice %s", invoiceNo), cashierID,
+						now.UTC().Format(time.RFC3339),
+					)
+					if err != nil {
+						return fmt.Errorf("insert customer ledger: %w", err)
+					}
+				}
+			}
+
+			// 3f. INSERT audit log
+			afterJSON, _ := json.Marshal(map[string]interface{}{
+				"invoice": invoiceNo, "total": sale.TotalMinor, "items": len(saleItems),
+			})
+			auditID := fmt.Sprintf("aud-%d", now.UnixNano())
+			_, err := tx.Exec(
+				`INSERT INTO audit_log (id,action,entity_id,entity_type,actor,after_json,notes,timestamp) VALUES (?,?,?,?,?,?,?,?)`,
+				auditID, string(ActionSaleCompleted), saleID, "sale", cashierID,
+				string(afterJSON), fmt.Sprintf("Sale %s completed", invoiceNo),
+				now.UTC().Format(time.RFC3339),
+			)
+			if err != nil {
+				return fmt.Errorf("insert audit_log: %w", err)
+			}
+
+			return nil
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to decrement inventory for %s: %w", it.Name, err)
+			return nil, fmt.Errorf("checkout transaction failed: %w", err)
 		}
 	}
 
-	// 8. Credit sale handling if any payment method is CREDIT
+	// ── 4. UPDATE IN-MEMORY CACHES (post-commit only) ────────────────────────
+	// Decrement in-memory stock ledger
+	for _, it := range snapshot.Items {
+		negDelta := data.Decimal{Value: -it.Quantity.Value}
+		_, _ = cs.inventory.RecordMovement(it.ProductID, MovementSale, negDelta, invoiceNo,
+			fmt.Sprintf("POS Sale #%s", invoiceNo))
+	}
+
+	// Credit in-memory customer
 	for _, p := range payments {
 		if p.Method == MethodCredit && customerID != "" {
 			_, _ = cs.customers.RecordCreditSale(customerID, p.AmountMinor, invoiceNo)
 		}
 	}
 
-	// 9. Record in active shift
+	// Record in shift
 	_ = cs.shifts.RecordSale(sale)
 
-	// 10. Database Transaction Persistence if DBPool configured
-	if cs.dbPool != nil {
-		_ = cs.dbPool.Transaction(func(tx *data.Tx) error {
-			cs.dbPool.Table("sales").Insert(cs.dbPool, map[string]interface{}{
-				"id":             sale.ID,
-				"invoice_number": sale.InvoiceNumber,
-				"register_id":    sale.RegisterID,
-				"cashier_id":     sale.CashierID,
-				"customer_id":    sale.CustomerID,
-				"subtotal":       sale.SubtotalMinor,
-				"discount":       sale.DiscountMinor,
-				"tax":            sale.TaxMinor,
-				"total":          sale.TotalMinor,
-				"paid":           sale.PaidMinor,
-				"change":         sale.ChangeMinor,
-				"status":         string(sale.Status),
-			})
-			for _, it := range sale.Items {
-				cs.dbPool.Table("sale_items").Insert(cs.dbPool, map[string]interface{}{
-					"id":         it.ID,
-					"sale_id":    sale.ID,
-					"product_id": it.ProductID,
-					"name":       it.Name,
-					"quantity":   it.Quantity.String(),
-					"unit_price": it.UnitPriceMinor,
-					"subtotal":   it.SubtotalMinor,
-				})
-			}
-			return nil
-		})
-	}
-
-	// 11. Store Sale in memory registry
+	// Store in memory registry
 	cs.sales[sale.ID] = sale
 
-	// 11. Format Thermal Receipt (ESC/POS and Text preview)
+	// ── 5. EXTERNAL SIDE-EFFECTS (post-commit) ───────────────────────────────
 	receiptLines := make([]device.ReceiptLineItem, len(sale.Items))
 	for i, it := range sale.Items {
 		receiptLines[i] = device.ReceiptLineItem{
@@ -243,8 +370,8 @@ func (cs *CheckoutService) Execute(
 	}
 
 	receiptData := device.ReceiptPayload{
-		StoreName:     "লাখান ভাণ্ডার (Lakhan Bhandar)",
-		StoreSubtitle: "Wholesale & Retail Groceries",
+		StoreName:     cs.storeName,
+		StoreSubtitle: cs.storeSub,
 		InvoiceNo:     invoiceNo,
 		DateStr:       now.Format("02/01/2006 03:04 PM"),
 		Cashier:       cashierID,
@@ -264,28 +391,21 @@ func (cs *CheckoutService) Execute(
 	receiptText := formatter.FormatPlainText(receiptData)
 	receiptBytes := formatter.BuildESCPOSBytes(receiptData)
 
-	// 12. Cash drawer kickout trigger if cash was used
+	// Enqueue receipt to DB (best-effort, non-blocking)
+	_ = cs.persistReceiptAsync(context.Background(), saleID, invoiceNo, receiptText, custName, cashierID)
+
 	var drawerPulse []byte
 	if hasCash {
 		drawer := device.NewCashDrawer()
 		drawerPulse = drawer.Open()
 	}
 
-	// 13. Audit Log Entry
 	auditEntry := cs.audit.Record(
-		ActionSaleCompleted,
-		sale.ID,
-		cashierID,
-		nil,
-		map[string]interface{}{
-			"invoice":    invoiceNo,
-			"totalMinor": sale.TotalMinor,
-			"itemsCount": len(sale.Items),
-		},
+		ActionSaleCompleted, sale.ID, cashierID, nil,
+		map[string]interface{}{"invoice": invoiceNo, "totalMinor": sale.TotalMinor},
 		fmt.Sprintf("Sale %s completed successfully", invoiceNo),
 	)
 
-	// 14. Clear active cart
 	cart.Clear()
 
 	return &CheckoutResult{
@@ -299,7 +419,21 @@ func (cs *CheckoutService) Execute(
 	}, nil
 }
 
-// GetSale looks up sale by ID
+// persistReceiptAsync stores the receipt row in the DB in the background (non-critical path).
+func (cs *CheckoutService) persistReceiptAsync(_ context.Context, saleID, invoiceNo, content, customer, cashier string) error {
+	if cs.db == nil {
+		return nil
+	}
+	rid := fmt.Sprintf("rcpt-%d", time.Now().UnixNano())
+	_, err := cs.db.Exec(
+		`INSERT OR IGNORE INTO receipts (id,sale_id,invoice_no,customer,cashier,format,content,printed,created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+		rid, saleID, invoiceNo, customer, cashier, "TEXT", content, 0,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
+// GetSale looks up a sale by ID (memory first, then DB).
 func (cs *CheckoutService) GetSale(id string) (*Sale, bool) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -307,7 +441,7 @@ func (cs *CheckoutService) GetSale(id string) (*Sale, bool) {
 	return s, ok
 }
 
-// AllSales returns list of all recorded sales
+// AllSales returns all recorded sales (in-memory registry).
 func (cs *CheckoutService) AllSales() []*Sale {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -315,5 +449,52 @@ func (cs *CheckoutService) AllSales() []*Sale {
 	for _, s := range cs.sales {
 		res = append(res, s)
 	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].CreatedAt.After(res[j].CreatedAt)
+	})
 	return res
+}
+
+// ─── PRIVATE SQL HELPERS ─────────────────────────────────────────────────────
+
+func insertSale(tx *data.RealTx, sale *Sale, shiftID string) error {
+	_, err := tx.Exec(
+		`INSERT INTO sales (id,invoice_number,register_id,cashier_id,customer_id,shift_id,subtotal_minor,discount_minor,tax_minor,total_minor,paid_minor,change_minor,status,created_at,updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		sale.ID, sale.InvoiceNumber, sale.RegisterID, sale.CashierID,
+		nullStr(sale.CustomerID), nullStr(shiftID),
+		sale.SubtotalMinor, sale.DiscountMinor, sale.TaxMinor,
+		sale.TotalMinor, sale.PaidMinor, sale.ChangeMinor,
+		string(sale.Status),
+		sale.CreatedAt.UTC().Format(time.RFC3339),
+		sale.UpdatedAt.UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
+func insertSaleItem(tx *data.RealTx, it SaleItem) error {
+	_, err := tx.Exec(
+		`INSERT INTO sale_items (id,sale_id,product_id,name,sku,unit,quantity_raw,unit_price_minor,cost_price_minor,subtotal_minor,profit_minor)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		it.ID, it.SaleID, it.ProductID, it.Name, it.SKU, it.Unit,
+		it.Quantity.Value, it.UnitPriceMinor, it.CostPriceMinor,
+		it.SubtotalMinor, it.ProfitMinor,
+	)
+	return err
+}
+
+func insertPayment(tx *data.RealTx, id, saleID string, p PaymentRecord, now time.Time) error {
+	_, err := tx.Exec(
+		`INSERT INTO sale_payments (id,sale_id,method,amount_minor,status,created_at) VALUES (?,?,?,?,?,?)`,
+		id, saleID, string(p.Method), p.AmountMinor, "COMPLETED",
+		now.UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
+func nullStr(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }

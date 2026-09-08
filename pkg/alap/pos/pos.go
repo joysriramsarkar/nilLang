@@ -15,21 +15,29 @@ type POSEngine struct {
 	Audit     *AuditTrail
 	Checkout  *CheckoutService
 	Refund    *RefundService
+	Purchases *PurchaseService
 	Reports   *ReportingEngine
 	SyncQueue *sync.SyncQueue
 	Sync      *sync.SyncEngine
-	DBPool    *data.DBPool
+	DBPool    *data.DBPool     // legacy in-memory pool (kept for tests)
+	DB        *data.RealDBPool // production real database
 }
 
 // NewPOSEngine constructs a fully wired POS application engine
-func NewPOSEngine() *POSEngine {
+func NewPOSEngine(cfg ...CheckoutConfig) *POSEngine {
 	catalog := NewCatalogRepository()
 	inventory := NewInventoryLedger(catalog)
 	shifts := NewShiftManager()
 	customers := NewCustomerRepository()
 	audit := NewAuditTrail()
-	checkout := NewCheckoutService(catalog, inventory, shifts, customers, audit)
+
+	var checkoutCfg CheckoutConfig
+	if len(cfg) > 0 {
+		checkoutCfg = cfg[0]
+	}
+	checkout := NewCheckoutService(catalog, inventory, shifts, customers, audit, checkoutCfg)
 	refund := NewRefundService(checkout, inventory, audit)
+	purchases := NewPurchaseService(catalog, inventory, audit)
 	reports := NewReportingEngine(checkout, inventory, catalog)
 	carts := NewCartManager()
 	syncQueue := sync.NewSyncQueue()
@@ -44,6 +52,7 @@ func NewPOSEngine() *POSEngine {
 		Audit:     audit,
 		Checkout:  checkout,
 		Refund:    refund,
+		Purchases: purchases,
 		Reports:   reports,
 		SyncQueue: syncQueue,
 		Sync:      syncEngine,
@@ -58,11 +67,23 @@ func NewPOSEngine() *POSEngine {
 	return engine
 }
 
-// SetDBPool configures database persistence pool for atomic relational transactions
+// SetDBPool configures the legacy in-memory DBPool (kept for backward compatibility / unit tests).
 func (pe *POSEngine) SetDBPool(pool *data.DBPool) {
 	pe.DBPool = pool
 	if pe.Checkout != nil {
 		pe.Checkout.SetDBPool(pool)
+	}
+}
+
+// SetDB configures the real SQLite/PostgreSQL database for production persistence.
+// Must be called before SeedDefaultEnterpriseData or any checkout.
+func (pe *POSEngine) SetDB(pool *data.RealDBPool) {
+	pe.DB = pool
+	if pe.Checkout != nil {
+		pe.Checkout.SetDB(pool)
+	}
+	if pe.Purchases != nil {
+		pe.Purchases.SetDB(pool)
 	}
 }
 
@@ -231,6 +252,74 @@ func (pe *POSEngine) SeedDefaultEnterpriseData() {
 		DueBalanceMinor:     0,
 	})
 
-	// Open Initial Shift
-	_, _ = pe.Shifts.OpenShift("reg-01", "cashier-01", "জয় সরকার (Joy Sarkar)", 1000000) // ৳10,000 float
+	// Default store name if not explicitly configured
+	if pe.Checkout != nil && pe.Checkout.StoreName() == "NilLang POS" {
+		pe.Checkout.SetStoreInfo("লাখান ভাণ্ডার", "পাইকারি ও খুচরা বিক্রেতা")
+	}
+
+	// In in-memory test mode, open a default shift so conformance/unit tests have an active shift
+	if pe.DB == nil && pe.Shifts != nil && !pe.Shifts.HasActiveShift() {
+		_, _ = pe.Shifts.OpenShift("reg-01", "cashier-01", "ক্যাশিয়ার", 500000)
+	}
+
+	// If a real DB is configured, persist products to SQLite
+	if pe.DB != nil {
+		pe.seedProductsToDB()
+	}
 }
+
+// seedProductsToDB writes all in-memory data to the real database.
+// Seeds categories → products → customers in FK-safe order.
+// Uses INSERT OR IGNORE for full idempotency.
+func (pe *POSEngine) seedProductsToDB() {
+	now := "2026-01-01T00:00:00Z"
+
+	// 1. Seed categories first (products.category_id FK)
+	for _, c := range pe.Catalog.AllCategories() {
+		_, _ = pe.DB.Exec(
+			`INSERT OR IGNORE INTO categories (id,name,name_bn,icon,active,created_at,updated_at) VALUES (?,?,?,?,1,?,?)`,
+			c.ID, c.Name, nullOrStr(c.NameBn), nullOrStr(c.Icon), now, now,
+		)
+	}
+
+	// 2. Seed products (set category_id to NULL if category not seeded to avoid FK error)
+	for _, p := range pe.Catalog.AllProducts() {
+		cur := p.Price.Currency
+		if cur == "" {
+			cur = "BDT"
+		}
+		active := 0
+		if p.Active {
+			active = 1
+		}
+		// Use NULL for category_id to bypass FK; it can be updated later
+		_, _ = pe.DB.Exec(
+			`INSERT OR IGNORE INTO products (id,sku,barcode,name,name_bn,category_id,unit,price_minor,cost_minor,stock_raw,low_stock_raw,currency,active,version,created_at,updated_at)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			p.ID, p.SKU, nullOrStr(p.Barcode), p.Name, nullOrStr(p.NameBn),
+			nullOrStr(p.CategoryID), // category must exist first due to FK
+			p.Unit, p.Price.Minor, p.Cost.Minor,
+			p.Stock.Value, // already in DecimalScale raw units
+			p.LowStockMin.Value,
+			cur, active, 0, now, now,
+		)
+	}
+
+	// 3. Seed customers
+	for _, c := range pe.Customers.AllCustomers() {
+		_, _ = pe.DB.Exec(
+			`INSERT OR IGNORE INTO customers (id,name,phone,email,address,total_purchases_minor,due_balance_minor,credit_limit_minor,active,created_at,updated_at)
+			 VALUES (?,?,?,?,?,?,?,?,1,?,?)`,
+			c.ID, c.Name, nullOrStr(c.Phone), nullOrStr(c.Email), nullOrStr(c.Address),
+			c.TotalPurchasesMinor, c.DueBalanceMinor, 0, now, now,
+		)
+	}
+}
+
+func nullOrStr(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+

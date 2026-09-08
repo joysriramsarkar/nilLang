@@ -37,11 +37,30 @@ func NewMoney(minor int64, currency ...string) Money {
 	}
 }
 
-// NewMoneyFromMajor creates Money from a major float amount (e.g. 12.50 -> 1250)
+var (
+	ErrOverflow         = fmt.Errorf("financial arithmetic overflow")
+	ErrDivisionByZero   = fmt.Errorf("financial division by zero")
+	ErrCurrencyMismatch = fmt.Errorf("currency mismatch in financial operation")
+	ErrInvalidScale     = fmt.Errorf("invalid scale value")
+)
+
+// FromMinor creates Money from minor units (e.g. 1250 for ৳12.50). Canonical constructor.
+func FromMinor(minor int64, currency ...string) Money {
+	return NewMoney(minor, currency...)
+}
+
+// FromMajorString parses standard currency string into Money without floating-point conversion.
+func FromMajorString(s string, currency ...string) (Money, error) {
+	return ParseMoney(s, currency...)
+}
+
+// Deprecated: NewMoneyFromMajor uses float64 which can introduce IEEE-754 drift.
+// Use FromMinor or ParseMoney for financial paths.
 func NewMoneyFromMajor(major float64, currency ...string) Money {
 	minor := int64(math.Round(major * 100))
 	return NewMoney(minor, currency...)
 }
+
 
 // ParseMoney parses standard currency strings such as "12.50", "৳1,250.00", "$49.99"
 func ParseMoney(s string, currency ...string) (Money, error) {
@@ -114,10 +133,47 @@ func (m Money) Add(other Money) Money {
 	return NewMoney(m.Minor+other.Minor, m.Currency)
 }
 
+// AddChecked returns sum with currency mismatch check and 64-bit overflow detection
+func (m Money) AddChecked(other Money) (Money, error) {
+	if m.Currency != other.Currency {
+		return Money{}, ErrCurrencyMismatch
+	}
+	res := m.Minor + other.Minor
+	if (m.Minor > 0 && other.Minor > 0 && res < 0) || (m.Minor < 0 && other.Minor < 0 && res > 0) {
+		return Money{}, ErrOverflow
+	}
+	return NewMoney(res, m.Currency), nil
+}
+
 // Sub returns the exact difference of two Money values
 func (m Money) Sub(other Money) Money {
 	return NewMoney(m.Minor-other.Minor, m.Currency)
 }
+
+// SubChecked returns difference with currency check and overflow detection
+func (m Money) SubChecked(other Money) (Money, error) {
+	if m.Currency != other.Currency {
+		return Money{}, ErrCurrencyMismatch
+	}
+	res := m.Minor - other.Minor
+	if (m.Minor > 0 && other.Minor < 0 && res < 0) || (m.Minor < 0 && other.Minor > 0 && res > 0) {
+		return Money{}, ErrOverflow
+	}
+	return NewMoney(res, m.Currency), nil
+}
+
+// MulDecimalChecked multiplies Money by Decimal with overflow detection
+func (m Money) MulDecimalChecked(d Decimal) (Money, error) {
+	if m.Minor == 0 || d.Value == 0 {
+		return NewMoney(0, m.Currency), nil
+	}
+	prod := m.Minor * d.Value
+	if prod/m.Minor != d.Value {
+		return Money{}, ErrOverflow
+	}
+	return NewMoney(prod/DecimalScale, m.Currency), nil
+}
+
 
 // Mul multiplies Money by an exact floating scalar and rounds to nearest minor unit
 func (m Money) Mul(factor float64) Money {

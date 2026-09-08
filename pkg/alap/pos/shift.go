@@ -103,6 +103,13 @@ func (sm *ShiftManager) CurrentShift() (*Shift, error) {
 	return &s, nil
 }
 
+// HasActiveShift returns true if a shift is currently open.
+func (sm *ShiftManager) HasActiveShift() bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.currentShift != nil && sm.currentShift.Status == ShiftOpen
+}
+
 // RecordSale adds payment totals to current shift metrics
 func (sm *ShiftManager) RecordSale(sale *Sale) error {
 	sm.mu.Lock()

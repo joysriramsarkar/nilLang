@@ -22,18 +22,20 @@ const (
 
 // SaleItem represents an immutable item line in a completed or in-flight sale
 type SaleItem struct {
-	ID             string       `json:"id"`
-	SaleID         string       `json:"sale_id"`
-	ProductID      string       `json:"product_id"`
-	Name           string       `json:"name"`
-	SKU            string       `json:"sku"`
-	Unit           string       `json:"unit"`
-	Quantity       data.Decimal `json:"quantity"`
-	UnitPriceMinor int64        `json:"unit_price_minor"`
-	CostPriceMinor int64        `json:"cost_price_minor"`
-	SubtotalMinor  int64        `json:"subtotal_minor"`
-	ProfitMinor    int64        `json:"profit_minor"` // (UnitPrice - CostPrice) * Quantity
+	ID               string       `json:"id"`
+	SaleID           string       `json:"sale_id"`
+	ProductID        string       `json:"product_id"`
+	Name             string       `json:"name"`
+	SKU              string       `json:"sku"`
+	Unit             string       `json:"unit"`
+	Quantity         data.Decimal `json:"quantity"`
+	RefundedQuantity data.Decimal `json:"refunded_quantity,omitempty"`
+	UnitPriceMinor   int64        `json:"unit_price_minor"`
+	CostPriceMinor   int64        `json:"cost_price_minor"`
+	SubtotalMinor    int64        `json:"subtotal_minor"`
+	ProfitMinor      int64        `json:"profit_minor"` // (UnitPrice - CostPrice) * Quantity
 }
+
 
 // Sale represents a POS transaction record
 type Sale struct {

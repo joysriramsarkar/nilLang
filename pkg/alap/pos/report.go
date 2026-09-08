@@ -144,3 +144,130 @@ func (re *ReportingEngine) ExportSalesCSV() (string, error) {
 	w.Flush()
 	return buf.String(), w.Error()
 }
+
+// ─── STOCK VALUATION & PROFITABILITY ────────────────────────────────────────
+
+// StockValuationReport analyzes current inventory cost vs retail value
+type StockValuationReport struct {
+	TotalSKUs              int          `json:"total_skus"`
+	TotalUnits             data.Decimal `json:"total_units"`
+	TotalCostValueMinor    int64        `json:"total_cost_value_minor"`
+	TotalRetailValueMinor  int64        `json:"total_retail_value_minor"`
+	UnrealizedProfitMinor  int64        `json:"unrealized_profit_minor"`
+	ProjectedMarginPercent float64      `json:"projected_margin_percent"`
+}
+
+// GenerateStockValuationReport compiles real-time inventory assets and valuation
+func (re *ReportingEngine) GenerateStockValuationReport() *StockValuationReport {
+	rep := &StockValuationReport{}
+	products := re.catalog.AllProducts()
+
+	for _, p := range products {
+		if !p.Active || p.Stock.Value <= 0 {
+			continue
+		}
+		rep.TotalSKUs++
+		rep.TotalUnits = rep.TotalUnits.Add(p.Stock)
+
+		costVal := p.Cost.MulDecimal(p.Stock).Minor
+		retailVal := p.Price.MulDecimal(p.Stock).Minor
+
+		rep.TotalCostValueMinor += costVal
+		rep.TotalRetailValueMinor += retailVal
+	}
+
+	rep.UnrealizedProfitMinor = rep.TotalRetailValueMinor - rep.TotalCostValueMinor
+	if rep.TotalRetailValueMinor > 0 {
+		rep.ProjectedMarginPercent = (float64(rep.UnrealizedProfitMinor) / float64(rep.TotalRetailValueMinor)) * 100.0
+	}
+
+	return rep
+}
+
+// ─── CASHIER PERFORMANCE REPORT ──────────────────────────────────────────────
+
+// CashierPerformanceReport aggregates orders and sales volume by cashier
+type CashierPerformanceReport struct {
+	CashierID            string  `json:"cashier_id"`
+	TotalOrders          int64   `json:"total_orders"`
+	TotalRevenueMinor    int64   `json:"total_revenue_minor"`
+	AverageOrderValMinor int64   `json:"avg_order_value_minor"`
+	CashTenderMinor      int64   `json:"cash_tender_minor"`
+	CardTenderMinor      int64   `json:"card_tender_minor"`
+	MFSTenderMinor       int64   `json:"mfs_tender_minor"`
+}
+
+// GenerateCashierPerformanceReport produces cashier productivity breakdown
+func (re *ReportingEngine) GenerateCashierPerformanceReport() []*CashierPerformanceReport {
+	cashierMap := make(map[string]*CashierPerformanceReport)
+
+	for _, s := range re.checkout.AllSales() {
+		if s.Status == StatusCancelled {
+			continue
+		}
+		cashier := s.CashierID
+		if cashier == "" {
+			cashier = "unassigned"
+		}
+		rep, ok := cashierMap[cashier]
+		if !ok {
+			rep = &CashierPerformanceReport{CashierID: cashier}
+			cashierMap[cashier] = rep
+		}
+
+		rep.TotalOrders++
+		rep.TotalRevenueMinor += s.TotalMinor
+
+		for _, p := range s.Payments {
+			switch p.Method {
+			case MethodCash:
+				rep.CashTenderMinor += p.AmountMinor
+			case MethodCard:
+				rep.CardTenderMinor += p.AmountMinor
+			case MethodBKash, MethodNagad, MethodUPI:
+				rep.MFSTenderMinor += p.AmountMinor
+			}
+		}
+	}
+
+	res := make([]*CashierPerformanceReport, 0, len(cashierMap))
+	for _, rep := range cashierMap {
+		if rep.TotalOrders > 0 {
+			rep.AverageOrderValMinor = rep.TotalRevenueMinor / rep.TotalOrders
+		}
+		res = append(res, rep)
+	}
+
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].TotalRevenueMinor > res[j].TotalRevenueMinor
+	})
+	return res
+}
+
+// ─── TAX COMPLIANCE REPORT ──────────────────────────────────────────────────
+
+// TaxReport aggregates tax collected across orders
+type TaxReport struct {
+	TotalOrders       int64 `json:"total_orders"`
+	TotalSalesMinor   int64 `json:"total_sales_minor"`
+	TotalTaxMinor     int64 `json:"total_tax_minor"`
+	TaxableSalesMinor int64 `json:"taxable_sales_minor"`
+}
+
+// GenerateTaxReport produces VAT and tax compliance summary
+func (re *ReportingEngine) GenerateTaxReport() *TaxReport {
+	rep := &TaxReport{}
+	for _, s := range re.checkout.AllSales() {
+		if s.Status == StatusCancelled {
+			continue
+		}
+		rep.TotalOrders++
+		rep.TotalSalesMinor += s.TotalMinor
+		rep.TotalTaxMinor += s.TaxMinor
+		if s.TaxMinor > 0 {
+			rep.TaxableSalesMinor += s.SubtotalMinor
+		}
+	}
+	return rep
+}
+

@@ -11,8 +11,7 @@ func BenchmarkProductSearch(b *testing.B) {
 	engine := NewPOSEngine()
 	engine.SeedDefaultEnterpriseData()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = engine.Catalog.Search("মিনিকেট")
 	}
 }
@@ -23,8 +22,7 @@ func BenchmarkCartUpdate(b *testing.B) {
 	engine.SeedDefaultEnterpriseData()
 	prod, _ := engine.Catalog.FindByID("p-01")
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		cart := NewCart("bench-cart", "Benchmark")
 		cart.AddProduct(prod, data.NewDecimalFromInt(1))
 		cart.Recalculate()
@@ -40,17 +38,17 @@ func BenchmarkTransactionalCheckout(b *testing.B) {
 
 	prod, _ := engine.Catalog.FindByID("p-01")
 	// Add abundant stock for benchmark runs
-	_, _ = engine.Catalog.UpdateStock(prod.ID, data.NewDecimalFromInt(int64(b.N*5)))
+	_, _ = engine.Catalog.UpdateStock(prod.ID, data.NewDecimalFromInt(100000000))
 
 	payments := []PaymentRecord{
 		{Method: MethodCash, AmountMinor: 340000},
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		cart := NewCart("bench-cart", "Benchmark")
 		cart.AddProduct(prod, data.NewDecimalFromInt(1))
 		cart.Recalculate()
 		_, _ = engine.Checkout.Execute(cart, payments, "cashier-01", "reg-01", "c-01")
 	}
 }
+

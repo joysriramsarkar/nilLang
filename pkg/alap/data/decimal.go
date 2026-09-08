@@ -16,10 +16,12 @@ type Decimal struct {
 
 const DecimalScale int64 = 10000
 
-// NewDecimal creates a Decimal from a float
+// Deprecated: NewDecimal uses float64 which can introduce precision drift.
+// Prefer ParseDecimal or NewDecimalFromInt for exact arithmetic.
 func NewDecimal(f float64) Decimal {
 	return Decimal{Value: int64(math.Round(f * float64(DecimalScale)))}
 }
+
 
 // NewDecimalFromInt creates a Decimal from an integer
 func NewDecimalFromInt(i int64) Decimal {
@@ -92,15 +94,46 @@ func (d Decimal) Add(other Decimal) Decimal {
 	return Decimal{Value: d.Value + other.Value}
 }
 
+// AddChecked adds two Decimals with 64-bit signed overflow detection
+func (d Decimal) AddChecked(other Decimal) (Decimal, error) {
+	res := d.Value + other.Value
+	if (d.Value > 0 && other.Value > 0 && res < 0) || (d.Value < 0 && other.Value < 0 && res > 0) {
+		return Decimal{}, ErrOverflow
+	}
+	return Decimal{Value: res}, nil
+}
+
 // Sub subtracts two Decimals
 func (d Decimal) Sub(other Decimal) Decimal {
 	return Decimal{Value: d.Value - other.Value}
+}
+
+// SubChecked subtracts two Decimals with overflow detection
+func (d Decimal) SubChecked(other Decimal) (Decimal, error) {
+	res := d.Value - other.Value
+	if (d.Value > 0 && other.Value < 0 && res < 0) || (d.Value < 0 && other.Value > 0 && res > 0) {
+		return Decimal{}, ErrOverflow
+	}
+	return Decimal{Value: res}, nil
 }
 
 // Mul multiplies two Decimals
 func (d Decimal) Mul(other Decimal) Decimal {
 	return Decimal{Value: (d.Value * other.Value) / DecimalScale}
 }
+
+// MulChecked multiplies two Decimals with overflow detection
+func (d Decimal) MulChecked(other Decimal) (Decimal, error) {
+	if d.Value == 0 || other.Value == 0 {
+		return Decimal{Value: 0}, nil
+	}
+	prod := d.Value * other.Value
+	if prod/d.Value != other.Value {
+		return Decimal{}, ErrOverflow
+	}
+	return Decimal{Value: prod / DecimalScale}, nil
+}
+
 
 // Div divides two Decimals
 func (d Decimal) Div(other Decimal) (Decimal, error) {

@@ -59,3 +59,40 @@ func TestDecimalArithmetic(t *testing.T) {
 		t.Fatalf("expected ~3.3, got %f", sum.Float64())
 	}
 }
+
+func TestMoneyCheckedArithmetic(t *testing.T) {
+	m1 := FromMinor(5000, "BDT")
+	m2 := FromMinor(3000, "BDT")
+
+	sum, err := m1.AddChecked(m2)
+	if err != nil || sum.Minor != 8000 {
+		t.Fatalf("AddChecked failed: %v, sum=%d", err, sum.Minor)
+	}
+
+	diff, err := m1.SubChecked(m2)
+	if err != nil || diff.Minor != 2000 {
+		t.Fatalf("SubChecked failed: %v, diff=%d", err, diff.Minor)
+	}
+
+	// Currency mismatch detection
+	mUSD := FromMinor(100, "USD")
+	_, err = m1.AddChecked(mUSD)
+	if err != ErrCurrencyMismatch {
+		t.Fatalf("Expected ErrCurrencyMismatch, got %v", err)
+	}
+
+	// MulDecimalChecked: ৳50.00 * 2.5 = ৳125.00
+	dec, _ := ParseDecimal("2.5")
+	mul, err := m1.MulDecimalChecked(dec)
+	if err != nil || mul.Minor != 12500 {
+		t.Fatalf("MulDecimalChecked failed: %v, minor=%d", err, mul.Minor)
+	}
+
+	// Overflow detection: math.MaxInt64 + 1
+	maxM := FromMinor(1<<62, "BDT")
+	_, err = maxM.AddChecked(maxM)
+	if err != ErrOverflow {
+		t.Fatalf("Expected ErrOverflow on large addition, got %v", err)
+	}
+}
+

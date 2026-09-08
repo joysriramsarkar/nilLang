@@ -47,12 +47,13 @@ func NewRefundService(checkout *CheckoutService, inventory *InventoryLedger, aud
 	}
 }
 
-// ProcessRefund processes a product return on an existing sale
+// ProcessRefund processes a product return on an existing sale with RBAC authorization.
 func (rs *RefundService) ProcessRefund(
 	saleID string,
 	items []RefundItemRequest,
 	cashierID string,
 	reason string,
+	cashierRole ...string,
 ) (*RefundRecord, error) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
@@ -70,9 +71,14 @@ func (rs *RefundService) ProcessRefund(
 		return nil, fmt.Errorf("no items specified for refund")
 	}
 
+	role := RoleCashier
+	if len(cashierRole) > 0 && cashierRole[0] != "" {
+		role = cashierRole[0]
+	}
+
 	var totalRefundMinor int64 = 0
 
-	// 1. Verify items belong to sale and quantities are valid
+	// 1. Verify items belong to sale, quantities are valid, and compute total
 	for _, req := range items {
 		var foundItem *SaleItem
 		for i := range sale.Items {
@@ -84,14 +90,29 @@ func (rs *RefundService) ProcessRefund(
 		if foundItem == nil {
 			return nil, fmt.Errorf("product %s was not in sale %s", req.ProductID, sale.InvoiceNumber)
 		}
-		if req.Quantity.Cmp(foundItem.Quantity) > 0 {
-			return nil, fmt.Errorf("refund quantity %s exceeds sold quantity %s", req.Quantity.String(), foundItem.Quantity.String())
+		remainingQty := foundItem.Quantity.Sub(foundItem.RefundedQuantity)
+		if req.Quantity.Cmp(remainingQty) > 0 {
+			return nil, fmt.Errorf("refund quantity %s exceeds refundable quantity %s", req.Quantity.String(), remainingQty.String())
 		}
 
 		lineRefundMoney := data.NewMoney(foundItem.UnitPriceMinor, "BDT").MulDecimal(req.Quantity)
 		totalRefundMinor += lineRefundMoney.Minor
+	}
 
-		// 2. Restore physical stock via MovementReturn
+	// 2. Enforce RBAC permission (refunds > ৳5,000 require manager)
+	if err := CheckRefundAuthorization(role, totalRefundMinor); err != nil {
+		return nil, err
+	}
+
+	// 3. Restore physical stock via MovementReturn and update RefundedQuantity
+	for _, req := range items {
+		for i := range sale.Items {
+			if sale.Items[i].ProductID == req.ProductID {
+				sale.Items[i].RefundedQuantity = sale.Items[i].RefundedQuantity.Add(req.Quantity)
+				break
+			}
+		}
+
 		_, err := rs.inventory.RecordMovement(
 			req.ProductID,
 			MovementReturn,
@@ -104,9 +125,21 @@ func (rs *RefundService) ProcessRefund(
 		}
 	}
 
-	// 3. Update sale state
-	sale.Status = StatusRefunded
+	// 4. Update sale state (PartiallyRefunded vs Refunded)
+	allRefunded := true
+	for _, it := range sale.Items {
+		if it.RefundedQuantity.Cmp(it.Quantity) < 0 {
+			allRefunded = false
+			break
+		}
+	}
+	if allRefunded {
+		sale.Status = StatusRefunded
+	} else {
+		sale.Status = StatusPartiallyRefunded
+	}
 	sale.UpdatedAt = time.Now()
+
 
 	// 4. Generate Refund Receipt
 	refundID := fmt.Sprintf("ref-%d", time.Now().UnixNano())
