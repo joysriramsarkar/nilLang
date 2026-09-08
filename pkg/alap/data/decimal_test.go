@@ -25,7 +25,7 @@ func TestExtendedDecimal(t *testing.T) {
 	}
 
 	// Money * Decimal
-	m := NewMoney(10000, "BDT") // ৳100.00
+	m := NewMoney(10000, "BDT")       // ৳100.00
 	factor, _ := ParseDecimal("1.15") // +15% tax
 	result := m.MulDecimal(factor)
 	if result.Minor != 11500 {

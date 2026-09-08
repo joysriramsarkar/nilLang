@@ -18,27 +18,27 @@ type Category struct {
 
 // Product represents a retail catalog item
 type Product struct {
-	ID          string        `json:"id"`
-	SKU         string        `json:"sku"`
-	Barcode     string        `json:"barcode"`
-	Name        string        `json:"name"`
-	NameBn      string        `json:"name_bn"`
-	CategoryID  string        `json:"category_id"`
-	Unit        string        `json:"unit"`
-	Price       data.Money    `json:"price"`       // Selling price
-	Cost        data.Money    `json:"cost"`        // WAC cost
-	Stock       data.Decimal  `json:"stock"`       // Current physical stock
-	LowStockMin data.Decimal  `json:"low_stock"`   // Threshold for low-stock warnings
-	Active      bool          `json:"active"`
+	ID          string       `json:"id"`
+	SKU         string       `json:"sku"`
+	Barcode     string       `json:"barcode"`
+	Name        string       `json:"name"`
+	NameBn      string       `json:"name_bn"`
+	CategoryID  string       `json:"category_id"`
+	Unit        string       `json:"unit"`
+	Price       data.Money   `json:"price"`     // Selling price
+	Cost        data.Money   `json:"cost"`      // WAC cost
+	Stock       data.Decimal `json:"stock"`     // Current physical stock
+	LowStockMin data.Decimal `json:"low_stock"` // Threshold for low-stock warnings
+	Active      bool         `json:"active"`
 }
 
 // CatalogRepository manages products and fast index lookups
 type CatalogRepository struct {
-	mu           sync.RWMutex
-	products     map[string]*Product
-	bySKU        map[string]*Product
-	byBarcode    map[string]*Product
-	categories   map[string]*Category
+	mu         sync.RWMutex
+	products   map[string]*Product
+	bySKU      map[string]*Product
+	byBarcode  map[string]*Product
+	categories map[string]*Category
 }
 
 // NewCatalogRepository creates a new catalog repository

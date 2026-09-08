@@ -9,32 +9,32 @@ import (
 
 // CartItem represents an item line in the cart
 type CartItem struct {
-	ProductID     string        `json:"product_id"`
-	SKU           string        `json:"sku"`
-	Barcode       string        `json:"barcode"`
-	Name          string        `json:"name"`
-	Unit          string        `json:"unit"`
-	UnitPrice     data.Money    `json:"unit_price"`
-	CostPrice     data.Money    `json:"cost_price"`
-	Quantity      data.Decimal  `json:"quantity"`
-	LineDiscount  int64         `json:"line_discount_minor"`
-	SubtotalMinor int64         `json:"subtotal_minor"`
-	TotalMinor    int64         `json:"total_minor"`
+	ProductID     string       `json:"product_id"`
+	SKU           string       `json:"sku"`
+	Barcode       string       `json:"barcode"`
+	Name          string       `json:"name"`
+	Unit          string       `json:"unit"`
+	UnitPrice     data.Money   `json:"unit_price"`
+	CostPrice     data.Money   `json:"cost_price"`
+	Quantity      data.Decimal `json:"quantity"`
+	LineDiscount  int64        `json:"line_discount_minor"`
+	SubtotalMinor int64        `json:"subtotal_minor"`
+	TotalMinor    int64        `json:"total_minor"`
 }
 
 // Cart represents a shopping cart instance
 type Cart struct {
 	mu              sync.RWMutex
-	ID              string       `json:"id"`
-	TabName         string       `json:"tab_name"`
-	CustomerID      string       `json:"customer_id"`
-	Items           []*CartItem  `json:"items"`
-	OrderDiscount   Discount     `json:"order_discount"`
-	TaxRate         TaxRate      `json:"tax_rate"`
-	SubtotalMinor   int64        `json:"subtotal_minor"`
-	DiscountMinor   int64        `json:"discount_minor"`
-	TaxMinor        int64        `json:"tax_minor"`
-	GrandTotalMinor int64        `json:"grand_total_minor"`
+	ID              string      `json:"id"`
+	TabName         string      `json:"tab_name"`
+	CustomerID      string      `json:"customer_id"`
+	Items           []*CartItem `json:"items"`
+	OrderDiscount   Discount    `json:"order_discount"`
+	TaxRate         TaxRate     `json:"tax_rate"`
+	SubtotalMinor   int64       `json:"subtotal_minor"`
+	DiscountMinor   int64       `json:"discount_minor"`
+	TaxMinor        int64       `json:"tax_minor"`
+	GrandTotalMinor int64       `json:"grand_total_minor"`
 }
 
 // NewCart creates a new cart for a register tab

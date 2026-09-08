@@ -26,7 +26,7 @@ type Shift struct {
 	StartingCashMinor   int64       `json:"starting_cash_minor"` // Opening float
 	CashSalesMinor      int64       `json:"cash_sales_minor"`
 	CardSalesMinor      int64       `json:"card_sales_minor"`
-	MFSSalesMinor       int64       `json:"mfs_sales_minor"`     // bKash/Nagad
+	MFSSalesMinor       int64       `json:"mfs_sales_minor"` // bKash/Nagad
 	TotalSalesMinor     int64       `json:"total_sales_minor"`
 	TotalOrders         int64       `json:"total_orders"`
 	ExpectedCashMinor   int64       `json:"expected_cash_minor"`

@@ -206,4 +206,3 @@ func (m Money) MulDecimal(d Decimal) Money {
 	newMinor := (m.Minor * d.Value) / DecimalScale
 	return NewMoney(newMinor, m.Currency)
 }
-

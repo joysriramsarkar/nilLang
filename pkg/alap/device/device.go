@@ -12,11 +12,11 @@ import (
 
 // BarcodeScanner manages barcode input accumulation from keyboard wedge or serial/USB devices
 type BarcodeScanner struct {
-	mu           sync.Mutex
-	buffer       strings.Builder
+	mu            sync.Mutex
+	buffer        strings.Builder
 	lastKeystroke time.Time
-	timeout      time.Duration
-	onScan       func(barcode string)
+	timeout       time.Duration
+	onScan        func(barcode string)
 }
 
 // NewBarcodeScanner creates a barcode scanner listener
@@ -64,14 +64,14 @@ const (
 
 // ESC/POS Command Constants
 var (
-	CmdInit       = []byte{0x1b, 0x40}             // ESC @
-	CmdCut        = []byte{0x1d, 0x56, 0x41, 0x00} // GS V 65 0 (Full Cut)
-	CmdBoldOn     = []byte{0x1b, 0x45, 0x01}       // ESC E 1
-	CmdBoldOff    = []byte{0x1b, 0x45, 0x00}       // ESC E 0
-	CmdAlignLeft  = []byte{0x1b, 0x61, 0x00}       // ESC a 0
-	CmdAlignCenter = []byte{0x1b, 0x61, 0x01}      // ESC a 1
-	CmdAlignRight = []byte{0x1b, 0x61, 0x02}       // ESC a 2
-	CmdFeed3      = []byte{0x1b, 0x64, 0x03}       // ESC d 3 (Feed 3 lines)
+	CmdInit        = []byte{0x1b, 0x40}             // ESC @
+	CmdCut         = []byte{0x1d, 0x56, 0x41, 0x00} // GS V 65 0 (Full Cut)
+	CmdBoldOn      = []byte{0x1b, 0x45, 0x01}       // ESC E 1
+	CmdBoldOff     = []byte{0x1b, 0x45, 0x00}       // ESC E 0
+	CmdAlignLeft   = []byte{0x1b, 0x61, 0x00}       // ESC a 0
+	CmdAlignCenter = []byte{0x1b, 0x61, 0x01}       // ESC a 1
+	CmdAlignRight  = []byte{0x1b, 0x61, 0x02}       // ESC a 2
+	CmdFeed3       = []byte{0x1b, 0x64, 0x03}       // ESC d 3 (Feed 3 lines)
 )
 
 // ReceiptLineItem represents a line on the receipt

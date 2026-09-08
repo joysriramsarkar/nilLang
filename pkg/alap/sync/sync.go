@@ -125,9 +125,9 @@ func (sq *SyncQueue) Count() (total int, pending int) {
 
 // SyncEngine handles server-side idempotent reception and application
 type SyncEngine struct {
-	mu               sync.Mutex
-	processedOps     map[string]*MutationOperation
-	handlers         map[string]func(op *MutationOperation) error
+	mu           sync.Mutex
+	processedOps map[string]*MutationOperation
+	handlers     map[string]func(op *MutationOperation) error
 }
 
 // NewSyncEngine creates server sync engine

@@ -11,12 +11,12 @@ import (
 type SaleStatus string
 
 const (
-	StatusDraft          SaleStatus = "DRAFT"
-	StatusPendingPayment SaleStatus = "PENDING_PAYMENT"
-	StatusPaid           SaleStatus = "PAID"
-	StatusCompleted      SaleStatus = "COMPLETED"
-	StatusCancelled      SaleStatus = "CANCELLED"
-	StatusRefunded       SaleStatus = "REFUNDED"
+	StatusDraft             SaleStatus = "DRAFT"
+	StatusPendingPayment    SaleStatus = "PENDING_PAYMENT"
+	StatusPaid              SaleStatus = "PAID"
+	StatusCompleted         SaleStatus = "COMPLETED"
+	StatusCancelled         SaleStatus = "CANCELLED"
+	StatusRefunded          SaleStatus = "REFUNDED"
 	StatusPartiallyRefunded SaleStatus = "PARTIALLY_REFUNDED"
 )
 

@@ -12,13 +12,13 @@ import (
 
 // CheckoutResult holds the response after a successful sale transaction
 type CheckoutResult struct {
-	Sale             *Sale                 `json:"sale"`
-	Tender           TenderResult          `json:"tender"`
-	ReceiptText      string                `json:"receipt_text"`
-	ReceiptBytes     []byte                `json:"-"`
-	CashDrawerPulse  []byte                `json:"-"`
-	TriggerDrawer    bool                  `json:"trigger_drawer"`
-	AuditEntry       *AuditEntry           `json:"audit_entry"`
+	Sale            *Sale        `json:"sale"`
+	Tender          TenderResult `json:"tender"`
+	ReceiptText     string       `json:"receipt_text"`
+	ReceiptBytes    []byte       `json:"-"`
+	CashDrawerPulse []byte       `json:"-"`
+	TriggerDrawer   bool         `json:"trigger_drawer"`
+	AuditEntry      *AuditEntry  `json:"audit_entry"`
 }
 
 // CheckoutService orchestrates the atomic retail transaction pipeline

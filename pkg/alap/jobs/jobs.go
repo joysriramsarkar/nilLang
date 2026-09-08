@@ -79,9 +79,14 @@ func (s *Scheduler) RunOnce(name string) error {
 		return fmt.Errorf("job %s not found", name)
 	}
 
+	s.mu.Lock()
 	stat.Running = true
 	stat.LastRun = time.Now()
+	s.mu.Unlock()
+
 	err := job.Run(s.ctx)
+
+	s.mu.Lock()
 	stat.Running = false
 	stat.RunCount++
 	if err != nil {
@@ -89,6 +94,8 @@ func (s *Scheduler) RunOnce(name string) error {
 	} else {
 		stat.LastError = ""
 	}
+	s.mu.Unlock()
+
 	return err
 }
 
@@ -108,7 +115,6 @@ func (s *Scheduler) ScheduleEvery(name string, interval time.Duration) error {
 
 	jobCtx, jobCancel := context.WithCancel(s.ctx)
 	s.cancels[name] = jobCancel
-	stat := s.status[name]
 	s.mu.Unlock()
 
 	go func() {
@@ -120,16 +126,26 @@ func (s *Scheduler) ScheduleEvery(name string, interval time.Duration) error {
 			case <-jobCtx.Done():
 				return
 			case <-ticker.C:
-				stat.Running = true
-				stat.LastRun = time.Now()
-				err := job.Run(jobCtx)
-				stat.Running = false
-				stat.RunCount++
-				if err != nil {
-					stat.LastError = err.Error()
-				} else {
-					stat.LastError = ""
+				s.mu.Lock()
+				if st, ok := s.status[name]; ok {
+					st.Running = true
+					st.LastRun = time.Now()
 				}
+				s.mu.Unlock()
+
+				err := job.Run(jobCtx)
+
+				s.mu.Lock()
+				if st, ok := s.status[name]; ok {
+					st.Running = false
+					st.RunCount++
+					if err != nil {
+						st.LastError = err.Error()
+					} else {
+						st.LastError = ""
+					}
+				}
+				s.mu.Unlock()
 			}
 		}
 	}()

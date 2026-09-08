@@ -18,14 +18,14 @@ type RefundItemRequest struct {
 
 // RefundRecord represents an executed refund
 type RefundRecord struct {
-	ID             string              `json:"id"`
-	SaleID         string              `json:"sale_id"`
-	InvoiceNumber  string              `json:"invoice_number"`
-	CashierID      string              `json:"cashier_id"`
-	RefundAmount   int64               `json:"refund_amount_minor"`
-	Items          []RefundItemRequest `json:"items"`
-	Timestamp      time.Time           `json:"timestamp"`
-	ReceiptText    string              `json:"receipt_text"`
+	ID            string              `json:"id"`
+	SaleID        string              `json:"sale_id"`
+	InvoiceNumber string              `json:"invoice_number"`
+	CashierID     string              `json:"cashier_id"`
+	RefundAmount  int64               `json:"refund_amount_minor"`
+	Items         []RefundItemRequest `json:"items"`
+	Timestamp     time.Time           `json:"timestamp"`
+	ReceiptText   string              `json:"receipt_text"`
 }
 
 // RefundService handles retail returns and inventory restoration
