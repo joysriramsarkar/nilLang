@@ -575,6 +575,7 @@ const (
 
 // PrintJob represents an enqueued receipt printing task.
 type PrintJob struct {
+	mu         sync.RWMutex
 	ID         string         `json:"id"`
 	SaleID     string         `json:"sale_id"`
 	Payload    ReceiptPayload `json:"payload"`
@@ -584,6 +585,20 @@ type PrintJob struct {
 	MaxRetries int            `json:"max_retries"`
 	LastError  string         `json:"last_error,omitempty"`
 	CreatedAt  time.Time      `json:"created_at"`
+}
+
+// GetStatus returns the current job status thread-safely.
+func (j *PrintJob) GetStatus() PrintJobStatus {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.Status
+}
+
+// GetLastError returns the last error string thread-safely.
+func (j *PrintJob) GetLastError() string {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.LastError
 }
 
 // PrintQueue manages non-blocking receipt printing with background retries.
@@ -638,12 +653,15 @@ func (pq *PrintQueue) Stop() {
 
 // Enqueue submits a job for asynchronous background printing.
 func (pq *PrintQueue) Enqueue(job *PrintJob) {
-	pq.mu.Lock()
+	job.mu.Lock()
 	if job.MaxRetries <= 0 {
 		job.MaxRetries = 3
 	}
 	job.Status = JobQueued
 	job.CreatedAt = time.Now()
+	job.mu.Unlock()
+
+	pq.mu.Lock()
 	pq.jobHistory = append(pq.jobHistory, job)
 	pq.mu.Unlock()
 
@@ -666,23 +684,39 @@ func (pq *PrintQueue) worker() {
 }
 
 func (pq *PrintQueue) processJob(job *PrintJob) {
-	for job.Attempt < job.MaxRetries {
+	job.mu.Lock()
+	maxRetries := job.MaxRetries
+	rawBytes := job.RawBytes
+	job.mu.Unlock()
+
+	for {
+		job.mu.Lock()
+		if job.Attempt >= maxRetries {
+			job.Status = JobFailed
+			job.mu.Unlock()
+			return
+		}
 		job.Attempt++
 		job.Status = JobPrinting
+		attempt := job.Attempt
+		job.mu.Unlock()
 
-		err := pq.transport.Write(job.RawBytes)
+		err := pq.transport.Write(rawBytes)
 		if err == nil {
+			job.mu.Lock()
 			job.Status = JobDone
 			job.LastError = ""
+			job.mu.Unlock()
 			return
 		}
 
+		job.mu.Lock()
 		job.LastError = err.Error()
-		// Exponential backoff between retries: 100ms, 200ms, 400ms...
-		time.Sleep(time.Duration(100*(1<<(job.Attempt-1))) * time.Millisecond)
-	}
+		job.mu.Unlock()
 
-	job.Status = JobFailed
+		// Exponential backoff between retries: 100ms, 200ms, 400ms...
+		time.Sleep(time.Duration(100*(1<<(attempt-1))) * time.Millisecond)
+	}
 }
 
 // ─── RECEIPT PROFILE & TEMPLATING ───────────────────────────────────────────
@@ -717,4 +751,3 @@ func FormatWithProfile(profile ReceiptProfile, data ReceiptPayload) string {
 	}
 	return text
 }
-

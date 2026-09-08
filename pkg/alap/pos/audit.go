@@ -90,7 +90,6 @@ func (at *AuditTrail) RecordWithContext(
 	return entry
 }
 
-
 // RecentEntries returns latest N audit logs
 func (at *AuditTrail) RecentEntries(limit int) []*AuditEntry {
 	at.mu.RLock()

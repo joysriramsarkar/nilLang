@@ -365,4 +365,3 @@ func (se *SyncEngine) Process(ops []*MutationOperation) ([]string, []string, err
 
 	return successes, failures, nil
 }
-

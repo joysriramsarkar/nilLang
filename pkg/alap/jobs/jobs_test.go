@@ -94,4 +94,3 @@ func TestDurableJobStore(t *testing.T) {
 		t.Fatalf("Expected no pending jobs after completion")
 	}
 }
-

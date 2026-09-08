@@ -95,4 +95,3 @@ func TestMoneyCheckedArithmetic(t *testing.T) {
 		t.Fatalf("Expected ErrOverflow on large addition, got %v", err)
 	}
 }
-

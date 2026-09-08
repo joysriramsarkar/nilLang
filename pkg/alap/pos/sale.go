@@ -36,7 +36,6 @@ type SaleItem struct {
 	ProfitMinor      int64        `json:"profit_minor"` // (UnitPrice - CostPrice) * Quantity
 }
 
-
 // Sale represents a POS transaction record
 type Sale struct {
 	ID            string          `json:"id"`

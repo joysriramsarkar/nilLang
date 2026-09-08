@@ -22,7 +22,6 @@ func NewDecimal(f float64) Decimal {
 	return Decimal{Value: int64(math.Round(f * float64(DecimalScale)))}
 }
 
-
 // NewDecimalFromInt creates a Decimal from an integer
 func NewDecimalFromInt(i int64) Decimal {
 	return Decimal{Value: i * DecimalScale}
@@ -133,7 +132,6 @@ func (d Decimal) MulChecked(other Decimal) (Decimal, error) {
 	}
 	return Decimal{Value: prod / DecimalScale}, nil
 }
-
 
 // Div divides two Decimals
 func (d Decimal) Div(other Decimal) (Decimal, error) {

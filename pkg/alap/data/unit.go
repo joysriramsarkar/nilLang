@@ -26,7 +26,6 @@ type Unit struct {
 	IsCustom       bool      `json:"is_custom,omitempty"`
 }
 
-
 // Dimension Base Units:
 // Mass:   mg (1 g = 1,000 mg; 1 kg = 1,000,000 mg)
 // Volume: ml (1 l = 1,000 ml)
@@ -203,7 +202,6 @@ func LookupUnit(s string) (Unit, bool) {
 		IsCustom:       true,
 	}, true
 }
-
 
 // CanConvert returns whether two units belong to the same dimension and are compatible
 func CanConvert(u1, u2 Unit) bool {

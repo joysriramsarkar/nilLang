@@ -388,4 +388,3 @@ func (js *DurableJobStore) MarkFailed(id string, errMsg string) error {
 	)
 	return err
 }
-

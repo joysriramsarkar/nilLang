@@ -120,14 +120,14 @@ func TestPrintQueueAndMockTransport(t *testing.T) {
 	// Wait for background worker
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if job.Status == JobDone {
+		if job.GetStatus() == JobDone {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	if job.Status != JobDone {
-		t.Fatalf("Expected job status DONE, got %s (err: %s)", job.Status, job.LastError)
+	if job.GetStatus() != JobDone {
+		t.Fatalf("Expected job status DONE, got %s (err: %s)", job.GetStatus(), job.GetLastError())
 	}
 
 	if string(transport.Bytes()) != "TEST ESC/POS RECEIPT DATA\n" {
@@ -160,4 +160,3 @@ func TestReceiptProfileFormatting(t *testing.T) {
 		t.Fatal("Expected duplicate customer copy block")
 	}
 }
-

@@ -188,13 +188,13 @@ func (re *ReportingEngine) GenerateStockValuationReport() *StockValuationReport 
 
 // CashierPerformanceReport aggregates orders and sales volume by cashier
 type CashierPerformanceReport struct {
-	CashierID            string  `json:"cashier_id"`
-	TotalOrders          int64   `json:"total_orders"`
-	TotalRevenueMinor    int64   `json:"total_revenue_minor"`
-	AverageOrderValMinor int64   `json:"avg_order_value_minor"`
-	CashTenderMinor      int64   `json:"cash_tender_minor"`
-	CardTenderMinor      int64   `json:"card_tender_minor"`
-	MFSTenderMinor       int64   `json:"mfs_tender_minor"`
+	CashierID            string `json:"cashier_id"`
+	TotalOrders          int64  `json:"total_orders"`
+	TotalRevenueMinor    int64  `json:"total_revenue_minor"`
+	AverageOrderValMinor int64  `json:"avg_order_value_minor"`
+	CashTenderMinor      int64  `json:"cash_tender_minor"`
+	CardTenderMinor      int64  `json:"card_tender_minor"`
+	MFSTenderMinor       int64  `json:"mfs_tender_minor"`
 }
 
 // GenerateCashierPerformanceReport produces cashier productivity breakdown
@@ -270,4 +270,3 @@ func (re *ReportingEngine) GenerateTaxReport() *TaxReport {
 	}
 	return rep
 }
-

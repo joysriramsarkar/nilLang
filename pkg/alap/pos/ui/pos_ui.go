@@ -108,12 +108,12 @@ func (s *POSUIServer) handleCustomers(w http.ResponseWriter, r *http.Request) {
 // ─── CHECKOUT ─────────────────────────────────────────────────────────────────
 
 type checkoutRequest struct {
-	Items      []cartItemReq  `json:"items"`
-	Payments   []paymentReq   `json:"payments"`
-	CustomerID string         `json:"customer_id"`
-	CashierID  string         `json:"cashier_id"`
-	RegisterID string         `json:"register_id"`
-	CouponCode string         `json:"coupon_code"`
+	Items      []cartItemReq `json:"items"`
+	Payments   []paymentReq  `json:"payments"`
+	CustomerID string        `json:"customer_id"`
+	CashierID  string        `json:"cashier_id"`
+	RegisterID string        `json:"register_id"`
+	CouponCode string        `json:"coupon_code"`
 }
 type cartItemReq struct {
 	ProductID string `json:"product_id"`

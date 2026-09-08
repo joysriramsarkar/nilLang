@@ -59,4 +59,3 @@ func TestDecimalCheckedArithmetic(t *testing.T) {
 		t.Fatalf("Expected ErrOverflow, got %v", err)
 	}
 }
-

@@ -322,4 +322,3 @@ func nullOrStr(s string) interface{} {
 	}
 	return s
 }
-

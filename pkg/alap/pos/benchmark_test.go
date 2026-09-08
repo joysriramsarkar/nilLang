@@ -51,4 +51,3 @@ func BenchmarkTransactionalCheckout(b *testing.B) {
 		_, _ = engine.Checkout.Execute(cart, payments, "cashier-01", "reg-01", "c-01")
 	}
 }
-

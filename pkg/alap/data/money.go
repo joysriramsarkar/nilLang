@@ -61,7 +61,6 @@ func NewMoneyFromMajor(major float64, currency ...string) Money {
 	return NewMoney(minor, currency...)
 }
 
-
 // ParseMoney parses standard currency strings such as "12.50", "৳1,250.00", "$49.99"
 func ParseMoney(s string, currency ...string) (Money, error) {
 	clean := strings.TrimSpace(s)
@@ -173,7 +172,6 @@ func (m Money) MulDecimalChecked(d Decimal) (Money, error) {
 	}
 	return NewMoney(prod/DecimalScale, m.Currency), nil
 }
-
 
 // Mul multiplies Money by an exact floating scalar and rounds to nearest minor unit
 func (m Money) Mul(factor float64) Money {

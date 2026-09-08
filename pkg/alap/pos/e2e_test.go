@@ -88,9 +88,9 @@ func TestE2EProductionPOS(t *testing.T) {
 
 	// ── 8. Build cart ─────────────────────────────────────────────────────────
 	cart := pos.NewCart("e2e-cart-001", "c-01")
-	cart.AddProduct(riceBag, data.NewDecimalFromInt(2))  // 2 bags rice
-	cart.AddProduct(oil, data.NewDecimalFromInt(3))      // 3 bottles oil
-	cart.AddProduct(salt, data.NewDecimalFromInt(5))     // 5 packets salt
+	cart.AddProduct(riceBag, data.NewDecimalFromInt(2)) // 2 bags rice
+	cart.AddProduct(oil, data.NewDecimalFromInt(3))     // 3 bottles oil
+	cart.AddProduct(salt, data.NewDecimalFromInt(5))    // 5 packets salt
 	cart.Recalculate()
 	snapshot := cart.Snapshot()
 

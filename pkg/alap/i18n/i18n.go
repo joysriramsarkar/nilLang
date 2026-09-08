@@ -146,18 +146,18 @@ func init() {
 	})
 
 	RegisterTranslations(LocaleBnIN, map[string]string{
-		"pos.title":          "লাখান ভাণ্ডার পিওএস",
-		"cart.title":         "চলতি কার্ট",
-		"cart.subtotal":      "মোট মূল্য",
-		"sale.total":         "মোট",
-		"sale.subtotal":      "উপমোট",
-		"sale.discount":      "ছাড়",
-		"sale.tax":           "জিএসটি / কর",
-		"sale.payment":       "পরিশোধ",
-		"sale.change":        "ফেরত",
-		"pos.product":        "পণ্য",
-		"pos.stock":          "স্টক",
-		"pos.sale":           "বিক্রয়",
+		"pos.title":     "লাখান ভাণ্ডার পিওএস",
+		"cart.title":    "চলতি কার্ট",
+		"cart.subtotal": "মোট মূল্য",
+		"sale.total":    "মোট",
+		"sale.subtotal": "উপমোট",
+		"sale.discount": "ছাড়",
+		"sale.tax":      "জিএসটি / কর",
+		"sale.payment":  "পরিশোধ",
+		"sale.change":   "ফেরত",
+		"pos.product":   "পণ্য",
+		"pos.stock":     "স্টক",
+		"pos.sale":      "বিক্রয়",
 	})
 
 	RegisterTranslations(LocaleEnIN, map[string]string{

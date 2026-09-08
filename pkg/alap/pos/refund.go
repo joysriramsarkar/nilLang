@@ -140,7 +140,6 @@ func (rs *RefundService) ProcessRefund(
 	}
 	sale.UpdatedAt = time.Now()
 
-
 	// 4. Generate Refund Receipt
 	refundID := fmt.Sprintf("ref-%d", time.Now().UnixNano())
 	receiptLines := make([]device.ReceiptLineItem, len(items))
