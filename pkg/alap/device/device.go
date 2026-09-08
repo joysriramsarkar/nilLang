@@ -2,12 +2,16 @@ package device
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
+	"github.com/joysriramsarkar/nilLang/pkg/alap/i18n"
 )
 
 // ─── BARCODE SUBSYSTEM ──────────────────────────────────────────────────────
@@ -727,6 +731,8 @@ type ReceiptProfile struct {
 	LogoText      string       `json:"logo_text,omitempty"`
 	TaxRegNo      string       `json:"tax_reg_no,omitempty"`
 	FooterText    string       `json:"footer_text,omitempty"`
+	Locale        string       `json:"locale,omitempty"` // "bn-BD", "en-US"
+	Bilingual     bool         `json:"bilingual"`
 	QREnabled     bool         `json:"qr_enabled"`
 	DuplicateCopy bool         `json:"duplicate_copy"`
 }
@@ -743,11 +749,218 @@ func FormatWithProfile(profile ReceiptProfile, data ReceiptPayload) string {
 	}
 	text := formatter.FormatPlainText(data)
 
+	if strings.HasPrefix(profile.Locale, "bn") {
+		text = i18n.ToBengaliDigits(text)
+	}
+
 	if profile.DuplicateCopy {
 		sep := strings.Repeat("-", int(w))
 		text += "\n" + sep + "\n"
-		text += "       *** CUSTOMER COPY ***\n"
+		if strings.HasPrefix(profile.Locale, "bn") {
+			text += "       *** গ্রাহক কপি (CUSTOMER COPY) ***\n"
+		} else {
+			text += "       *** CUSTOMER COPY ***\n"
+		}
 		text += sep + "\n\n"
 	}
 	return text
+}
+
+// ─── DURABLE PERSISTENT PRINT QUEUE (web-implications.md & Roadmap Item 11) ─
+
+// DurablePrintQueue persists print jobs in SQLite/Postgres and recovers pending jobs after restart.
+type DurablePrintQueue struct {
+	mu        sync.Mutex
+	db        *data.RealDBPool
+	transport PrinterTransport
+	running   bool
+	jobs      chan *PrintJob
+	quit      chan struct{}
+}
+
+// NewDurablePrintQueue constructs a crash-resilient persistent print queue
+func NewDurablePrintQueue(db *data.RealDBPool, transport PrinterTransport, bufferSize int) *DurablePrintQueue {
+	if bufferSize <= 0 {
+		bufferSize = 64
+	}
+	dpq := &DurablePrintQueue{
+		db:        db,
+		transport: transport,
+		jobs:      make(chan *PrintJob, bufferSize),
+		quit:      make(chan struct{}),
+	}
+	dpq.Start()
+	return dpq
+}
+
+// Start initiates worker and recovers any interrupted jobs from previous application runs
+func (dpq *DurablePrintQueue) Start() {
+	dpq.mu.Lock()
+	if dpq.running {
+		dpq.mu.Unlock()
+		return
+	}
+	dpq.running = true
+	dpq.mu.Unlock()
+
+	// Recover pending jobs from previous crash
+	_ = dpq.RecoverPendingJobs()
+
+	go dpq.worker()
+}
+
+// Stop terminates worker
+func (dpq *DurablePrintQueue) Stop() {
+	dpq.mu.Lock()
+	if !dpq.running {
+		dpq.mu.Unlock()
+		return
+	}
+	dpq.running = false
+	close(dpq.quit)
+	dpq.mu.Unlock()
+}
+
+// Enqueue persists the print job to job_records and submits it to the background worker
+func (dpq *DurablePrintQueue) Enqueue(job *PrintJob) error {
+	now := time.Now()
+	nowStr := now.UTC().Format(time.RFC3339)
+	job.mu.Lock()
+	if job.MaxRetries <= 0 {
+		job.MaxRetries = 3
+	}
+	if job.ID == "" {
+		job.ID = fmt.Sprintf("pj-%d", now.UnixNano())
+	}
+	job.Status = JobQueued
+	job.CreatedAt = now
+	payloadJSON, _ := json.Marshal(job.Payload)
+	job.mu.Unlock()
+
+	if dpq.db != nil {
+		_, err := dpq.db.Exec(
+			`INSERT INTO job_records (id, job_type, status, payload, attempt, max_attempts, created_at)
+			 VALUES (?, 'PRINT_RECEIPT', 'PENDING', ?, 0, ?, ?)`,
+			job.ID, string(payloadJSON), job.MaxRetries, nowStr,
+		)
+		if err != nil {
+			return fmt.Errorf("persist print job: %w", err)
+		}
+	}
+
+	select {
+	case dpq.jobs <- job:
+	default:
+	}
+	return nil
+}
+
+// RecoverPendingJobs fetches unprocessed or interrupted print jobs from database
+func (dpq *DurablePrintQueue) RecoverPendingJobs() error {
+	if dpq.db == nil {
+		return nil
+	}
+	rows, err := dpq.db.Query(
+		`SELECT id, payload, attempt, max_attempts, created_at
+		 FROM job_records
+		 WHERE job_type = 'PRINT_RECEIPT' AND status IN ('PENDING', 'PROCESSING')
+		 ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id, payloadStr, createdStr string
+		var attempt, maxRetries int
+		if err := rows.Scan(&id, &payloadStr, &attempt, &maxRetries, &createdStr); err != nil {
+			continue
+		}
+		var payload ReceiptPayload
+		_ = json.Unmarshal([]byte(payloadStr), &payload)
+		createdAt, _ := time.Parse(time.RFC3339, createdStr)
+
+		formatter := NewESCPOSFormatter(Width58mm)
+		raw := formatter.BuildESCPOSBytes(payload)
+
+		job := &PrintJob{
+			ID:         id,
+			Payload:    payload,
+			RawBytes:   raw,
+			Status:     JobQueued,
+			Attempt:    attempt,
+			MaxRetries: maxRetries,
+			CreatedAt:  createdAt,
+		}
+		select {
+		case dpq.jobs <- job:
+		default:
+		}
+	}
+	return nil
+}
+
+func (dpq *DurablePrintQueue) worker() {
+	for {
+		select {
+		case <-dpq.quit:
+			return
+		case job := <-dpq.jobs:
+			dpq.processJob(job)
+		}
+	}
+}
+
+func (dpq *DurablePrintQueue) processJob(job *PrintJob) {
+	job.mu.Lock()
+	maxRetries := job.MaxRetries
+	rawBytes := job.RawBytes
+	jobID := job.ID
+	job.mu.Unlock()
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	if dpq.db != nil {
+		_, _ = dpq.db.Exec(`UPDATE job_records SET status='PROCESSING', started_at=? WHERE id=?`, nowStr, jobID)
+	}
+
+	for {
+		job.mu.Lock()
+		if job.Attempt >= maxRetries {
+			job.Status = JobFailed
+			lastErr := job.LastError
+			job.mu.Unlock()
+			if dpq.db != nil {
+				_, _ = dpq.db.Exec(`UPDATE job_records SET status='FAILED', last_error=?, finished_at=? WHERE id=?`, lastErr, nowStr, jobID)
+			}
+			return
+		}
+		job.Attempt++
+		job.Status = JobPrinting
+		attempt := job.Attempt
+		job.mu.Unlock()
+
+		err := dpq.transport.Write(rawBytes)
+		if err == nil {
+			job.mu.Lock()
+			job.Status = JobDone
+			job.LastError = ""
+			job.mu.Unlock()
+			if dpq.db != nil {
+				nowFin := time.Now().UTC().Format(time.RFC3339)
+				_, _ = dpq.db.Exec(`UPDATE job_records SET status='COMPLETED', finished_at=? WHERE id=?`, nowFin, jobID)
+			}
+			return
+		}
+
+		job.mu.Lock()
+		job.LastError = err.Error()
+		job.mu.Unlock()
+
+		if dpq.db != nil {
+			_, _ = dpq.db.Exec(`UPDATE job_records SET attempt=?, last_error=? WHERE id=?`, attempt, err.Error(), jobID)
+		}
+
+		time.Sleep(time.Duration(50*(1<<(attempt-1))) * time.Millisecond)
+	}
 }

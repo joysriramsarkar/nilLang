@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"sort"
@@ -467,22 +468,32 @@ func (mr *RealMigrationRunner) Up() error {
 	_, err = mr.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version    INTEGER PRIMARY KEY,
 		name       TEXT NOT NULL,
+		checksum   TEXT NOT NULL DEFAULT '',
 		applied_at TEXT NOT NULL
 	)`)
 	if err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
+	// Migrate legacy schema_migrations without checksum column if needed
+	_, _ = mr.db.Exec(`ALTER TABLE schema_migrations ADD COLUMN checksum TEXT NOT NULL DEFAULT ''`)
 
 	for _, m := range mr.migrations {
-		var count int
-		if err := mr.db.QueryRow(
-			fmt.Sprintf("SELECT COUNT(*) FROM schema_migrations WHERE version=%s", mr.ph(1)),
+		currentChecksum := m.ComputeChecksum()
+		var existingChecksum string
+		err := mr.db.QueryRow(
+			fmt.Sprintf("SELECT checksum FROM schema_migrations WHERE version=%s", mr.ph(1)),
 			m.Version,
-		).Scan(&count); err != nil {
+		).Scan(&existingChecksum)
+
+		if err == nil {
+			// Already applied: verify checksum to ensure historical migration was not tampered with
+			if existingChecksum != "" && existingChecksum != currentChecksum {
+				return fmt.Errorf("migration %d (%s) checksum mismatch: database has %q, codebase has %q. Applied migration was modified",
+					m.Version, m.Name, existingChecksum, currentChecksum)
+			}
+			continue
+		} else if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("check migration %d: %w", m.Version, err)
-		}
-		if count > 0 {
-			continue // already applied — idempotent
 		}
 
 		// Run DDL statements inside an atomic transaction.
@@ -490,18 +501,34 @@ func (mr *RealMigrationRunner) Up() error {
 			return err
 		}
 
-		// Record the applied migration.
+		// Record the applied migration with its checksum.
 		if _, err := mr.db.Exec(
 			fmt.Sprintf(
-				"INSERT INTO schema_migrations (version, name, applied_at) VALUES (%s, %s, %s)",
-				mr.ph(1), mr.ph(2), mr.ph(3),
+				"INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (%s, %s, %s, %s)",
+				mr.ph(1), mr.ph(2), mr.ph(3), mr.ph(4),
 			),
-			m.Version, m.Name, time.Now().UTC().Format(time.RFC3339),
+			m.Version, m.Name, currentChecksum, time.Now().UTC().Format(time.RFC3339),
 		); err != nil {
 			return fmt.Errorf("record migration %d: %w", m.Version, err)
 		}
 	}
 	return nil
+}
+
+// CurrentVersion returns the highest applied migration version in the database.
+func (mr *RealMigrationRunner) CurrentVersion() (int, error) {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+
+	var maxVersion sql.NullInt64
+	err := mr.db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&maxVersion)
+	if err != nil {
+		return 0, nil
+	}
+	if !maxVersion.Valid {
+		return 0, nil
+	}
+	return int(maxVersion.Int64), nil
 }
 
 // execMigrationTx executes one migration's SQL inside a database transaction.
@@ -579,7 +606,7 @@ func (mr *RealMigrationRunner) RollbackN(n int) error {
 // Unlike the in-memory MigrationRunner.Status(), this queries the real DB.
 func (mr *RealMigrationRunner) Status() ([]MigrationRecord, error) {
 	rows, err := mr.db.Query(
-		"SELECT version, name, applied_at FROM schema_migrations ORDER BY version ASC",
+		"SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("migration status query: %w", err)
@@ -590,7 +617,7 @@ func (mr *RealMigrationRunner) Status() ([]MigrationRecord, error) {
 	for rows.Next() {
 		var r MigrationRecord
 		var appliedAt string
-		if err := rows.Scan(&r.Version, &r.Name, &appliedAt); err != nil {
+		if err := rows.Scan(&r.Version, &r.Name, &r.Checksum, &appliedAt); err != nil {
 			return nil, err
 		}
 		r.AppliedAt, _ = time.Parse(time.RFC3339, appliedAt)

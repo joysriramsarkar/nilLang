@@ -10,12 +10,14 @@ import (
 type AuditAction string
 
 const (
-	ActionSaleCompleted   AuditAction = "SALE_COMPLETED"
-	ActionSaleRefunded    AuditAction = "SALE_REFUNDED"
-	ActionStockAdjusted   AuditAction = "STOCK_ADJUSTED"
-	ActionShiftOpened     AuditAction = "SHIFT_OPENED"
-	ActionShiftClosed     AuditAction = "SHIFT_CLOSED"
-	ActionCustomerDuePaid AuditAction = "CUSTOMER_DUE_PAID"
+	ActionSaleCompleted    AuditAction = "SALE_COMPLETED"
+	ActionSaleRefunded     AuditAction = "SALE_REFUNDED"
+	ActionStockAdjusted    AuditAction = "STOCK_ADJUSTED"
+	ActionShiftOpened      AuditAction = "SHIFT_OPENED"
+	ActionShiftClosed      AuditAction = "SHIFT_CLOSED"
+	ActionCustomerDuePaid  AuditAction = "CUSTOMER_DUE_PAID"
+	ActionSupplierPaid     AuditAction = "SUPPLIER_PAID"
+	ActionPurchaseReturned AuditAction = "PURCHASE_RETURNED"
 )
 
 // AuditEntry records a tamper-evident audit trail log

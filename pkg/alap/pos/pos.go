@@ -85,6 +85,14 @@ func (pe *POSEngine) SetDB(pool *data.RealDBPool) {
 	if pe.Purchases != nil {
 		pe.Purchases.SetDB(pool)
 	}
+	if pe.Refund != nil {
+		pe.Refund.SetDB(pool)
+		pe.Refund.SetCustomers(pe.Customers)
+	}
+	if pe.Shifts != nil {
+		pe.Shifts.SetDB(pool)
+		pe.Shifts.SetAudit(pe.Audit)
+	}
 }
 
 // SeedDefaultEnterpriseData seeds baseline categories, products, and customers

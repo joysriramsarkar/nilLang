@@ -1,9 +1,12 @@
 package device
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
 )
 
 func TestBarcodeScannerBuffer(t *testing.T) {
@@ -158,5 +161,125 @@ func TestReceiptProfileFormatting(t *testing.T) {
 	}
 	if !strings.Contains(receipt, "*** CUSTOMER COPY ***") {
 		t.Fatal("Expected duplicate customer copy block")
+	}
+}
+
+func TestBilingualBengaliReceiptFormatting(t *testing.T) {
+	profile := ReceiptProfile{
+		Width:         Width58mm,
+		Locale:        "bn-BD",
+		DuplicateCopy: true,
+	}
+
+	payload := ReceiptPayload{
+		StoreName:  "লাখন ভান্ডার",
+		InvoiceNo:  "INV-2026-99",
+		GrandTotal: "৳1,500.00",
+	}
+
+	receipt := FormatWithProfile(profile, payload)
+	if !strings.Contains(receipt, "লাখন ভান্ডার") {
+		t.Fatal("expected receipt to contain Bengali store name")
+	}
+	if !strings.Contains(receipt, "৳১,৫০০.০০") {
+		t.Fatalf("expected Bengali numerals '৳১,৫০০.০০' in receipt, got:\n%s", receipt)
+	}
+	if !strings.Contains(receipt, "গ্রাহক কপি") {
+		t.Fatal("expected Bengali customer copy footer")
+	}
+}
+
+func TestDurablePrintQueueCrashRecovery(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "print_durable_test.db")
+	pool, err := data.OpenSQLite(dbPath)
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	defer pool.Close()
+
+	runner := data.NewRealMigrationRunner(pool)
+	data.RegisterPOSMigrations(runner)
+	if err := runner.Up(); err != nil {
+		t.Fatalf("migrations up: %v", err)
+	}
+
+	mockTransport := NewMockTransport()
+	dpq := NewDurablePrintQueue(pool, mockTransport, 16)
+	defer dpq.Stop()
+
+	payload := ReceiptPayload{
+		StoreName:  "Durable Test Store",
+		InvoiceNo:  "INV-DUR-01",
+		GrandTotal: "৳2,500.00",
+	}
+
+	formatter := NewESCPOSFormatter(Width58mm)
+	raw := formatter.BuildESCPOSBytes(payload)
+
+	job := &PrintJob{
+		ID:       "pj-crash-01",
+		Payload:  payload,
+		RawBytes: raw,
+	}
+
+	if err := dpq.Enqueue(job); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	// Wait for worker completion
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if job.GetStatus() == JobDone {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if job.GetStatus() != JobDone {
+		t.Fatalf("expected job status DONE, got %s", job.GetStatus())
+	}
+
+	// Verify DB record status is COMPLETED
+	var status string
+	_ = pool.QueryRow("SELECT status FROM job_records WHERE id = 'pj-crash-01'").Scan(&status)
+	if status != "COMPLETED" {
+		t.Fatalf("expected DB status COMPLETED, got %s", status)
+	}
+
+	// Now simulate application crash with an interrupted job in DB
+	dpq.Stop()
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	payloadJSON := `{"StoreName":"Durable Test Store","InvoiceNo":"INV-CRASH-RECOVERED","GrandTotal":"৳9,000.00"}`
+	_, err = pool.Exec(
+		`INSERT INTO job_records (id, job_type, status, payload, attempt, max_attempts, created_at)
+		 VALUES ('pj-interrupted-99', 'PRINT_RECEIPT', 'PENDING', ?, 0, 3, ?)`,
+		payloadJSON, nowStr,
+	)
+	if err != nil {
+		t.Fatalf("insert crash job: %v", err)
+	}
+
+	// Start a brand new DurablePrintQueue (simulating application restart)
+	mockTransport2 := NewMockTransport()
+	dpq2 := NewDurablePrintQueue(pool, mockTransport2, 16)
+	defer dpq2.Stop()
+
+	// Wait for recovery worker to process the interrupted job
+	deadline2 := time.Now().Add(2 * time.Second)
+	var recStatus string
+	for time.Now().Before(deadline2) {
+		_ = pool.QueryRow("SELECT status FROM job_records WHERE id = 'pj-interrupted-99'").Scan(&recStatus)
+		if recStatus == "COMPLETED" {
+			break
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+
+	if recStatus != "COMPLETED" {
+		t.Fatalf("expected recovered job to transition to COMPLETED, got %s", recStatus)
+	}
+
+	if !strings.Contains(string(mockTransport2.Bytes()), "INV-CRASH-RECOVERED") {
+		t.Fatalf("expected recovered print transport to receive INV-CRASH-RECOVERED receipt data")
 	}
 }

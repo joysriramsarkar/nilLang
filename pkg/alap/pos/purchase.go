@@ -3,10 +3,45 @@ package pos
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
 )
+
+var supplierLedgerSeq int64
+
+// SupplierLedgerEntry records a credit/debit transaction in a supplier's account.
+type SupplierLedgerEntry struct {
+	ID           string    `json:"id"`
+	SupplierID   string    `json:"supplier_id"`
+	Type         string    `json:"type"` // "PURCHASE", "PAYMENT", "DEBIT_NOTE", "ADJUSTMENT"
+	AmountMinor  int64     `json:"amount_minor"`
+	BalanceAfter int64     `json:"balance_after"`
+	Reference    string    `json:"reference"`
+	Notes        string    `json:"notes,omitempty"`
+	CreatedBy    string    `json:"created_by,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
+}
+
+// PurchaseReturnItem specifies product and quantity returned to supplier.
+type PurchaseReturnItem struct {
+	ProductID string       `json:"product_id"`
+	Quantity  data.Decimal `json:"quantity"`
+	CostPrice data.Money   `json:"cost_price"`
+	Reason    string       `json:"reason"`
+}
+
+// PurchaseReturnResult details the executed return to vendor.
+type PurchaseReturnResult struct {
+	ID           string               `json:"id"`
+	PurchaseID   string               `json:"purchase_id"`
+	SupplierID   string               `json:"supplier_id"`
+	TotalMinor   int64                `json:"total_minor"`
+	Items        []PurchaseReturnItem `json:"items"`
+	Timestamp    time.Time            `json:"timestamp"`
+	BalanceAfter int64                `json:"balance_after"`
+}
 
 // PurchaseStatus tracks the lifecycle of a purchase order.
 type PurchaseStatus string
@@ -222,6 +257,13 @@ func (ps *PurchaseService) ReceiveGoods(
 	}
 
 	allFullyReceived := true
+	var receivedBatchMinor int64
+	for _, it := range p.Items {
+		recQty, ok := toReceive[it.ProductID]
+		if ok && recQty.Value > 0 {
+			receivedBatchMinor += it.CostPrice.MulDecimal(recQty).Minor
+		}
+	}
 
 	// Step 1: Execute in DB if pool is available
 	if ps.db != nil {
@@ -278,6 +320,28 @@ func (ps *PurchaseService) ReceiveGoods(
 				}
 			}
 
+			// Update supplier payable and insert supplier_ledger entry
+			if p.SupplierID != "" && receivedBatchMinor > 0 {
+				var curPayable int64
+				_ = tx.QueryRow(`SELECT payable_minor FROM suppliers WHERE id = ?`, p.SupplierID).Scan(&curPayable)
+				newPayable := curPayable + receivedBatchMinor
+				_, err := tx.Exec(`UPDATE suppliers SET payable_minor=?, updated_at=? WHERE id=?`, newPayable, nowStr, p.SupplierID)
+				if err != nil {
+					return err
+				}
+
+				sledID := fmt.Sprintf("sled-po-%d-%d", now.UnixNano(), atomic.AddInt64(&supplierLedgerSeq, 1))
+				_, err = tx.Exec(
+					`INSERT INTO supplier_ledger (id, supplier_id, type, amount_minor, balance_after, reference, notes, created_by, timestamp)
+					 VALUES (?, ?, 'PURCHASE', ?, ?, ?, ?, 'system', ?)`,
+					sledID, p.SupplierID, receivedBatchMinor, newPayable, p.PONumber,
+					fmt.Sprintf("Goods received on %s", p.PONumber), nowStr,
+				)
+				if err != nil {
+					return err
+				}
+			}
+
 			// Update purchase status
 			newStatus := PurchaseReceived
 			if !allFullyReceived {
@@ -328,14 +392,9 @@ func (ps *PurchaseService) ReceiveGoods(
 		p.Status = PurchasePartial
 	}
 
-	// Update supplier payable
+	// Update supplier payable in memory
 	if s, found := ps.suppliers[p.SupplierID]; found {
-		s.PayableMinor += p.TotalMinor
-		if ps.db != nil {
-			_, _ = ps.db.Exec(
-				`UPDATE suppliers SET payable_minor=payable_minor+?, updated_at=? WHERE id=?`,
-				p.TotalMinor, nowStr, s.ID)
-		}
+		s.PayableMinor += receivedBatchMinor
 	}
 
 	if ps.audit != nil {
@@ -344,6 +403,238 @@ func (ps *PurchaseService) ReceiveGoods(
 	}
 
 	return p, nil
+}
+
+// RecordSupplierPayment records a payout to vendor, decreasing payable and recording ledger entry
+func (ps *PurchaseService) RecordSupplierPayment(
+	supplierID string,
+	amountMinor int64,
+	reference string,
+	notes string,
+	actor string,
+) (*SupplierLedgerEntry, error) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	if amountMinor <= 0 {
+		return nil, fmt.Errorf("payment amount must be > 0")
+	}
+	s, found := ps.suppliers[supplierID]
+	if !found {
+		return nil, fmt.Errorf("supplier not found: %s", supplierID)
+	}
+
+	now := time.Now()
+	nowStr := now.UTC().Format(time.RFC3339)
+	sledID := fmt.Sprintf("sled-pay-%d-%d", now.UnixNano(), atomic.AddInt64(&supplierLedgerSeq, 1))
+	newPayable := s.PayableMinor - amountMinor
+
+	if ps.db != nil {
+		err := ps.db.TransactionWithRetry(func(tx *data.RealTx) error {
+			var curPayable int64
+			row := tx.QueryRow(`SELECT payable_minor FROM suppliers WHERE id = ?`, supplierID)
+			if err := row.Scan(&curPayable); err != nil {
+				return fmt.Errorf("query supplier: %w", err)
+			}
+			newPayable = curPayable - amountMinor
+
+			_, err := tx.Exec(`UPDATE suppliers SET payable_minor = ?, updated_at = ? WHERE id = ?`, newPayable, nowStr, supplierID)
+			if err != nil {
+				return err
+			}
+
+			_, err = tx.Exec(
+				`INSERT INTO supplier_ledger (id, supplier_id, type, amount_minor, balance_after, reference, notes, created_by, timestamp)
+				 VALUES (?, ?, 'PAYMENT', ?, ?, ?, ?, ?, ?)`,
+				sledID, supplierID, amountMinor, newPayable, reference, notes, actor, nowStr,
+			)
+			return err
+		}, 5)
+		if err != nil {
+			return nil, fmt.Errorf("supplier payment tx: %w", err)
+		}
+	}
+
+	s.PayableMinor = newPayable
+	entry := &SupplierLedgerEntry{
+		ID:           sledID,
+		SupplierID:   supplierID,
+		Type:         "PAYMENT",
+		AmountMinor:  amountMinor,
+		BalanceAfter: newPayable,
+		Reference:    reference,
+		Notes:        notes,
+		CreatedBy:    actor,
+		Timestamp:    now,
+	}
+
+	if ps.audit != nil {
+		ps.audit.Record(ActionSupplierPaid, supplierID, actor, nil,
+			map[string]interface{}{"payable_minor": newPayable},
+			fmt.Sprintf("Paid ৳%.2f to supplier %s (Ref: %s)", float64(amountMinor)/100.0, s.Name, reference))
+	}
+	return entry, nil
+}
+
+// RecordPurchaseReturn returns received goods back to the supplier, decrements stock, and decrements supplier payable
+func (ps *PurchaseService) RecordPurchaseReturn(
+	purchaseID string,
+	supplierID string,
+	items []PurchaseReturnItem,
+	reason string,
+	actor string,
+) (*PurchaseReturnResult, error) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	if len(items) == 0 {
+		return nil, fmt.Errorf("no items specified for return")
+	}
+
+	s, found := ps.suppliers[supplierID]
+	if !found {
+		return nil, fmt.Errorf("supplier not found: %s", supplierID)
+	}
+
+	now := time.Now()
+	nowStr := now.UTC().Format(time.RFC3339)
+	var totalReturnMinor int64
+
+	for _, it := range items {
+		if it.Quantity.Value <= 0 {
+			return nil, fmt.Errorf("return quantity for %s must be > 0", it.ProductID)
+		}
+		p, found := ps.catalog.FindByID(it.ProductID)
+		if !found {
+			return nil, fmt.Errorf("product not found: %s", it.ProductID)
+		}
+		if p.Stock.Cmp(it.Quantity) < 0 {
+			return nil, fmt.Errorf("cannot return %s units of %s: current stock is %s",
+				it.Quantity.String(), p.Name, p.Stock.String())
+		}
+		lineCost := it.CostPrice.MulDecimal(it.Quantity)
+		totalReturnMinor += lineCost.Minor
+	}
+
+	sledID := fmt.Sprintf("sled-ret-%d-%d", now.UnixNano(), atomic.AddInt64(&supplierLedgerSeq, 1))
+	newPayable := s.PayableMinor - totalReturnMinor
+
+	if ps.db != nil {
+		err := ps.db.TransactionWithRetry(func(tx *data.RealTx) error {
+			for i, it := range items {
+				var currentStock int64
+				row := tx.QueryRow(`SELECT stock_raw FROM products WHERE id = ?`, it.ProductID)
+				if err := row.Scan(&currentStock); err != nil {
+					return err
+				}
+				if currentStock < it.Quantity.Value {
+					return fmt.Errorf("insufficient DB stock for return of %s", it.ProductID)
+				}
+				newStock := currentStock - it.Quantity.Value
+
+				res, err := tx.Exec(
+					`UPDATE products SET stock_raw = ?, version = version + 1, updated_at = ? WHERE id = ? AND stock_raw >= ?`,
+					newStock, nowStr, it.ProductID, it.Quantity.Value,
+				)
+				if err != nil {
+					return err
+				}
+				rows, _ := res.RowsAffected()
+				if rows == 0 {
+					return fmt.Errorf("concurrency conflict during return of %s", it.ProductID)
+				}
+
+				movID := fmt.Sprintf("mov-pret-%d-%d", now.UnixNano(), i)
+				_, err = tx.Exec(
+					`INSERT INTO stock_movements (id, product_id, product_name, type, delta_raw, balance_raw, cost_minor, reference, timestamp, notes)
+					 VALUES (?, ?, ?, 'RETURN', ?, ?, ?, ?, ?, ?)`,
+					movID, it.ProductID, it.ProductID, -it.Quantity.Value, newStock,
+					it.CostPrice.Minor, purchaseID, nowStr, fmt.Sprintf("Purchase return to supplier %s (Reason: %s)", supplierID, reason),
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+			var curPayable int64
+			_ = tx.QueryRow(`SELECT payable_minor FROM suppliers WHERE id = ?`, supplierID).Scan(&curPayable)
+			newPayable = curPayable - totalReturnMinor
+
+			_, err := tx.Exec(`UPDATE suppliers SET payable_minor = ?, updated_at = ? WHERE id = ?`, newPayable, nowStr, supplierID)
+			if err != nil {
+				return err
+			}
+
+			_, err = tx.Exec(
+				`INSERT INTO supplier_ledger (id, supplier_id, type, amount_minor, balance_after, reference, notes, created_by, timestamp)
+				 VALUES (?, ?, 'DEBIT_NOTE', ?, ?, ?, ?, ?, ?)`,
+				sledID, supplierID, totalReturnMinor, newPayable, purchaseID, reason, actor, nowStr,
+			)
+			return err
+		}, 5)
+		if err != nil {
+			return nil, fmt.Errorf("purchase return tx: %w", err)
+		}
+	}
+
+	// Update in-memory stock and payable
+	for _, it := range items {
+		negQty := data.Decimal{Value: -it.Quantity.Value}
+		if ps.inventory != nil {
+			_, _ = ps.inventory.RecordMovement(it.ProductID, MovementDamage, negQty, purchaseID, "Purchase Return: "+reason)
+		} else {
+			_, _ = ps.catalog.UpdateStock(it.ProductID, negQty)
+		}
+	}
+	s.PayableMinor = newPayable
+
+	result := &PurchaseReturnResult{
+		ID:           fmt.Sprintf("pret-%d", now.UnixNano()),
+		PurchaseID:   purchaseID,
+		SupplierID:   supplierID,
+		TotalMinor:   totalReturnMinor,
+		Items:        items,
+		Timestamp:    now,
+		BalanceAfter: newPayable,
+	}
+	return result, nil
+}
+
+// GetSupplierLedger returns all ledger entries for a supplier
+func (ps *PurchaseService) GetSupplierLedger(supplierID string) ([]*SupplierLedgerEntry, error) {
+	if ps.db == nil {
+		return nil, nil
+	}
+	rows, err := ps.db.Query(
+		`SELECT id, supplier_id, type, amount_minor, balance_after, reference, notes, created_by, timestamp
+		 FROM supplier_ledger WHERE supplier_id = ? ORDER BY timestamp ASC`,
+		supplierID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*SupplierLedgerEntry
+	for rows.Next() {
+		var e SupplierLedgerEntry
+		var notes *string
+		var createdBy *string
+		var timeStr string
+		err := rows.Scan(&e.ID, &e.SupplierID, &e.Type, &e.AmountMinor, &e.BalanceAfter, &e.Reference, &notes, &createdBy, &timeStr)
+		if err != nil {
+			return nil, err
+		}
+		if notes != nil {
+			e.Notes = *notes
+		}
+		if createdBy != nil {
+			e.CreatedBy = *createdBy
+		}
+		e.Timestamp, _ = time.Parse(time.RFC3339, timeStr)
+		entries = append(entries, &e)
+	}
+	return entries, rows.Err()
 }
 
 // RecordDamage logs damaged stock, decreases inventory, and records the write-off.

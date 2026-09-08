@@ -365,3 +365,116 @@ func (se *SyncEngine) Process(ops []*MutationOperation) ([]string, []string, err
 
 	return successes, failures, nil
 }
+
+// ─── CONFLICT RESOLUTION (web-implications.md & Roadmap Item 21) ───────────
+
+// ConflictStrategy indicates how divergent data between client and server is reconciled
+type ConflictStrategy string
+
+const (
+	StrategyDeltaAccumulation ConflictStrategy = "DELTA_ACCUMULATION"
+	StrategyLastWriteWins     ConflictStrategy = "LAST_WRITE_WINS"
+	StrategyLedgerAppend      ConflictStrategy = "LEDGER_APPEND"
+)
+
+// ConflictResolver resolves multi-register and client-server synchronization conflicts
+type ConflictResolver struct {
+	db *data.RealDBPool
+}
+
+// NewConflictResolver creates a ConflictResolver
+func NewConflictResolver(db *data.RealDBPool) *ConflictResolver {
+	return &ConflictResolver{db: db}
+}
+
+// ResolveInventoryDelta accumulates signed inventory deltas rather than overwriting absolute stock.
+// This prevents multi-terminal inventory drift when registers sync asynchronously.
+func (cr *ConflictResolver) ResolveInventoryDelta(productID string, delta data.Decimal) (data.Decimal, error) {
+	if cr.db == nil {
+		return data.Decimal{}, fmt.Errorf("no database pool configured")
+	}
+
+	var curRaw int64
+	err := cr.db.QueryRow(`SELECT stock_raw FROM products WHERE id = ?`, productID).Scan(&curRaw)
+	if err != nil {
+		return data.Decimal{}, fmt.Errorf("product not found %s: %w", productID, err)
+	}
+
+	curStock := data.Decimal{Value: curRaw}
+	newStock := curStock.Add(delta)
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	_, err = cr.db.Exec(
+		`UPDATE products SET stock_raw = ?, updated_at = ? WHERE id = ?`,
+		newStock.Value, nowStr, productID,
+	)
+	if err != nil {
+		return data.Decimal{}, fmt.Errorf("update stock: %w", err)
+	}
+
+	return newStock, nil
+}
+
+// ResolvePriceProductLWW applies product updates according to Last-Write-Wins based on version numbers.
+// Returns (applied = true) if the incoming mutation superseded the current version.
+func (cr *ConflictResolver) ResolvePriceProductLWW(productID string, incomingVersion int64, newPriceMinor int64) (bool, error) {
+	if cr.db == nil {
+		return false, fmt.Errorf("no database pool configured")
+	}
+
+	var currentVersion int64
+	row := cr.db.QueryRow(`SELECT version FROM products WHERE id = ?`, productID)
+	err := row.Scan(&currentVersion)
+	if err != nil {
+		return false, fmt.Errorf("product not found %s: %w", productID, err)
+	}
+
+	if incomingVersion < currentVersion {
+		// Server version is newer; client mutation is stale and discarded
+		return false, nil
+	}
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	_, err = cr.db.Exec(
+		`UPDATE products SET price_minor = ?, version = ?, updated_at = ? WHERE id = ?`,
+		newPriceMinor, incomingVersion, nowStr, productID,
+	)
+	if err != nil {
+		return false, fmt.Errorf("apply LWW product: %w", err)
+	}
+	return true, nil
+}
+
+// ResolveCustomerCreditMerge merges offline due delta into the persistent customer ledger without blind overwrite.
+func (cr *ConflictResolver) ResolveCustomerCreditMerge(customerID string, deltaDueMinor int64, ref string) (int64, error) {
+	if cr.db == nil {
+		return 0, fmt.Errorf("no database pool configured")
+	}
+
+	var curDue int64
+	err := cr.db.QueryRow(`SELECT due_balance_minor FROM customers WHERE id = ?`, customerID).Scan(&curDue)
+	if err != nil {
+		return 0, fmt.Errorf("customer not found: %w", err)
+	}
+
+	newDue := curDue + deltaDueMinor
+	now := time.Now()
+	nowStr := now.UTC().Format(time.RFC3339)
+
+	_, err = cr.db.Exec(`UPDATE customers SET due_balance_minor = ?, updated_at = ? WHERE id = ?`, newDue, nowStr, customerID)
+	if err != nil {
+		return 0, fmt.Errorf("update customer due: %w", err)
+	}
+
+	entryID := fmt.Sprintf("cml-%d", now.UnixNano())
+	_, err = cr.db.Exec(
+		`INSERT INTO customer_ledger (id, customer_id, type, amount_minor, balance_after, reference, created_at)
+		 VALUES (?, ?, 'OFFLINE_MERGE', ?, ?, ?, ?)`,
+		entryID, customerID, deltaDueMinor, newDue, ref, nowStr,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("record customer ledger merge: %w", err)
+	}
+
+	return newDue, nil
+}

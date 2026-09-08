@@ -540,6 +540,34 @@ document.getElementById('search-input').addEventListener('input', function(e) {
 });
 document.getElementById('search-input').addEventListener('keydown', function(e) {
   if (e.key === 'Escape') { e.target.value = ''; renderProducts(); }
+  if (e.key === 'Enter' && currentProducts && currentProducts.length >= 1) {
+    addToCart(currentProducts[0].id);
+    e.target.value = '';
+    renderProducts();
+  }
+});
+document.getElementById('tender-amount').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { doCheckout(); }
+});
+
+// Global POS Keyboard Shortcuts (web-implications.md & Roadmap Item 8)
+window.addEventListener('keydown', function(e) {
+  if (e.key === 'F2') {
+    e.preventDefault();
+    var s = document.getElementById('search-input');
+    if (s) { s.focus(); s.select(); }
+  } else if (e.key === 'F8') {
+    e.preventDefault();
+    var btn = document.getElementById('checkout-btn');
+    if (btn && !btn.disabled) { doCheckout(); }
+  } else if (e.key === 'F9') {
+    e.preventDefault();
+    var t = document.getElementById('tender-amount');
+    if (t) { t.focus(); t.select(); }
+  } else if (e.key === 'Escape') {
+    closeModal('receipt-modal');
+    closeModal('shift-modal');
+  }
 });
 
 init();

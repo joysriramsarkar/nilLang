@@ -528,4 +528,26 @@ CREATE INDEX IF NOT EXISTS idx_jobs_retry_at ON job_records(retry_at);
 `,
 		DownSQL: `DROP TABLE IF EXISTS job_records; DROP TABLE IF EXISTS processed_operations; DROP TABLE IF EXISTS sync_operations; DROP TABLE IF EXISTS audit_log; DROP TABLE IF EXISTS receipts;`,
 	})
+
+	// Version 12: Supplier ledger
+	runner.Register(Migration{
+		Version: 12,
+		Name:    "create_supplier_ledger",
+		UpSQL: `
+CREATE TABLE IF NOT EXISTS supplier_ledger (
+	id            TEXT PRIMARY KEY,
+	supplier_id   TEXT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+	type          TEXT NOT NULL,
+	amount_minor  INTEGER NOT NULL,
+	balance_after INTEGER NOT NULL,
+	reference     TEXT,
+	notes         TEXT,
+	created_by    TEXT,
+	timestamp     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sledger_supplier ON supplier_ledger(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_sledger_timestamp ON supplier_ledger(timestamp);
+`,
+		DownSQL: `DROP TABLE IF EXISTS supplier_ledger;`,
+	})
 }

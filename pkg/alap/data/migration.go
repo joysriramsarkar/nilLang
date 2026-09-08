@@ -1,6 +1,8 @@
 package data
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"sync"
@@ -15,10 +17,20 @@ type Migration struct {
 	DownSQL string `json:"down_sql"`
 }
 
+// ComputeChecksum calculates a SHA-256 fingerprint of the migration definition
+func (m Migration) ComputeChecksum() string {
+	h := sha256.New()
+	h.Write([]byte(m.UpSQL))
+	h.Write([]byte(":"))
+	h.Write([]byte(m.DownSQL))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // MigrationRecord represents an applied migration in database
 type MigrationRecord struct {
 	Version   int       `json:"version"`
 	Name      string    `json:"name"`
+	Checksum  string    `json:"checksum"`
 	AppliedAt time.Time `json:"applied_at"`
 }
 
@@ -91,6 +103,20 @@ func (mr *MigrationRunner) Down() (int, error) {
 
 	delete(mr.applied, maxVer)
 	return maxVer, nil
+}
+
+// CurrentVersion returns the highest applied migration version
+func (mr *MigrationRunner) CurrentVersion() int {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+
+	maxVer := 0
+	for v := range mr.applied {
+		if v > maxVer {
+			maxVer = v
+		}
+	}
+	return maxVer
 }
 
 // Status returns current migration status
