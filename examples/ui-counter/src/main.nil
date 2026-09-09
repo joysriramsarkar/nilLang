@@ -1,26 +1,34 @@
-// Counter Application in Nilang
-// Demonstrating State and Alap UI components
+component Counter {
+    state count: i32 = 0;
 
-let title = "Alap UI Counter";
-let initialCount = 0;
+    render {
+        return {
+            "type": "Page",
+            "title": "Alap UI Counter",
+            "content": [
+                {
+                    "type": "Card",
+                    "title": "Current Count",
+                    "body": "\(count)"
+                },
+                {
+                    "type": "Button",
+                    "id": "increment-count",
+                    "label": "Increment",
+                    "event": "increment",
+                    "payload": {"step": 1}
+                }
+            ],
+            "footer": "NilLang declarative component"
+        };
+    }
 
-puts("╔════════════════════════════════════════════════╗");
-puts("║   \(title) - Powered by Onuron OS               ║");
-puts("╚════════════════════════════════════════════════╝");
-
-let createCounter = fn(init) {
-    let count = init;
-    return fn(step) {
-        let count = count + step;
-        return count;
-    };
-};
-
-let counter = createCounter(initialCount);
-
-puts("Current Count: \(initialCount)");
-puts("Incrementing by 1: \(counter(1))");
-puts("Incrementing by 5: \(counter(5))");
-puts("Incrementing by 10: \(counter(10))");
-
-puts("✅ Counter logic executed successfully!");
+    on increment(payload) {
+        let step = 1;
+        if (payload != null) {
+            step = payload["step"];
+        }
+        count = count + step;
+        emit("changed", count);
+    }
+}

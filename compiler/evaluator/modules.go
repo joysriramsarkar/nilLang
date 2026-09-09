@@ -231,6 +231,8 @@ func evalComponentLiteral(node *ast.ComponentLiteral, env *object.Environment) o
 		name = node.Name.Value
 	}
 
+	componentEnv := object.NewEnclosedEnvironment(env)
+
 	// Build Component definition Hash
 	compPairs := make(map[object.HashKey]object.HashPair)
 
@@ -248,28 +250,88 @@ func evalComponentLiteral(node *ast.ComponentLiteral, env *object.Environment) o
 		if st.Name != nil {
 			var initVal object.Object = NULL
 			if st.Value != nil {
-				initVal = Eval(st.Value, env)
+				initVal = Eval(st.Value, componentEnv)
 			}
+			componentEnv.Set(st.Name.Value, initVal)
 			sk := &object.String{Value: st.Name.Value}
 			initialState[sk.HashKey()] = object.HashPair{Key: sk, Value: initVal}
 		}
 	}
-	setCompProp("state", &object.Hash{Pairs: initialState})
+	state := &object.Hash{Pairs: initialState}
+	setCompProp("state", state)
 
-	// Render method
-	setCompProp("render", &object.Builtin{
-		Fn: func(args ...object.Object) object.Object {
-			// Renders HTML string representation for SSR
-			title := name
-			if len(args) > 0 {
-				title = args[0].Inspect()
-			}
-			htmlStr := fmt.Sprintf(`<div class="alap-component" data-component="%s" data-ssr="true"><h3>%s</h3></div>`, name, title)
-			return &object.String{Value: htmlStr}
-		},
-	})
+	if node.Render != nil && node.Render.Body != nil {
+		setCompProp("render", &object.Function{Parameters: []*ast.Identifier{}, Body: node.Render.Body, Env: componentEnv})
+	}
+	if node.Build != nil && node.Build.Body != nil {
+		setCompProp("build", &object.Function{Parameters: []*ast.Identifier{}, Body: node.Build.Body, Env: componentEnv})
+	}
+
+	events := make(map[object.HashKey]object.HashPair)
+	for _, handler := range node.Handlers {
+		if handler.Event == nil || handler.Body == nil {
+			continue
+		}
+		key := &object.String{Value: handler.Event.Value}
+		events[key.HashKey()] = object.HashPair{
+			Key:   key,
+			Value: &object.Function{Parameters: handler.Parameters, Body: handler.Body, Env: componentEnv},
+		}
+	}
+	setCompProp("events", &object.Hash{Pairs: events})
 
 	compObj := &object.Hash{Pairs: compPairs}
+	componentEnv.Set("emit", &object.Builtin{Fn: func(args ...object.Object) object.Object {
+		if len(args) < 1 || len(args) > 2 {
+			return newError("wrong number of arguments to `emit`. got=%d, want=1 or 2", len(args))
+		}
+		payload := object.Object(NULL)
+		if len(args) == 2 {
+			payload = args[1]
+		}
+		setCompProp("lastEvent", MakeHashObj(map[string]object.Object{
+			"name":    args[0],
+			"payload": payload,
+		}))
+		return payload
+	}})
+	setCompProp("dispatch", &object.Builtin{Fn: func(args ...object.Object) object.Object {
+		if len(args) < 1 || len(args) > 2 {
+			return newError("wrong number of arguments to `dispatch`. got=%d, want=1 or 2", len(args))
+		}
+		eventName, ok := args[0].(*object.String)
+		if !ok {
+			return newError("dispatch event name must be STRING, got %s", args[0].Type())
+		}
+		pair, ok := events[eventName.HashKey()]
+		if !ok {
+			return newError("unknown component event %s", eventName.Value)
+		}
+		function, ok := pair.Value.(*object.Function)
+		if !ok {
+			return newError("component event %s is not callable", eventName.Value)
+		}
+		var handlerArgs []object.Object
+		if len(function.Parameters) == 1 {
+			payload := object.Object(NULL)
+			if len(args) == 2 {
+				payload = args[1]
+			}
+			handlerArgs = []object.Object{payload}
+		}
+		result := applyFunction(function, handlerArgs)
+		if isError(result) {
+			return result
+		}
+		for _, st := range node.States {
+			if st.Name != nil {
+				if value, exists := componentEnv.Get(st.Name.Value); exists {
+					setHashKey(state, st.Name.Value, value)
+				}
+			}
+		}
+		return result
+	}})
 
 	if node.Name != nil {
 		env.Set(node.Name.Value, compObj)

@@ -1,0 +1,9 @@
+{
+  "name": "compute-platform",
+  "version": "1.0.0",
+  "description": "Shared tensor compute for games, data science, and AI",
+  "entry": "src/main.nil",
+  "profile": "game",
+  "capabilities": ["GPU", "Audio", "Filesystem", "Network", "AI"],
+  "targets": ["windows", "linux", "onuron"]
+}

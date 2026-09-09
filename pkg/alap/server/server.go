@@ -283,7 +283,8 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(k, "X-") ||
 			strings.HasPrefix(k, "Access-Control-") ||
 			k == "Content-Security-Policy" ||
-			k == "Strict-Transport-Security" {
+			k == "Strict-Transport-Security" ||
+			k == "Set-Cookie" {
 			w.Header().Set(k, v)
 		}
 	}

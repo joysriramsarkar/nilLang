@@ -89,3 +89,19 @@ func TestMIRControlFlow(t *testing.T) {
 		t.Fatalf("Expected non-empty MIR string")
 	}
 }
+
+func TestMIRPreservesDeclarativeComponent(t *testing.T) {
+	p := parser.New(lexer.New(`component Counter { state count: i32 = 0; render { return count; } on click { count = count + 1; } }`))
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+	mirProgram := NewLowerer().LowerHIR(hir.NewLowerer().LowerProgram(program))
+	component, ok := mirProgram.Components["Counter"]
+	if !ok || component.RenderFunc != "Counter.render" || component.Events["click"] != "Counter.on.click" {
+		t.Fatalf("unexpected MIR component: %+v", component)
+	}
+	if mirProgram.Functions[component.RenderFunc] == nil || mirProgram.Functions[component.Events["click"]] == nil {
+		t.Fatalf("component member functions were not lowered: %+v", mirProgram.Functions)
+	}
+}

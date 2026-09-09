@@ -13,6 +13,7 @@ if %ERRORLEVEL% EQU 0 (
     echo [SUCCESS] All binaries compiled successfully into bin/
     echo   - bin/nil.exe
     echo   - bin/nilc.exe
+    echo   - bin/nil-bootstrap.exe
     echo   - bin/nilpkg.exe
     echo   - bin/nilpkg-server.exe
     echo   - bin/nilkey.exe

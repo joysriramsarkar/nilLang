@@ -216,7 +216,12 @@ func cmdBuild() {
 	builder := bundle.NewBuilder(cfg, projectDir)
 
 	// Add compiled bytecode and source
-	bytecodeBytes := pipeline.GetBytecodeBytes()
+	bytecodeBytes, err := pipeline.GetBytecodeImage()
+	if err != nil {
+		fmt.Println("❌")
+		fmt.Fprintf(os.Stderr, "❌ বাইটকোড সিরিয়ালাইজেশন ত্রুটি: %s\n", err)
+		os.Exit(1)
+	}
 	builder.AddFile("bytecode/main.nabc", bytecodeBytes)
 	srcDir := filepath.Join(projectDir, "src")
 	if info, err := os.Stat(srcDir); err == nil && info.IsDir() {

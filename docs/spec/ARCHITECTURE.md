@@ -79,10 +79,12 @@ Production deployment artifact encapsulating:
 ```text
 application.nilax
 ├── manifest.json       # App identity, version, targets, declared capabilities
-├── bytecode/           # Compiled NABC bytecode (.nabc) or WebAssembly module (.wasm)
+├── bytecode/           # Versioned NABC image with instructions and constants
 ├── resources/          # Assets, images, stylesheets, fonts
 └── signature.sig       # Ed25519 cryptographic signature
 ```
+
+NABC images are self-contained VM inputs. Bundled source may be retained for interpreted or diagnostic workflows, but it is not required to execute the bytecode entry.
 
 ---
 

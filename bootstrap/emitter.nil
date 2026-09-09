@@ -1,0 +1,193 @@
+let nilEmit = fn(program) {
+    let instructions = [];
+    let diagnostics = [];
+    let nextLabel = 0;
+
+    let instruction = fn(op, operand) {
+        return {"op": op, "operand": operand};
+    };
+    let appendInstruction = fn(op, operand) {
+        instructions = push(instructions, instruction(op, operand));
+    };
+    let label = fn() {
+        let name = "L" + str(nextLabel);
+        nextLabel = nextLabel + 1;
+        return name;
+    };
+
+    let compile = null;
+    let compileList = fn(nodes) {
+        let index = 0;
+        while (index < len(nodes)) {
+            compile(nodes[index]);
+            index = index + 1;
+        }
+    };
+
+    compile = fn(node) {
+        if (node == null) {
+            return null;
+        }
+        let kind = node["kind"];
+        if (kind == "Program" || kind == "BlockStatement") {
+            compileList(node["statements"]);
+        } else {
+            if (kind == "ExpressionStatement") {
+                compile(node["expression"]);
+                appendInstruction("POP", null);
+            } else {
+                if (kind == "LetStatement") {
+                    compile(node["value"]);
+                    appendInstruction("STORE", node["name"]["value"]);
+                } else {
+                    if (kind == "AssignStatement") {
+                        compile(node["value"]);
+                        appendInstruction("STORE", node["name"]["value"]);
+                    } else {
+                        if (kind == "ReturnStatement") {
+                            compile(node["value"]);
+                            appendInstruction("RETURN", null);
+                        } else {
+                            if (kind == "WhileStatement") {
+                                let startLabel = label();
+                                let endLabel = label();
+                                appendInstruction("LABEL", startLabel);
+                                compile(node["condition"]);
+                                appendInstruction("JUMP_IF_FALSE", endLabel);
+                                compile(node["body"]);
+                                appendInstruction("JUMP", startLabel);
+                                appendInstruction("LABEL", endLabel);
+                            } else {
+                                if (kind == "Identifier") {
+                                    appendInstruction("LOAD", node["value"]);
+                                } else {
+                                    if (kind == "IntegerLiteral") {
+                                        appendInstruction("CONST_INT", node["literal"]);
+                                    } else {
+                                        if (kind == "FloatLiteral") {
+                                            appendInstruction("CONST_FLOAT", node["literal"]);
+                                        } else {
+                                            if (kind == "StringLiteral") {
+                                                appendInstruction("CONST_STRING", node["value"]);
+                                            } else {
+                                                if (kind == "Boolean") {
+                                                    appendInstruction("CONST_BOOL", node["value"]);
+                                                } else {
+                                                    if (kind == "NullLiteral") {
+                                                        appendInstruction("CONST_NULL", null);
+                                                    } else {
+                                                        if (kind == "PrefixExpression") {
+                                                            compile(node["right"]);
+                                                            appendInstruction("PREFIX", node["operator"]);
+                                                        } else {
+                                                            if (kind == "InfixExpression") {
+                                                                compile(node["left"]);
+                                                                compile(node["right"]);
+                                                                appendInstruction("BINARY", node["operator"]);
+                                                            } else {
+                                                                if (kind == "IfExpression") {
+                                                                    let elseLabel = label();
+                                                                    let endLabel = label();
+                                                                    compile(node["condition"]);
+                                                                    appendInstruction("JUMP_IF_FALSE", elseLabel);
+                                                                    compile(node["consequence"]);
+                                                                    appendInstruction("JUMP", endLabel);
+                                                                    appendInstruction("LABEL", elseLabel);
+                                                                    compile(node["alternative"]);
+                                                                    appendInstruction("LABEL", endLabel);
+                                                                } else {
+                                                                    if (kind == "FunctionLiteral") {
+                                                                        let parameters = [];
+                                                                        let index = 0;
+                                                                        while (index < len(node["parameters"])) {
+                                                                            parameters = push(parameters, node["parameters"][index]["value"]);
+                                                                            index = index + 1;
+                                                                        }
+                                                                        appendInstruction("FUNCTION", {"name": node["name"], "parameters": parameters});
+                                                                        compile(node["body"]);
+                                                                        appendInstruction("END_FUNCTION", null);
+                                                                    } else {
+                                                                        if (kind == "CallExpression") {
+                                                                            compile(node["function"]);
+                                                                            compileList(node["arguments"]);
+                                                                            appendInstruction("CALL", len(node["arguments"]));
+                                                                        } else {
+                                                                            if (kind == "ArrayLiteral") {
+                                                                                compileList(node["elements"]);
+                                                                                appendInstruction("ARRAY", len(node["elements"]));
+                                                                            } else {
+                                                                                if (kind == "HashLiteral") {
+                                                                                    let pairs = node["pairs"];
+                                                                                    let index = 0;
+                                                                                    while (index < len(pairs)) {
+                                                                                        compile(pairs[index]["key"]);
+                                                                                        compile(pairs[index]["value"]);
+                                                                                        index = index + 1;
+                                                                                    }
+                                                                                    appendInstruction("HASH", len(pairs));
+                                                                                } else {
+                                                                                    if (kind == "IndexExpression") {
+                                                                                        compile(node["left"]);
+                                                                                        compile(node["index"]);
+                                                                                        appendInstruction("INDEX", null);
+                                                                                    } else {
+                                                                                        if (kind == "IndexAssignStatement") {
+                                                                                            compile(node["left"]);
+                                                                                            compile(node["index"]);
+                                                                                            compile(node["value"]);
+                                                                                            appendInstruction("INDEX_STORE", null);
+                                                                                        } else {
+                                                                                            if (kind == "DotExpression") {
+                                                                                                compile(node["left"]);
+                                                                                                appendInstruction("MEMBER", node["member"]["value"]);
+                                                                                            } else {
+                                                                                                diagnostics = push(diagnostics, {
+                                                                                                    "code": "E2001",
+                                                                                                    "message": "unsupported AST node: " + str(kind)
+                                                                                                });
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    };
+
+    compile(program);
+    return {
+        "format": "nil-bootstrap-ir",
+        "version": 1,
+        "instructions": instructions,
+        "diagnostics": diagnostics
+    };
+};
+
+let nilCompile = fn(source) {
+    let program = nilParse(source);
+    if (len(program["errors"]) > 0) {
+        return {"ok": false, "stage": "parse", "diagnostics": program["errors"]};
+    }
+    let analysis = nilAnalyze(program);
+    if (!analysis["ok"]) {
+        return {"ok": false, "stage": "analyze", "diagnostics": analysis["diagnostics"]};
+    }
+    let artifact = nilEmit(program);
+    return {"ok": len(artifact["diagnostics"]) == 0, "stage": "emit", "artifact": artifact, "diagnostics": artifact["diagnostics"]};
+};

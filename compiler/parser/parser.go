@@ -78,9 +78,12 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(token.IF, p.parseIfExpression)
 	p.registerPrefix(token.FN, p.parseFunctionLiteral)
+	p.registerPrefix(token.TASK, p.parseTaskExpression)
+	p.registerPrefix(token.AWAIT, p.parseAwaitExpression)
 	p.registerPrefix(token.LBRACKET, p.parseArrayLiteral)
 	p.registerPrefix(token.LBRACE, p.parseHashLiteral)
 	p.registerPrefix(token.COMPONENT, p.parseComponentLiteralExpression)
+	p.registerPrefix(token.EMIT, p.parseKeywordIdentifier)
 
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
@@ -198,6 +201,9 @@ func (p *Parser) parseStatement() ast.Statement {
 	case token.STYLE:
 		return p.parseStyleStatement()
 	case token.IDENT:
+		if p.curToken.Literal == "app" && (p.peekTokenIs(token.LBRACE) || p.peekTokenIs(token.IDENT)) {
+			return p.parseAppStatement()
+		}
 		if p.peekTokenIs(token.ASSIGN) {
 			return p.parseAssignStatement()
 		}
@@ -205,6 +211,19 @@ func (p *Parser) parseStatement() ast.Statement {
 	default:
 		return p.parseExpressionStatement()
 	}
+}
+
+func (p *Parser) parseAppStatement() *ast.AppStatement {
+	stmt := &ast.AppStatement{Token: p.curToken}
+	if p.peekTokenIs(token.IDENT) {
+		p.nextToken()
+		stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	}
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+	stmt.Body = p.parseBlockStatement()
+	return stmt
 }
 
 func (p *Parser) parseStateDeclaration() *ast.StateDeclaration {
@@ -218,10 +237,10 @@ func (p *Parser) parseStateDeclaration() *ast.StateDeclaration {
 	// Optional type: state count: i32 = 0
 	if p.peekTokenIs(token.COLON) {
 		p.nextToken() // cur is :
-		if p.peekTokenIs(token.IDENT) {
-			p.nextToken() // cur is type name
-			stmt.Type = p.curToken.Literal
+		if !p.expectPeek(token.IDENT) {
+			return nil
 		}
+		stmt.Type = p.curToken.Literal
 	}
 
 	if p.peekTokenIs(token.ASSIGN) {
@@ -507,6 +526,10 @@ func (p *Parser) parseIdentifier() ast.Expression {
 	return &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 }
 
+func (p *Parser) parseKeywordIdentifier() ast.Expression {
+	return &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+}
+
 func (p *Parser) parseIntegerLiteral() ast.Expression {
 	lit := &ast.IntegerLiteral{Token: p.curToken}
 
@@ -624,6 +647,22 @@ func (p *Parser) parsePrefixExpression() ast.Expression {
 
 	expression.Right = p.parseExpression(PREFIX)
 
+	return expression
+}
+
+func (p *Parser) parseTaskExpression() ast.Expression {
+	expression := &ast.TaskExpression{Token: p.curToken}
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+	expression.Body = p.parseBlockStatement()
+	return expression
+}
+
+func (p *Parser) parseAwaitExpression() ast.Expression {
+	expression := &ast.AwaitExpression{Token: p.curToken}
+	p.nextToken()
+	expression.Right = p.parseExpression(PREFIX)
 	return expression
 }
 
@@ -826,9 +865,16 @@ func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
 func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
 	exp := &ast.DotExpression{Token: p.curToken, Left: left}
 
-	if !p.expectPeek(token.IDENT) {
+	if !p.peekTokenIs(token.IDENT) &&
+		!p.peekTokenIs(token.STATE) &&
+		!p.peekTokenIs(token.RENDER) &&
+		!p.peekTokenIs(token.EMIT) &&
+		!p.peekTokenIs(token.ON) &&
+		!p.peekTokenIs(token.BUILD) {
+		p.peekError(token.IDENT)
 		return nil
 	}
+	p.nextToken()
 
 	exp.Member = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	return exp
@@ -863,7 +909,12 @@ func (p *Parser) parseHashLiteral() ast.Expression {
 }
 
 func (p *Parser) parseComponentDeclaration() *ast.ComponentLiteral {
-	comp := &ast.ComponentLiteral{Token: p.curToken}
+	comp := &ast.ComponentLiteral{
+		Token:    p.curToken,
+		States:   []*ast.StateDeclaration{},
+		Handlers: []*ast.EventHandler{},
+		Body:     &ast.BlockStatement{Statements: []ast.Statement{}},
+	}
 
 	if !p.expectPeek(token.IDENT) {
 		return nil
@@ -874,8 +925,68 @@ func (p *Parser) parseComponentDeclaration() *ast.ComponentLiteral {
 		return nil
 	}
 
-	comp.Body = p.parseBlockStatement()
+	comp.Body.Token = p.curToken
+	p.nextToken()
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		switch p.curToken.Type {
+		case token.STATE:
+			state := p.parseStateDeclaration()
+			if state != nil {
+				comp.States = append(comp.States, state)
+			}
+		case token.RENDER:
+			if comp.Render != nil {
+				p.errors = append(p.errors, fmt.Sprintf("line %d:%d: component may only declare one render block", p.curToken.Line, p.curToken.Column))
+			}
+			comp.Render = p.parseComponentBlock()
+		case token.BUILD:
+			if comp.Build != nil {
+				p.errors = append(p.errors, fmt.Sprintf("line %d:%d: component may only declare one build block", p.curToken.Line, p.curToken.Column))
+			}
+			comp.Build = p.parseComponentBlock()
+		case token.ON:
+			handler := p.parseEventHandler()
+			if handler != nil {
+				comp.Handlers = append(comp.Handlers, handler)
+			}
+		default:
+			stmt := p.parseStatement()
+			if stmt != nil {
+				comp.Body.Statements = append(comp.Body.Statements, stmt)
+			}
+		}
+		p.nextToken()
+	}
 	return comp
+}
+
+func (p *Parser) parseComponentBlock() *ast.RenderMethod {
+	method := &ast.RenderMethod{Token: p.curToken}
+	if !p.expectPeek(token.LBRACE) {
+		return method
+	}
+	method.Body = p.parseBlockStatement()
+	return method
+}
+
+func (p *Parser) parseEventHandler() *ast.EventHandler {
+	handler := &ast.EventHandler{Token: p.curToken, Parameters: []*ast.Identifier{}}
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	handler.Event = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken()
+		handler.Parameters = p.parseFunctionParameters()
+		if len(handler.Parameters) > 1 {
+			p.errors = append(p.errors, fmt.Sprintf("line %d:%d: event handler accepts at most one payload parameter", handler.Token.Line, handler.Token.Column))
+		}
+	}
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+	handler.Body = p.parseBlockStatement()
+	return handler
 }
 
 func (p *Parser) parseComponentLiteralExpression() ast.Expression {

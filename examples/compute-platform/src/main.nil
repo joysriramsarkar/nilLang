@@ -1,0 +1,29 @@
+puts("NilLang compute platform");
+
+// Game workload: transform two 2D homogeneous points in one batch.
+let points = tensor([1, 2, 1, 4, 5, 1], [2, 3]);
+let transform = tensor([2, 0, 0, 0, 2, 0, 10, 20, 1], [3, 3]);
+let transformed = tensorMatmul(points, transform);
+puts("game transforms: " + str(transformed));
+let activeEntity = tensorSlice(transformed, [1, 0], [2, 3]);
+let scaledEntity = tensorMul(activeEntity, tensor([1.5, 1.5, 1], [3]));
+puts("game selected and scaled entity: " + str(scaledEntity));
+
+// Data workload: vectorized aggregation over a contiguous numeric buffer.
+let revenue = tensor([20, 20, 90, 80, 200], [5]);
+puts("data revenue sum: " + str(tensorSum(revenue)));
+
+// AI workload: dense layer forward pass for two samples.
+let allFeatures = tensor([1, 0, 0.5, 1, 1, 0.25, 0.5, 0.5, 1], [3, 3], "float32");
+let features = tensorSlice(allFeatures, [0, 0], [2, 3]);
+let weights = tensor([0.2, 0.8, 0.5, -0.5, 1.0, 0.1], [3, 2], "float32");
+let logits = tensorMatmul(features, weights);
+let bias = tensor([0.1, -0.1], [2], "float32");
+let output = tensorAdd(logits, bias);
+puts("ai dense output (" + tensorDtype(output) + "): " + str(output));
+let preciseOutput = tensorCast(output, "float64");
+assert(tensorDtype(preciseOutput) == "float64", "unexpected cast dtype");
+
+let firstOutput = tensorGet(output, [0, 0]);
+assert(firstOutput > 0.79 && firstOutput < 0.81, "unexpected dense-layer output");
+puts("compute foundation verified");

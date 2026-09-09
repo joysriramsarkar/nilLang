@@ -20,6 +20,8 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return evalProgram(node, env)
 	case *ast.BlockStatement:
 		return evalBlockStatement(node, env)
+	case *ast.AppStatement:
+		return Eval(node.Body, env)
 	case *ast.ExpressionStatement:
 		return Eval(node.Expression, env)
 	case *ast.ReturnStatement:
@@ -134,6 +136,34 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			env.Set(node.Name, fn)
 		}
 		return fn
+	case *ast.TaskExpression:
+		future := object.NewFuture()
+		taskEnv := env.Snapshot()
+		go func() {
+			result := Eval(node.Body, taskEnv)
+			if returnValue, ok := result.(*object.ReturnValue); ok {
+				result = returnValue.Value
+			}
+			if result == nil {
+				result = NULL
+			}
+			future.Complete(result, nil)
+		}()
+		return future
+	case *ast.AwaitExpression:
+		value := Eval(node.Right, env)
+		if isError(value) {
+			return value
+		}
+		future, ok := value.(*object.Future)
+		if !ok {
+			return newError("cannot await non-future value: %s", value.Type())
+		}
+		result, err := future.Await()
+		if err != nil {
+			return newError("task failed: %s", err)
+		}
+		return result
 	case *ast.CallExpression:
 		function := Eval(node.Function, env)
 		if isError(function) {
@@ -573,6 +603,9 @@ func evalExpressions(exps []ast.Expression, env *object.Environment) []object.Ob
 }
 
 func applyFunction(fn object.Object, args []object.Object) object.Object {
+	if fn == nil {
+		return newError("attempted to call an invalid expression")
+	}
 	switch fn := fn.(type) {
 	case *object.Function:
 		extendedEnv := extendFunctionEnv(fn, args)
@@ -605,6 +638,9 @@ func unwrapReturnValue(obj object.Object) object.Object {
 }
 
 func evalIndexExpression(left, index object.Object) object.Object {
+	if left == nil || index == nil {
+		return newError("index operator received an invalid expression")
+	}
 	switch {
 	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
 		return evalArrayIndexExpression(left, index)
@@ -708,6 +744,26 @@ func evalIndexAssign(left, index, val object.Object) object.Object {
 
 func evalDotExpression(left object.Object, member string, env *object.Environment) object.Object {
 	switch obj := left.(type) {
+	case *object.Channel:
+		switch strings.ToLower(member) {
+		case "send":
+			return &object.Builtin{Fn: func(args ...object.Object) object.Object {
+				if len(args) != 1 {
+					return newError("wrong number of arguments to `channel.send`. got=%d, want=1", len(args))
+				}
+				obj.Values <- args[0]
+				return NULL
+			}}
+		case "receive":
+			return &object.Builtin{Fn: func(args ...object.Object) object.Object {
+				if len(args) != 0 {
+					return newError("wrong number of arguments to `channel.receive`. got=%d, want=0", len(args))
+				}
+				return <-obj.Values
+			}}
+		default:
+			return newError("unknown method %s on channel", member)
+		}
 	case *object.Hash:
 		strKey := &object.String{Value: member}
 		if pair, ok := obj.Pairs[strKey.HashKey()]; ok {

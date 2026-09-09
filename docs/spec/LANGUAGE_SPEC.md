@@ -38,7 +38,7 @@ enum      trait     impl      async     await     match
 pure      unsafe    requires  ensures   invariant
 ```
 
-Declarative UI / Framework extension keywords (supported in AST/parser):
+Declarative UI / Framework extension keywords:
 ```text
 component state     render    emit      on        build     style
 ```
@@ -58,6 +58,9 @@ component state     render    emit      on        build     style
 Program        ::= Statement* EOF
 
 Statement      ::= LetStatement
+	             | AppStatement
+                | ComponentDeclaration
+                | StateDeclaration
                  | ConstStatement
                  | AssignStatement
                  | ReturnStatement
@@ -80,6 +83,15 @@ WhileStatement ::= "while" "(" Expression ")" BlockStatement
 ForStatement   ::= "for" "(" Identifier "in" Expression ")" BlockStatement
 
 BlockStatement ::= "{" Statement* "}"
+AppStatement   ::= "app" Identifier? BlockStatement
+StateDeclaration ::= "state" Identifier ( ":" Identifier )? ( "=" Expression )? ";"?
+
+ComponentDeclaration ::= "component" Identifier "{" ComponentMember* "}"
+ComponentMember ::= StateDeclaration
+                  | "render" BlockStatement
+                  | "build" BlockStatement
+                  | "on" Identifier ( "(" Identifier? ")" )? BlockStatement
+                  | Statement
 
 Expression     ::= LogicalOr
 LogicalOr      ::= LogicalAnd ( "||" LogicalAnd )*
@@ -93,7 +105,7 @@ Postfix        ::= Primary ( CallExpr | IndexExpr | MemberExpr )*
 
 CallExpr       ::= "(" ( Expression ( "," Expression )* )? ")"
 IndexExpr      ::= "[" Expression "]"
-MemberExpr     ::= "." Identifier
+MemberExpr     ::= "." ( Identifier | "state" | "render" | "emit" | "on" | "build" )
 
 Primary        ::= Identifier
                  | IntegerLiteral
@@ -105,6 +117,12 @@ Primary        ::= Identifier
                  | ListLiteral
                  | HashLiteral
                  | FunctionLiteral
+
+`emit(name, payload?)` is a callable expression. Within an evaluator component it records the
+most recent event as `component.lastEvent`; in compiled bytecode it returns the payload without
+host delivery. Host event delivery is performed through component event handlers. `render` is the
+preferred Page-tree producer; when it is absent, `build` is used as the component's Page-tree
+producer by the CLI renderer.
 ```
 
 ---
@@ -227,6 +245,65 @@ HIR represents desugared, type-annotated syntax where syntactic sugars (e.g. `+=
 
 ### 6.3 Mid-Level IR (MIR)
 MIR breaks procedural execution into a Control Flow Graph (CFG) comprised of `BasicBlock` structures terminating in unconditional jumps, conditional branches (`BranchIf`), or `Return`. Instructions are linearized three-address statements operating on constants, stack variables, and compiler-generated temporaries (`_t0`, `_t1`).
+
+### 6.4 Application Entry Block
+`app { ... }` and the named form `app Name { ... }` are executable top-level statements. The body executes exactly once in module scope, and declarations made in the body remain visible to following module statements. `app` is contextual: outside an application entry form, it remains a legal identifier.
+
+Both the tree-walking evaluator and the bytecode VM implement the same execution and visibility semantics.
+
+### 6.5 Tasks and Channels
+`task { ... }` starts a zero-argument asynchronous computation and returns a future. `await future` blocks the current computation until the task finishes and returns its result. Awaiting the same future more than once returns the same result.
+
+Tasks receive a snapshot of visible lexical bindings. Mutable runtime objects in that snapshot, including channels, retain their identity and can be used for explicit communication. `Channel(capacity)` creates a buffered channel; `send(channel, value)` blocks until the value can be sent, and `receive(channel)` blocks until a value is available. The tree-walking evaluator additionally accepts `channel.send(value)` and `channel.receive()`.
+
+### 6.6 NABC Bytecode Image
+A `.nabc` artifact is a versioned binary image beginning with the `NABC` magic header. Version 1 stores the instruction stream and the complete constant pool, including integer, float, string, and nested compiled-function constants with local and parameter metadata.
+
+Bundle runners decode and validate the image before VM execution. The bytecode entry can therefore execute without bundled NilLang source. Invalid headers, unsupported versions or constants, excessive lengths, truncated data, and trailing bytes are rejected.
+
+### 6.7 Declarative Components
+A component declaration creates one module-scoped component value. Each `state` member creates a
+mutable binding captured by `render`, `build`, and `on` blocks. `render` and `build` are zero-argument
+functions. Event blocks accept zero or one payload parameter, are exposed by name, and execute in
+the same captured state scope. A declared payload parameter is bound to `null` when omitted.
+
+```nil
+component Counter {
+   state count: i32 = 0;
+   render {
+      return {
+         "type": "Page",
+         "title": "Counter",
+         "content": [{"type": "Button", "event": "increment", "payload": {"step": 1}}]
+      };
+   }
+   on increment(payload) { count = count + payload["step"]; emit("changed", count); }
+}
+```
+
+The evaluator exposes `component.dispatch("increment", payload)`; the payload argument is optional.
+Compiled bytecode exposes the equivalent handler as `component.events.increment(payload)`. Calling
+`render()` again observes the updated state.
+Render output is an ordinary hash tree. `nil render file.nil` discovers a declared component,
+invokes `render` (or `build` when no `render` member exists), and converts a Page-shaped tree to
+the existing ANSI and HTML Alap renderers. `nil render file.nil --event increment` dispatches one
+named event before rendering, so the generated preview contains the updated tree and serialized
+component state for browser hydration. This is a deterministic single-event preview contract, not
+a persistent browser event loop. `nil dev file.nil` provides the persistent development contract:
+`data-alap-click` actions and optional JSON `data-alap-payload` metadata are posted to
+`POST /__alap/event`. The server serially dispatches each session's handler and returns a newly
+rendered Alap root. The browser replaces that root and hydrates the returned state before binding
+the next action. Scripts can invoke the same contract through `__ALAP__.dispatch(name, payload)`.
+
+Component declarations, state, render/build blocks, and named events are preserved through AST,
+type checking, HIR, MIR, evaluator, and direct bytecode compilation. Current components are
+module-scoped singletons. Automatic dependency tracking, DOM patch scheduling, native windows,
+and GPU command submission are not language-runtime guarantees in this version.
+
+The development event loop uses one mutex-protected component instance per browser cookie session.
+Sessions are isolated from one another and expire after 30 minutes of inactivity. Unknown or expired
+session cookies create a fresh component instance. Incremental DOM reconciliation and source hot
+reload with state preservation are not part of this contract.
 
 ---
 

@@ -16,6 +16,7 @@ const (
 	ProfileMobile   ID = "mobile"
 	ProfileServer   ID = "server"
 	ProfileData     ID = "data"
+	ProfileGame     ID = "game"
 	ProfileOS       ID = "os"
 	ProfileEmbedded ID = "embedded"
 )
@@ -106,6 +107,23 @@ var Registry = map[ID]Profile{
 			capability.CapAI,
 			capability.CapCrypto,
 			capability.CapProcess,
+		},
+	},
+	ProfileGame: {
+		ID:          ProfileGame,
+		Name:        "NilLang Game Profile",
+		Description: "Native real-time games with numerical compute, graphics, audio, input, networking, and asset access",
+		Target:      "native-game",
+		RuntimeAPIs: []string{"game.compute", "game.graphics", "game.audio", "game.input", "game.assets", "game.network"},
+		AllowedCaps: []capability.Type{
+			capability.CapGPU,
+			capability.CapAudio,
+			capability.CapFilesystem,
+			capability.CapNetwork,
+			capability.CapProcess,
+			capability.CapSensors,
+			capability.CapAI,
+			capability.CapCrypto,
 		},
 	},
 	ProfileOS: {

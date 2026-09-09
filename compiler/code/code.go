@@ -89,6 +89,8 @@ const (
 	OpNativeCall
 	OpAnd
 	OpOr
+	OpTask
+	OpAwait
 )
 
 type Definition struct {
@@ -134,6 +136,8 @@ var definitions = map[Opcode]*Definition{
 	OpNativeCall:       {"OpNativeCall", []int{2, 1}},
 	OpAnd:              {"OpAnd", []int{}},
 	OpOr:               {"OpOr", []int{}},
+	OpTask:             {"OpTask", []int{}},
+	OpAwait:            {"OpAwait", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {

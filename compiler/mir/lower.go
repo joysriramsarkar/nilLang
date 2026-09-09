@@ -51,8 +51,9 @@ func (l *Lowerer) terminate(term Terminator) {
 
 func (l *Lowerer) LowerHIR(p *hir.Program) *Program {
 	prog := &Program{
-		Functions: make(map[string]*Function),
-		Entities:  make(map[string]*EntityDef),
+		Functions:  make(map[string]*Function),
+		Entities:   make(map[string]*EntityDef),
+		Components: make(map[string]*ComponentDef),
 	}
 	l.currentProg = prog
 
@@ -79,6 +80,24 @@ func (l *Lowerer) LowerHIR(p *hir.Program) *Program {
 
 func (l *Lowerer) lowerStatement(stmt hir.Statement) {
 	switch s := stmt.(type) {
+	case *hir.ComponentDeclStmt:
+		definition := &ComponentDef{Name: s.Name, Events: make(map[string]string)}
+		for _, state := range s.States {
+			definition.States = append(definition.States, state.Name)
+			l.lowerStatement(state)
+		}
+		if s.Render != nil {
+			definition.RenderFunc = l.lowerComponentFunction(s.Name+".render", nil, s.Render)
+		}
+		if s.Build != nil {
+			definition.BuildFunc = l.lowerComponentFunction(s.Name+".build", nil, s.Build)
+		}
+		for _, event := range s.Handlers {
+			functionName := s.Name + ".on." + event.Name
+			definition.Events[event.Name] = l.lowerComponentFunction(functionName, event.Params, event.Body)
+		}
+		l.currentProg.Components[s.Name] = definition
+
 	case *hir.EntityDeclStmt:
 		fields := make([]EntityFieldDef, 0, len(s.Fields))
 		for _, f := range s.Fields {
@@ -181,6 +200,26 @@ func (l *Lowerer) lowerStatement(stmt hir.Statement) {
 		// Continue in exit block
 		l.currentBlock = exitBB
 	}
+}
+
+func (l *Lowerer) lowerComponentFunction(name string, parameters []string, body *hir.BlockStmt) string {
+	outerFunction := l.currentFn
+	outerBlock := l.currentBlock
+	function := &Function{Name: name, Params: append([]string(nil), parameters...), Blocks: []*BasicBlock{}}
+	l.currentFn = function
+	l.currentBlock = l.newBlock("bb_" + name)
+	if body != nil {
+		for _, statement := range body.Statements {
+			l.lowerStatement(statement)
+		}
+	}
+	if l.currentBlock.Terminator == nil {
+		l.terminate(ReturnTerminator{})
+	}
+	l.currentProg.Functions[name] = function
+	l.currentFn = outerFunction
+	l.currentBlock = outerBlock
+	return name
 }
 
 func (l *Lowerer) lowerExpression(expr hir.Expression) Operand {

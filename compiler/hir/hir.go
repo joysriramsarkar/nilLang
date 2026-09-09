@@ -125,6 +125,25 @@ type WhileStmt struct {
 	Body      *BlockStmt
 }
 
+type ComponentEventDecl struct {
+	Name   string
+	Params []string
+	Body   *BlockStmt
+}
+
+type ComponentDeclStmt struct {
+	Name     string
+	States   []*LetStmt
+	Render   *BlockStmt
+	Build    *BlockStmt
+	Handlers []ComponentEventDecl
+}
+
+func (s *ComponentDeclStmt) stmtNode() {}
+func (s *ComponentDeclStmt) String() string {
+	return fmt.Sprintf("component %s { states=%d handlers=%d }", s.Name, len(s.States), len(s.Handlers))
+}
+
 func (s *WhileStmt) stmtNode() {}
 func (s *WhileStmt) String() string {
 	return fmt.Sprintf("while (%s) %s", s.Condition.String(), s.Body.String())

@@ -150,6 +150,28 @@ func (bs *BlockStatement) String() string {
 	return out.String()
 }
 
+type AppStatement struct {
+	Token token.Token // contextual "app" identifier
+	Name  *Identifier
+	Body  *BlockStatement
+}
+
+func (as *AppStatement) statementNode()       {}
+func (as *AppStatement) TokenLiteral() string { return as.Token.Literal }
+func (as *AppStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("app")
+	if as.Name != nil {
+		out.WriteString(" " + as.Name.String())
+	}
+	out.WriteString(" { ")
+	if as.Body != nil {
+		out.WriteString(as.Body.String())
+	}
+	out.WriteString(" }")
+	return out.String()
+}
+
 type WhileStatement struct {
 	Token     token.Token // token.WHILE
 	Condition Expression
@@ -269,6 +291,28 @@ func (pe *PrefixExpression) String() string {
 	out.WriteString(pe.Right.String())
 	out.WriteString(")")
 	return out.String()
+}
+
+type TaskExpression struct {
+	Token token.Token // token.TASK
+	Body  *BlockStatement
+}
+
+func (te *TaskExpression) expressionNode()      {}
+func (te *TaskExpression) TokenLiteral() string { return te.Token.Literal }
+func (te *TaskExpression) String() string {
+	return "task { " + te.Body.String() + " }"
+}
+
+type AwaitExpression struct {
+	Token token.Token // token.AWAIT
+	Right Expression
+}
+
+func (ae *AwaitExpression) expressionNode()      {}
+func (ae *AwaitExpression) TokenLiteral() string { return ae.Token.Literal }
+func (ae *AwaitExpression) String() string {
+	return "await " + ae.Right.String()
 }
 
 type InfixExpression struct {
@@ -466,6 +510,13 @@ type RenderMethod struct {
 	Body  *BlockStatement
 }
 
+type EventHandler struct {
+	Token      token.Token
+	Event      *Identifier
+	Parameters []*Identifier
+	Body       *BlockStatement
+}
+
 type MethodDeclaration struct {
 	Token      token.Token
 	Name       *Identifier
@@ -497,6 +548,8 @@ type ComponentLiteral struct {
 	Properties []*PropertyDeclaration
 	States     []*StateDeclaration
 	Render     *RenderMethod
+	Build      *RenderMethod
+	Handlers   []*EventHandler
 	Methods    []*MethodDeclaration
 	Body       *BlockStatement
 }

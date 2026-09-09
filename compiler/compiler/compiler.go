@@ -85,6 +85,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
+	case *ast.AppStatement:
+		return c.Compile(node.Body)
+
 	case *ast.ExpressionStatement:
 		err := c.Compile(node.Expression)
 		if err != nil {
@@ -284,6 +287,77 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpSetLocal, symbol.Index)
 		}
 
+	case *ast.StateDeclaration:
+		symbol := c.symbolTable.Define(node.Name.Value)
+		if node.Value == nil {
+			c.emit(code.OpNull)
+		} else if err := c.Compile(node.Value); err != nil {
+			return err
+		}
+		if symbol.Scope == GlobalScope {
+			c.emit(code.OpSetGlobal, symbol.Index)
+		} else {
+			c.emit(code.OpSetLocal, symbol.Index)
+		}
+
+	case *ast.ComponentLiteral:
+		if node.Name == nil {
+			return fmt.Errorf("component declaration requires a name")
+		}
+		for _, state := range node.States {
+			if err := c.Compile(state); err != nil {
+				return err
+			}
+		}
+		componentSymbol := c.symbolTable.Define(node.Name.Value)
+		pairCount := 0
+		emitKey := func(key string) {
+			c.emit(code.OpConstant, c.addConstant(&object.String{Value: key}))
+		}
+		emitKey("__type")
+		c.emit(code.OpConstant, c.addConstant(&object.String{Value: "Component"}))
+		pairCount++
+		emitKey("name")
+		c.emit(code.OpConstant, c.addConstant(&object.String{Value: node.Name.Value}))
+		pairCount++
+		emitKey("state")
+		for _, state := range node.States {
+			emitKey(state.Name.Value)
+			symbol, _ := c.symbolTable.Resolve(state.Name.Value)
+			c.loadSymbol(symbol)
+		}
+		c.emit(code.OpHash, len(node.States)*2)
+		pairCount++
+		if node.Render != nil && node.Render.Body != nil {
+			emitKey("render")
+			if err := c.Compile(&ast.FunctionLiteral{Token: node.Render.Token, Body: node.Render.Body}); err != nil {
+				return err
+			}
+			pairCount++
+		}
+		if node.Build != nil && node.Build.Body != nil {
+			emitKey("build")
+			if err := c.Compile(&ast.FunctionLiteral{Token: node.Build.Token, Body: node.Build.Body}); err != nil {
+				return err
+			}
+			pairCount++
+		}
+		emitKey("events")
+		for _, handler := range node.Handlers {
+			emitKey(handler.Event.Value)
+			if err := c.Compile(&ast.FunctionLiteral{Token: handler.Token, Parameters: handler.Parameters, Body: handler.Body}); err != nil {
+				return err
+			}
+		}
+		c.emit(code.OpHash, len(node.Handlers)*2)
+		pairCount++
+		c.emit(code.OpHash, pairCount*2)
+		if componentSymbol.Scope == GlobalScope {
+			c.emit(code.OpSetGlobal, componentSymbol.Index)
+		} else {
+			c.emit(code.OpSetLocal, componentSymbol.Index)
+		}
+
 	case *ast.AssignStatement:
 		err := c.Compile(node.Value)
 		if err != nil {
@@ -352,6 +426,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		c.emit(code.OpIndex)
 
+	case *ast.DotExpression:
+		if err := c.Compile(node.Left); err != nil {
+			return err
+		}
+		c.emit(code.OpConstant, c.addConstant(&object.String{Value: node.Member.Value}))
+		c.emit(code.OpIndex)
+
 	case *ast.FunctionLiteral:
 		c.enterScope()
 
@@ -391,6 +472,19 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		fnIndex := c.addConstant(compiledFn)
 		c.emit(code.OpClosure, fnIndex, len(freeSymbols))
+
+	case *ast.TaskExpression:
+		function := &ast.FunctionLiteral{Token: node.Token, Parameters: []*ast.Identifier{}, Body: node.Body}
+		if err := c.Compile(function); err != nil {
+			return err
+		}
+		c.emit(code.OpTask)
+
+	case *ast.AwaitExpression:
+		if err := c.Compile(node.Right); err != nil {
+			return err
+		}
+		c.emit(code.OpAwait)
 
 	case *ast.ReturnStatement:
 		err := c.Compile(node.ReturnValue)

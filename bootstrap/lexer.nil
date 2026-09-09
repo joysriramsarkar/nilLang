@@ -1,0 +1,162 @@
+let nilLexerKeywords = {
+    "let": "LET", "const": "CONST", "fn": "FN", "true": "TRUE",
+    "false": "FALSE", "null": "NULL", "if": "IF", "else": "ELSE",
+    "return": "RETURN", "while": "WHILE", "for": "FOR", "import": "IMPORT",
+    "export": "EXPORT", "as": "AS", "from": "FROM", "component": "COMPONENT",
+    "state": "STATE", "render": "RENDER", "emit": "EMIT", "on": "ON",
+    "build": "BUILD", "style": "STYLE", "entity": "ENTITY"
+};
+
+let nilLexerChar = fn(source, position) {
+    if (position >= len(source)) {
+        return "";
+    }
+    return substr(source, position, 1);
+};
+
+let nilLexerIsDigit = fn(ch) {
+    return ch != "" && contains("0123456789", ch);
+};
+
+let nilLexerIsLetter = fn(ch) {
+    return ch != "" && contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", ch);
+};
+
+let nilLexerToken = fn(tokenType, literal, line, column) {
+    return {"type": tokenType, "literal": literal, "line": line, "column": column};
+};
+
+let nilLex = fn(source) {
+    let tokens = [];
+    let position = 0;
+    let line = 1;
+    let column = 1;
+
+    let advance = fn() {
+        let ch = nilLexerChar(source, position);
+        position = position + 1;
+        if (ch == "\n") {
+            line = line + 1;
+            column = 1;
+        } else {
+            column = column + 1;
+        }
+        return ch;
+    };
+
+    let peek = fn() {
+        return nilLexerChar(source, position + 1);
+    };
+
+    while (position < len(source)) {
+        let ch = nilLexerChar(source, position);
+
+        if (ch == " " || ch == "\t" || ch == "\r" || ch == "\n") {
+            advance();
+        } else {
+            if (ch == "/" && peek() == "/") {
+                while (position < len(source) && nilLexerChar(source, position) != "\n") {
+                    advance();
+                }
+            } else {
+                if (ch == "/" && peek() == "*") {
+                    advance();
+                    advance();
+                    while (position < len(source) && !(nilLexerChar(source, position) == "*" && peek() == "/")) {
+                        advance();
+                    }
+                    if (position < len(source)) {
+                        advance();
+                        advance();
+                    }
+                } else {
+                    let tokenLine = line;
+                    let tokenColumn = column;
+
+                    if (nilLexerIsLetter(ch)) {
+                        let literal = "";
+                        while (position < len(source) && (nilLexerIsLetter(nilLexerChar(source, position)) || nilLexerIsDigit(nilLexerChar(source, position)))) {
+                            let literal = literal + advance();
+                        }
+                        let tokenType = nilLexerKeywords[literal];
+                        if (tokenType == null) {
+                            let tokenType = "IDENT";
+                        }
+                        let tokens = push(tokens, nilLexerToken(tokenType, literal, tokenLine, tokenColumn));
+                    } else {
+                        if (ch == "\"") {
+                            advance();
+                            let literal = "";
+                            while (position < len(source) && nilLexerChar(source, position) != "\"") {
+                                let current = advance();
+                                if (current == "\\" && position < len(source)) {
+                                    let escaped = advance();
+                                    if (escaped == "n") {
+                                        let literal = literal + "\n";
+                                    } else {
+                                        if (escaped == "t") {
+                                            let literal = literal + "\t";
+                                        } else {
+                                            if (escaped == "r") {
+                                                let literal = literal + "\r";
+                                            } else {
+                                                if (escaped == "\"") {
+                                                    let literal = literal + "\"";
+                                                } else {
+                                                    if (escaped == "\\") {
+                                                        let literal = literal + "\\";
+                                                    } else {
+                                                        let literal = literal + "\\" + escaped;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    let literal = literal + current;
+                                }
+                            }
+                            if (nilLexerChar(source, position) == "\"") {
+                                advance();
+                            }
+                            let tokens = push(tokens, nilLexerToken("STRING", literal, tokenLine, tokenColumn));
+                        } else {
+                            if (nilLexerIsDigit(ch)) {
+                            let literal = "";
+                            let tokenType = "INT";
+                            while (position < len(source) && nilLexerIsDigit(nilLexerChar(source, position))) {
+                                let literal = literal + advance();
+                            }
+                            if (nilLexerChar(source, position) == "." && nilLexerIsDigit(peek())) {
+                                let tokenType = "FLOAT";
+                                let literal = literal + advance();
+                                while (position < len(source) && nilLexerIsDigit(nilLexerChar(source, position))) {
+                                    let literal = literal + advance();
+                                }
+                            }
+                                let tokens = push(tokens, nilLexerToken(tokenType, literal, tokenLine, tokenColumn));
+                            } else {
+                                let two = ch + peek();
+                                if (two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" || two == "+=" || two == "-=") {
+                                    advance();
+                                    advance();
+                                    let tokens = push(tokens, nilLexerToken(two, two, tokenLine, tokenColumn));
+                                } else {
+                                    let tokenType = ch;
+                                    if (ch == "&" || ch == "|") {
+                                        let tokenType = "ILLEGAL";
+                                    }
+                                    advance();
+                                    let tokens = push(tokens, nilLexerToken(tokenType, ch, tokenLine, tokenColumn));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    tokens = push(tokens, nilLexerToken("EOF", "", line, column));
+    return tokens;
+};

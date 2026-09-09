@@ -115,6 +115,11 @@ func (c *Checker) initBuiltins() {
 		ReturnType: types.Int,
 		Effects:    []string{"pure"},
 	})
+	c.currentScope.SetFunc("str", &types.FunctionType{
+		Params:     []types.Type{types.Any},
+		ReturnType: types.String,
+		Effects:    []string{"pure"},
+	})
 	c.currentScope.SetFunc("push", &types.FunctionType{
 		Params:     []types.Type{types.Any, types.Any},
 		ReturnType: types.Any,
@@ -140,6 +145,33 @@ func (c *Checker) initBuiltins() {
 		ReturnType: types.Void,
 		Effects:    []string{"pure"},
 	})
+	c.currentScope.SetFunc("emit", &types.FunctionType{
+		Params:     []types.Type{types.Any, types.Any},
+		ReturnType: types.Any,
+		Effects:    []string{"ui"},
+	})
+	for _, builtin := range []struct {
+		name   string
+		params []types.Type
+	}{
+		{"tensor", []types.Type{types.Any, types.Any}},
+		{"tensorShape", []types.Type{types.Any}},
+		{"tensorGet", []types.Type{types.Any, types.Any}},
+		{"tensorAdd", []types.Type{types.Any, types.Any}},
+		{"tensorMul", []types.Type{types.Any, types.Any}},
+		{"tensorSlice", []types.Type{types.Any, types.Any, types.Any}},
+		{"tensorDtype", []types.Type{types.Any}},
+		{"tensorCast", []types.Type{types.Any, types.String}},
+		{"tensorDot", []types.Type{types.Any, types.Any}},
+		{"tensorMatmul", []types.Type{types.Any, types.Any}},
+		{"tensorSum", []types.Type{types.Any}},
+	} {
+		c.currentScope.SetFunc(builtin.name, &types.FunctionType{
+			Params:     builtin.params,
+			ReturnType: types.Any,
+			Effects:    []string{"pure"},
+		})
+	}
 }
 
 func (c *Checker) CheckProgram(prog *ast.Program) bool {
@@ -151,6 +183,13 @@ func (c *Checker) CheckProgram(prog *ast.Program) bool {
 
 func (c *Checker) checkStatement(stmt ast.Statement) {
 	switch s := stmt.(type) {
+	case *ast.AppStatement:
+		if s.Body != nil {
+			for _, nested := range s.Body.Statements {
+				c.checkStatement(nested)
+			}
+		}
+
 	case *ast.LetStatement:
 		valType := c.inferExpression(s.Value)
 		var declType types.Type
@@ -158,6 +197,62 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 			declType = valType
 			c.currentScope.SetVar(s.Name.Value, declType)
 		}
+
+	case *ast.StateDeclaration:
+		var valueType types.Type = types.Null
+		if s.Value != nil {
+			valueType = c.inferExpression(s.Value)
+		}
+		declarationType := types.Type(valueType)
+		if s.Type != "" {
+			var err error
+			declarationType, err = types.Parse(s.Type)
+			if err != nil {
+				c.report("E0101", fmt.Sprintf("Invalid state type %q: %v", s.Type, err), s.Token.Line, s.Token.Column)
+				declarationType = types.Any
+			} else if s.Value != nil && !valueType.AssignableTo(declarationType) {
+				c.report("E0101", fmt.Sprintf("Cannot initialize state %q of type %s with %s", s.Name.Value, declarationType, valueType), s.Token.Line, s.Token.Column)
+			}
+		}
+		if s.Name != nil {
+			c.currentScope.SetVar(s.Name.Value, declarationType)
+		}
+
+	case *ast.ComponentLiteral:
+		if s.Name == nil {
+			c.report("E0301", "Component declaration must have a name", s.Token.Line, s.Token.Column)
+			return
+		}
+		c.currentScope.SetVar(s.Name.Value, types.Any)
+		outerScope := c.currentScope
+		c.currentScope = NewScope(outerScope)
+		for _, state := range s.States {
+			c.checkStatement(state)
+		}
+		if s.Render != nil && s.Render.Body != nil {
+			for _, nested := range s.Render.Body.Statements {
+				c.checkStatement(nested)
+			}
+		}
+		if s.Build != nil && s.Build.Body != nil {
+			for _, nested := range s.Build.Body.Statements {
+				c.checkStatement(nested)
+			}
+		}
+		for _, handler := range s.Handlers {
+			componentScope := c.currentScope
+			c.currentScope = NewScope(componentScope)
+			for _, parameter := range handler.Parameters {
+				c.currentScope.SetVar(parameter.Value, types.Any)
+			}
+			if handler.Body != nil {
+				for _, nested := range handler.Body.Statements {
+					c.checkStatement(nested)
+				}
+			}
+			c.currentScope = componentScope
+		}
+		c.currentScope = outerScope
 
 	case *ast.AssignStatement:
 		valType := c.inferExpression(s.Value)
@@ -430,6 +525,10 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 		return &types.GenericType{Base: "Hash", Parameters: []types.Type{types.Any, types.Any}}
 
 	case *ast.IndexExpression:
+		return types.Any
+
+	case *ast.DotExpression:
+		c.inferExpression(e.Left)
 		return types.Any
 
 	default:

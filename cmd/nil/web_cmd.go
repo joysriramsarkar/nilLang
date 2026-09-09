@@ -1,25 +1,122 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/routing"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/server"
+	"github.com/joysriramsarkar/nilLang/pkg/alap/ui"
 )
+
+const declarativeUISessionCookie = "alap_session"
+const declarativeUISessionTTL = 30 * time.Minute
+
+type declarativeUISession struct {
+	app      *declarativeUIApp
+	mu       sync.Mutex
+	lastUsed time.Time
+}
+
+type declarativeUISessionStore struct {
+	source   string
+	mu       sync.Mutex
+	sessions map[string]*declarativeUISession
+	now      func() time.Time
+}
+
+func newDeclarativeUISessionStore(source string) *declarativeUISessionStore {
+	return &declarativeUISessionStore{
+		source:   source,
+		sessions: make(map[string]*declarativeUISession),
+		now:      time.Now,
+	}
+}
+
+func (store *declarativeUISessionStore) resolve(ctx *routing.Context) (*declarativeUISession, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	now := store.now()
+	for sessionID, session := range store.sessions {
+		if now.Sub(session.lastUsed) >= declarativeUISessionTTL {
+			delete(store.sessions, sessionID)
+		}
+	}
+
+	if sessionID := ctx.Cookies[declarativeUISessionCookie]; sessionID != "" {
+		if session, ok := store.sessions[sessionID]; ok {
+			session.lastUsed = now
+			return session, nil
+		}
+	}
+
+	app, err := loadDeclarativeUI(store.source)
+	if err != nil {
+		return nil, err
+	}
+	sessionID, err := newDeclarativeUISessionID()
+	if err != nil {
+		return nil, err
+	}
+	session := &declarativeUISession{app: app, lastUsed: now}
+	store.sessions[sessionID] = session
+	ctx.Headers["Set-Cookie"] = fmt.Sprintf(
+		"%s=%s; Path=/; HttpOnly; SameSite=Lax",
+		declarativeUISessionCookie,
+		sessionID,
+	)
+	return session, nil
+}
+
+func newDeclarativeUISessionID() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("create UI session ID: %w", err)
+	}
+	return hex.EncodeToString(bytes), nil
+}
 
 // cmdDev runs the Nilang Web development server with hot-reload simulation
 func cmdDev() {
 	port := "8080"
+	entryFile := ""
 	for i := 2; i < len(os.Args); i++ {
 		if os.Args[i] == "--port" && i+1 < len(os.Args) {
 			port = os.Args[i+1]
 			i++
+		} else if strings.HasSuffix(os.Args[i], ".nil") {
+			entryFile = os.Args[i]
 		}
+	}
+	if entryFile == "" {
+		if _, err := os.Stat("src/main.nil"); err == nil {
+			entryFile = "src/main.nil"
+		} else if _, err := os.Stat("main.nil"); err == nil {
+			entryFile = "main.nil"
+		}
+	}
+
+	var app *declarativeUIApp
+	var appSource string
+	if entryFile != "" {
+		source, err := os.ReadFile(entryFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ UI source পড়া যায়নি (%s): %v\n", entryFile, err)
+			return
+		}
+		app, err = loadDeclarativeUI(string(source))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ UI source লোড করা যায়নি (%s): %v\n", entryFile, err)
+			return
+		}
+		appSource = string(source)
 	}
 
 	fmt.Println("⚡ [Alap Web Dev Server]")
@@ -31,9 +128,22 @@ func cmdDev() {
 	fmt.Println("   বন্ধ করতে Ctrl+C চাপুন...")
 
 	svc := server.NewService("AlapDevApp", "")
+	var sessions *declarativeUISessionStore
+	if app != nil {
+		sessions = newDeclarativeUISessionStore(appSource)
+	}
 
 	// Register root web route
 	svc.GET("/", func(ctx *routing.Context) (interface{}, error) {
+		if sessions != nil {
+			session, err := sessions.resolve(ctx)
+			if err != nil {
+				return nil, err
+			}
+			session.mu.Lock()
+			defer session.mu.Unlock()
+			return renderDevApp(session.app)
+		}
 		if data, err := os.ReadFile("public/index.html"); err == nil {
 			return server.HTMLResponse{HTML: string(data)}, nil
 		}
@@ -64,6 +174,8 @@ func cmdDev() {
 </html>`,
 		}, nil
 	})
+
+	registerDeclarativeUIEventRoute(svc, sessions)
 
 	svc.GET("/style.css", func(ctx *routing.Context) (interface{}, error) {
 		if data, err := os.ReadFile("public/style.css"); err == nil {
@@ -190,6 +302,56 @@ alap_db_active_transactions 0
 	if err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, "❌ সার্ভার চালু করতে ত্রুটি: %v\n", err)
 	}
+}
+
+func registerDeclarativeUIEventRoute(svc *server.Service, sessions *declarativeUISessionStore) {
+	if sessions == nil {
+		return
+	}
+	svc.POST("/__alap/event", func(ctx *routing.Context) (interface{}, error) {
+		body, ok := ctx.Body.(map[string]interface{})
+		if !ok {
+			return badEventRequest(ctx, "event request body must be a JSON object"), nil
+		}
+		event, ok := body["event"].(string)
+		if !ok || strings.TrimSpace(event) == "" {
+			return badEventRequest(ctx, "event request requires a non-empty event name"), nil
+		}
+
+		session, err := sessions.resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		var dispatchErr error
+		if payload, ok := body["payload"]; ok {
+			dispatchErr = session.app.Dispatch(event, payload)
+		} else {
+			dispatchErr = session.app.Dispatch(event)
+		}
+		if dispatchErr != nil {
+			return badEventRequest(ctx, dispatchErr.Error()), nil
+		}
+		return renderDevApp(session.app)
+	})
+}
+
+func badEventRequest(ctx *routing.Context, message string) map[string]string {
+	ctx.StatusCode = http.StatusBadRequest
+	return map[string]string{"error": message}
+}
+
+func renderDevApp(app *declarativeUIApp) (server.HTMLResponse, error) {
+	page, err := app.Render()
+	if err != nil {
+		return server.HTMLResponse{}, err
+	}
+	state := map[string]interface{}(nil)
+	if app.State() != nil {
+		state = hashToGoMap(app.State())
+	}
+	return server.HTMLResponse{HTML: page.RenderSSR(ui.OnuronTheme(), state)}, nil
 }
 
 // cmdRoutes prints an ASCII table of all registered application routes

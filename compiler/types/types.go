@@ -519,13 +519,13 @@ func Parse(s string) (Type, error) {
 
 	// Primitives
 	switch s {
-	case "Int":
+	case "Int", "int", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64":
 		return Int, nil
-	case "Float":
+	case "Float", "float", "f32", "f64":
 		return Float, nil
-	case "String":
+	case "String", "string":
 		return String, nil
-	case "Bool":
+	case "Bool", "bool":
 		return Bool, nil
 	case "Byte":
 		return Byte, nil

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"sync"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/code"
@@ -27,6 +28,8 @@ const (
 	COMPILED_FUNCTION_OBJ = "COMPILED_FUNCTION"
 	CLOSURE_OBJ           = "CLOSURE"
 	ENTITY_OBJ            = "ENTITY"
+	FUTURE_OBJ            = "FUTURE"
+	CHANNEL_OBJ           = "CHANNEL"
 )
 
 type Object interface {
@@ -195,6 +198,42 @@ type Closure struct {
 func (c *Closure) Type() ObjectType { return CLOSURE_OBJ }
 func (c *Closure) Inspect() string  { return fmt.Sprintf("Closure[%p]", c) }
 
+type futureResult struct {
+	Value Object
+	Err   error
+}
+
+type Future struct {
+	done   chan futureResult
+	once   sync.Once
+	result futureResult
+}
+
+func NewFuture() *Future {
+	return &Future{done: make(chan futureResult, 1)}
+}
+
+func (f *Future) Type() ObjectType { return FUTURE_OBJ }
+func (f *Future) Inspect() string  { return "future" }
+func (f *Future) Complete(value Object, err error) {
+	f.done <- futureResult{Value: value, Err: err}
+}
+func (f *Future) Await() (Object, error) {
+	f.once.Do(func() { f.result = <-f.done })
+	return f.result.Value, f.result.Err
+}
+
+type Channel struct {
+	Values chan Object
+}
+
+func NewChannel(capacity int) *Channel {
+	return &Channel{Values: make(chan Object, capacity)}
+}
+
+func (c *Channel) Type() ObjectType { return CHANNEL_OBJ }
+func (c *Channel) Inspect() string  { return "channel" }
+
 // ─── ENVIRONMENT ────────────────────────────────────────────────────────────
 
 type Environment struct {
@@ -240,6 +279,19 @@ func (e *Environment) Assign(name string, val Object) bool {
 
 func (e *Environment) Store() map[string]Object {
 	return e.store
+}
+
+func (e *Environment) Snapshot() *Environment {
+	snapshot := NewEnvironment()
+	if e.outer != nil {
+		for name, value := range e.outer.Snapshot().store {
+			snapshot.store[name] = value
+		}
+	}
+	for name, value := range e.store {
+		snapshot.store[name] = value
+	}
+	return snapshot
 }
 
 // ─── ENTITY OBJECT (web-implications.md Section 26) ─────────────────────────

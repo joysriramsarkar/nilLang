@@ -9,9 +9,9 @@ PREFIX ?= /usr/local
 GO ?= go
 CGO_ENABLED ?= 0
 
-TARGETS = nil nilc nilpkg nilpkg-server nilkey softbusd
+TARGETS = nil nilc nil-bootstrap nilpkg nilpkg-server nilkey softbusd
 
-.PHONY: all build test clean install uninstall release
+.PHONY: all build bootstrap bootstrap-verify test clean install uninstall release
 
 all: build
 
@@ -20,6 +20,12 @@ build:
 	@echo "Building all Nilang binaries into $(BIN_DIR)/..."
 	$(GO) build -o $(BIN_DIR)/ ./cmd/...
 	@echo "✅ All binaries built into $(BIN_DIR)/"
+
+bootstrap: build
+	$(BIN_DIR)/nil-bootstrap build bootstrap build/nil-compiler.json
+
+bootstrap-verify: build
+	$(BIN_DIR)/nil-bootstrap verify bootstrap
 
 test:
 	$(GO) test -v ./...

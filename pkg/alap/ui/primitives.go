@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"strings"
@@ -16,7 +17,8 @@ type Button struct {
 	Label    string
 	Variant  string // "primary", "secondary", "danger", "glass"
 	Icon     string
-	OnClick  string // JavaScript event or nilui callback name
+	OnClick  string // NilLang component event name
+	Payload  interface{}
 	Disabled bool
 }
 
@@ -44,14 +46,20 @@ func (b *Button) RenderHTML(theme Theme) string {
 	}
 	clickAttr := ""
 	if b.OnClick != "" {
-		clickAttr = fmt.Sprintf(` onclick="%s"`, html.EscapeString(b.OnClick))
+		clickAttr = fmt.Sprintf(` data-alap-click="%s"`, html.EscapeString(b.OnClick))
+	}
+	payloadAttr := ""
+	if b.Payload != nil {
+		if payload, err := json.Marshal(b.Payload); err == nil {
+			payloadAttr = fmt.Sprintf(` data-alap-payload="%s"`, html.EscapeString(string(payload)))
+		}
 	}
 	iconHtml := ""
 	if b.Icon != "" {
 		iconHtml = fmt.Sprintf(`<span class="btn-icon">%s</span> `, b.Icon)
 	}
-	return fmt.Sprintf(`<button id="%s" class="%s"%s%s>%s%s</button>`,
-		html.EscapeString(b.ID), cls, clickAttr, dis, iconHtml, html.EscapeString(b.Label))
+	return fmt.Sprintf(`<button id="%s" class="%s"%s%s%s>%s%s</button>`,
+		html.EscapeString(b.ID), cls, clickAttr, payloadAttr, dis, iconHtml, html.EscapeString(b.Label))
 }
 
 // Input represents an editable text/search/numeric input

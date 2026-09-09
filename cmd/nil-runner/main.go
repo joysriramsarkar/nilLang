@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
+	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
 )
 
 func main() {
@@ -37,10 +37,12 @@ func main() {
 
 	// Fallback to bytecode if available
 	if bcBytes, err := reader.GetBytecode(); err == nil && len(bcBytes) > 0 {
-		machine := vm.New(&compiler.Bytecode{
-			Instructions: bcBytes,
-			Constants:    []object.Object{},
-		})
+		bytecode, err := pkgcompiler.DecodeBytecode(bcBytes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ Invalid NABC bytecode: %v\n", err)
+			os.Exit(1)
+		}
+		machine := vm.New(bytecode)
 		if err := machine.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ Runtime error: %v\n", err)
 			os.Exit(1)

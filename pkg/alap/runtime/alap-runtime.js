@@ -53,13 +53,55 @@
     }
   }
 
+  function syncState(nextState) {
+    Object.keys(state).forEach(key => {
+      if (!(key in nextState)) delete state[key];
+    });
+    Object.assign(state, nextState);
+  }
+
+  async function dispatchAction(action, payload) {
+    const request = { event: action };
+    if (payload !== undefined) request.payload = payload;
+    const response = await fetch('/__alap/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`NilLang event ${action} failed: ${message}`);
+    }
+
+    const documentUpdate = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const currentRoot = document.querySelector('[data-alap-root]');
+    const nextRoot = documentUpdate.querySelector('[data-alap-root]');
+    if (!currentRoot || !nextRoot) {
+      throw new Error('NilLang event response did not contain an Alap root');
+    }
+    currentRoot.replaceWith(document.importNode(nextRoot, true));
+
+    const stateElement = documentUpdate.getElementById('__NILANG_STATE__');
+    if (stateElement) syncState(JSON.parse(stateElement.textContent));
+    hydrateDOM();
+    emit('action:' + action, { state });
+  }
+
   // DOM Event Hydration
   function hydrateDOM() {
     // Hydrate click handlers
     document.querySelectorAll('[data-alap-click]').forEach(el => {
       const action = el.getAttribute('data-alap-click');
-      el.addEventListener('click', (e) => {
-        emit('action:' + action, { event: e, element: el, state });
+      const payloadData = el.getAttribute('data-alap-payload');
+      el.addEventListener('click', async () => {
+        el.disabled = true;
+        try {
+          const payload = payloadData === null ? undefined : JSON.parse(payloadData);
+          await dispatchAction(action, payload);
+        } catch (error) {
+          el.disabled = false;
+          console.error(error);
+        }
       });
     });
 
@@ -131,6 +173,7 @@
     state,
     on,
     emit,
+    dispatch: dispatchAction,
     hydrate: hydrateDOM,
     connectWebSocket,
     connectSSE,

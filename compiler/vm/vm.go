@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/joysriramsarkar/nilLang/compiler/code"
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
@@ -86,7 +87,9 @@ func (vm *VM) pushFrame(f *Frame) {
 
 func (vm *VM) popFrame() *Frame {
 	vm.framesIndex--
-	return vm.frames[vm.framesIndex]
+	frame := vm.frames[vm.framesIndex]
+	vm.frames[vm.framesIndex] = nil
+	return frame
 }
 
 func (vm *VM) push(o object.Object) error {
@@ -102,8 +105,15 @@ func (vm *VM) push(o object.Object) error {
 
 func (vm *VM) pop() object.Object {
 	o := vm.stack[vm.sp-1]
-	vm.sp--
+	vm.truncateStack(vm.sp - 1)
 	return o
+}
+
+func (vm *VM) truncateStack(newSP int) {
+	for index := newSP; index < vm.sp; index++ {
+		vm.stack[index] = nil
+	}
+	vm.sp = newSP
 }
 
 func (vm *VM) Run() error {
@@ -224,7 +234,7 @@ func (vm *VM) Run() error {
 			vm.currentFrame().ip += 2
 
 			array := vm.buildArray(vm.sp-numElements, vm.sp)
-			vm.sp = vm.sp - numElements
+			vm.truncateStack(vm.sp - numElements)
 
 			err := vm.push(array)
 			if err != nil {
@@ -239,7 +249,7 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
-			vm.sp = vm.sp - numElements
+			vm.truncateStack(vm.sp - numElements)
 
 			err = vm.push(hash)
 			if err != nil {
@@ -268,7 +278,7 @@ func (vm *VM) Run() error {
 			returnValue := vm.pop()
 
 			frame := vm.popFrame()
-			vm.sp = frame.basePointer - 1
+			vm.truncateStack(frame.basePointer - 1)
 
 			err := vm.push(returnValue)
 			if err != nil {
@@ -277,7 +287,7 @@ func (vm *VM) Run() error {
 
 		case code.OpReturn:
 			frame := vm.popFrame()
-			vm.sp = frame.basePointer - 1
+			vm.truncateStack(frame.basePointer - 1)
 
 			err := vm.push(Null)
 			if err != nil {
@@ -340,6 +350,49 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpTask:
+			closure, ok := vm.pop().(*object.Closure)
+			if !ok {
+				return fmt.Errorf("task body is not a closure")
+			}
+			future := object.NewFuture()
+			globals := append([]object.Object(nil), vm.globals...)
+			constants := vm.constants
+			nativeCallHandler := vm.NativeCallHandler
+			go func() {
+				child := NewWithGlobalsStore(&compiler.Bytecode{Constants: constants}, globals)
+				child.NativeCallHandler = nativeCallHandler
+				if err := child.push(closure); err != nil {
+					future.Complete(nil, err)
+					return
+				}
+				if err := child.callClosure(closure, 0); err != nil {
+					future.Complete(nil, err)
+					return
+				}
+				err := child.Run()
+				future.Complete(child.StackTop(), err)
+			}()
+			if err := vm.push(future); err != nil {
+				return err
+			}
+
+		case code.OpAwait:
+			future, ok := vm.pop().(*object.Future)
+			if !ok {
+				return fmt.Errorf("cannot await non-future value")
+			}
+			result, err := future.Await()
+			if err != nil {
+				return fmt.Errorf("task failed: %w", err)
+			}
+			if result == nil {
+				result = Null
+			}
+			if err := vm.push(result); err != nil {
+				return err
+			}
+
 		case code.OpToString:
 			val := vm.pop()
 			err := vm.push(&object.String{Value: val.Inspect()})
@@ -393,11 +446,41 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 	switch {
 	case leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ:
 		return vm.executeBinaryIntegerOperation(op, left, right)
+	case isNumeric(left) && isNumeric(right):
+		return vm.executeBinaryFloatOperation(op, left, right)
 	case leftType == object.STRING_OBJ && rightType == object.STRING_OBJ:
 		return vm.executeBinaryStringOperation(op, left, right)
 	default:
 		return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
 	}
+}
+
+func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Object) error {
+	leftValue := numericValue(left)
+	rightValue := numericValue(right)
+
+	var result float64
+	switch op {
+	case code.OpAdd:
+		result = leftValue + rightValue
+	case code.OpSub:
+		result = leftValue - rightValue
+	case code.OpMul:
+		result = leftValue * rightValue
+	case code.OpDiv:
+		if rightValue == 0 {
+			return fmt.Errorf("division by zero")
+		}
+		result = leftValue / rightValue
+	case code.OpMod:
+		if rightValue == 0 {
+			return fmt.Errorf("modulo by zero")
+		}
+		result = math.Mod(leftValue, rightValue)
+	default:
+		return fmt.Errorf("unknown float operator: %d", op)
+	}
+	return vm.push(&object.Float{Value: result})
 }
 
 func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right object.Object) error {
@@ -448,6 +531,9 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
 		return vm.executeIntegerComparison(op, left, right)
 	}
+	if isNumeric(left) && isNumeric(right) {
+		return vm.executeFloatComparison(op, left, right)
+	}
 
 	switch op {
 	case code.OpEqual:
@@ -456,6 +542,23 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 		return vm.push(nativeBoolToBooleanObject(right != left))
 	default:
 		return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+	}
+}
+
+func (vm *VM) executeFloatComparison(op code.Opcode, left, right object.Object) error {
+	leftValue := numericValue(left)
+	rightValue := numericValue(right)
+	switch op {
+	case code.OpEqual:
+		return vm.push(nativeBoolToBooleanObject(leftValue == rightValue))
+	case code.OpNotEqual:
+		return vm.push(nativeBoolToBooleanObject(leftValue != rightValue))
+	case code.OpGreaterThan:
+		return vm.push(nativeBoolToBooleanObject(leftValue > rightValue))
+	case code.OpGreaterThanEqual:
+		return vm.push(nativeBoolToBooleanObject(leftValue >= rightValue))
+	default:
+		return fmt.Errorf("unknown operator: %d", op)
 	}
 }
 
@@ -495,12 +598,25 @@ func (vm *VM) executeBangOperator() error {
 func (vm *VM) executeMinusOperator() error {
 	operand := vm.pop()
 
-	if operand.Type() != object.INTEGER_OBJ {
+	switch operand := operand.(type) {
+	case *object.Integer:
+		return vm.push(&object.Integer{Value: -operand.Value})
+	case *object.Float:
+		return vm.push(&object.Float{Value: -operand.Value})
+	default:
 		return fmt.Errorf("unsupported type for negation: %s", operand.Type())
 	}
+}
 
-	value := operand.(*object.Integer).Value
-	return vm.push(&object.Integer{Value: -value})
+func isNumeric(value object.Object) bool {
+	return value.Type() == object.INTEGER_OBJ || value.Type() == object.FLOAT_OBJ
+}
+
+func numericValue(value object.Object) float64 {
+	if integer, ok := value.(*object.Integer); ok {
+		return float64(integer.Value)
+	}
+	return value.(*object.Float).Value
 }
 
 func (vm *VM) executeIndexExpression(left, index object.Object) error {
@@ -603,7 +719,7 @@ func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 
 	result := builtin.Fn(args...)
 
-	vm.sp = vm.sp - numArgs - 1
+	vm.truncateStack(vm.sp - numArgs - 1)
 
 	if result != nil {
 		vm.push(result)
@@ -625,7 +741,7 @@ func (vm *VM) pushClosure(constIndex, numFree int) error {
 	for i := 0; i < numFree; i++ {
 		free[i] = vm.stack[vm.sp-numFree+i]
 	}
-	vm.sp = vm.sp - numFree
+	vm.truncateStack(vm.sp - numFree)
 
 	closure := &object.Closure{Fn: function, Free: free}
 	return vm.push(closure)

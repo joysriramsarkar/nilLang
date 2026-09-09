@@ -110,3 +110,32 @@ func TestHIRNilSafety(t *testing.T) {
 	mapLit := &MapLit{Keys: []Expression{nil}, Values: []Expression{nil}}
 	_ = mapLit.String()
 }
+
+func TestHIRLowersNamedAppState(t *testing.T) {
+	p := parser.New(lexer.New(`app Hello { state count: i32 = 0 }`))
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+	hirProgram := NewLowerer().LowerProgram(program)
+	if len(hirProgram.Statements) != 1 {
+		t.Fatalf("expected one lowered state, got %d", len(hirProgram.Statements))
+	}
+	state, ok := hirProgram.Statements[0].(*LetStmt)
+	if !ok || state.Name != "count" || state.VarType.String() != "Int" {
+		t.Fatalf("unexpected lowered state: %T (%+v)", hirProgram.Statements[0], hirProgram.Statements[0])
+	}
+}
+
+func TestHIRPreservesDeclarativeComponent(t *testing.T) {
+	p := parser.New(lexer.New(`component Counter { state count: i32 = 0; render { return count; } on click { count = count + 1; } }`))
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+	hirProgram := NewLowerer().LowerProgram(program)
+	component, ok := hirProgram.Statements[0].(*ComponentDeclStmt)
+	if !ok || component.Name != "Counter" || len(component.States) != 1 || component.Render == nil || len(component.Handlers) != 1 {
+		t.Fatalf("unexpected lowered component: %T (%+v)", hirProgram.Statements[0], hirProgram.Statements[0])
+	}
+}

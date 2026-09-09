@@ -157,6 +157,20 @@ var CapabilityMatrix = map[string]map[Type]PermissionLevel{
 		CapBluetooth:  PermDenied,
 		CapSensors:    PermDenied,
 	},
+	"game": {
+		CapGPU:        PermAllowed,
+		CapAudio:      PermAllowed,
+		CapFilesystem: PermAllowed,
+		CapNetwork:    PermAllowed,
+		CapProcess:    PermAllowed,
+		CapSensors:    PermAllowed,
+		CapAI:         PermAllowed,
+		CapCrypto:     PermAllowed,
+		CapCamera:     PermRestricted,
+		CapGPS:        PermRestricted,
+		CapBluetooth:  PermRestricted,
+		CapDatabase:   PermRestricted,
+	},
 	"os": {
 		// Onuron OS / Native Linux profile: all capabilities available
 		CapNetwork:    PermAllowed,

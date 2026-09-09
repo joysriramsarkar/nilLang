@@ -13,9 +13,9 @@
 
 ## 🏛️ মূল বৈশিষ্ট্য (Core Highlights)
 
-- 🎨 **Alap Declarative UI & Component Model**: `component`, `state`, `render`, `emit` কীওয়ার্ড সহ রিঅ্যাক্টিভ UI স্টেট ম্যানেজমেন্ট।
+- 🎨 **Alap Declarative UI & Component Model**: `component`, `state`, `render`, `on`, `build`, এবং `emit` সহ event-driven state ও ANSI/HTML Page rendering।
 - 🎬 **60 FPS Animation Engine**: ৩০টিরও বেশি বিল্ট-ইন ইজিং কার্ভ (Bounce, Elastic, Cubic, Back, Quad ইত্যাদি) এবং টাইমলাইন কি-ফ্রেমিং।
-- ⚡ **Vulkan & OpenGL GPU Renderer Pipeline**: জিপিইউ-অ্যাক্সিলারেটেড ভেক্টর, শেডার এবং ব্যাচড রেন্ডারিং।
+- ⚡ **GPU Renderer Foundation**: simulation ও backend abstractions; বাস্তব Vulkan/Direct3D/Metal command submission এখনো চলমান কাজ।
 - 📡 **Distributed SoftBus Protocol**: Onuron OS ডিভাইসের মধ্যে জিরো-কনফিগ ল্যান ডিসকভারি, RPC মেসেজিং এবং ফাইল ট্রান্সফার।
 - 📦 **.nilax Application Bundle & nilpkg Package Manager**: জিপ-ভিত্তিক কম্প্রেসড অ্যাপ বান্ডিল, সিগনেচার ভেরিফিকেশন এবং মাইক্রোসার্ভিস রেজিস্ট্রি সার্ভার।
 - 🔐 **Ed25519 Package Signing (`nilkey`)**: ক্রিপ্টোগ্রাফিক কি-পেয়ার জেনারেশন, এনক্রিপ্টেড কি-স্টোর এবং প্যাকেজ সাইনিং।
@@ -255,9 +255,15 @@ Alap UI কম্পোনেন্ট ANSI কনসোল অথবা ব্�
 
 ```bash
 nil render
+nil render examples/ui-counter/src/main.nil --event increment
+nil dev examples/ui-counter/src/main.nil
 ```
 
 আউটপুট প্রিভিউ হিসেবে `build/preview.html` জেনারেট হবে।
+`nil dev` declarative button action server-এ dispatch করে state update ও browser rerender চালায়।
+প্রতিটি browser cookie session একটি স্বাধীন component instance পায়; ৩০ মিনিট নিষ্ক্রিয় থাকলে
+session state expire হয়। Button-এর `payload` metadata `on event(payload)` handler-এ nested
+hash/list/scalar হিসেবে পৌঁছায়। Incremental DOM patching এখনো বাস্তবায়িত নয়।
 
 ---
 

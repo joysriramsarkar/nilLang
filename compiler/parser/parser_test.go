@@ -41,6 +41,104 @@ let foobar = 838383;
 	}
 }
 
+func TestAppStatement(t *testing.T) {
+	input := `
+app Hello {
+	let launched = true;
+}
+let app = 7;
+`
+
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 2 {
+		t.Fatalf("expected 2 statements, got %d", len(program.Statements))
+	}
+	appStmt, ok := program.Statements[0].(*ast.AppStatement)
+	if !ok {
+		t.Fatalf("statement 0 is not *ast.AppStatement, got %T", program.Statements[0])
+	}
+	if appStmt.Name == nil || appStmt.Name.Value != "Hello" {
+		t.Fatalf("expected app name Hello, got %+v", appStmt.Name)
+	}
+	if appStmt.Body == nil || len(appStmt.Body.Statements) != 1 {
+		t.Fatalf("expected app body with 1 statement, got %+v", appStmt.Body)
+	}
+	if !testLetStatement(t, program.Statements[1], "app") {
+		t.Fatal("app should remain valid as an identifier")
+	}
+}
+
+func TestTaskAndAwaitExpressions(t *testing.T) {
+	p := New(lexer.New(`let work = task { 40 + 2; }; await work;`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	letStatement := program.Statements[0].(*ast.LetStatement)
+	if _, ok := letStatement.Value.(*ast.TaskExpression); !ok {
+		t.Fatalf("let value is not a task expression: %T", letStatement.Value)
+	}
+	expression := program.Statements[1].(*ast.ExpressionStatement)
+	if _, ok := expression.Expression.(*ast.AwaitExpression); !ok {
+		t.Fatalf("expression is not an await expression: %T", expression.Expression)
+	}
+}
+
+func TestNamedAppStateBlueprint(t *testing.T) {
+	p := New(lexer.New(`app Hello { state count: i32 = 0 }`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+	app := program.Statements[0].(*ast.AppStatement)
+	state, ok := app.Body.Statements[0].(*ast.StateDeclaration)
+	if !ok || state.Name.Value != "count" || state.Type != "i32" {
+		t.Fatalf("unexpected state declaration: %T (%+v)", app.Body.Statements[0], app.Body.Statements[0])
+	}
+	value, ok := state.Value.(*ast.IntegerLiteral)
+	if !ok || value.Value != 0 {
+		t.Fatalf("unexpected state initializer: %T (%+v)", state.Value, state.Value)
+	}
+}
+
+func TestStateTypeNameRequired(t *testing.T) {
+	p := New(lexer.New(`app Hello { state count: = 0 }`))
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parser error for missing state type name")
+	}
+}
+
+func TestDeclarativeComponentMembers(t *testing.T) {
+	input := `
+component Counter {
+	state count: i32 = 0;
+	render { return {"type": "Text", "value": "count"}; }
+	build { return count; }
+	on click { emit("changed", count); }
+}
+`
+	p := New(lexer.New(input))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	component, ok := program.Statements[0].(*ast.ComponentLiteral)
+	if !ok {
+		t.Fatalf("expected component declaration, got %T", program.Statements[0])
+	}
+	if len(component.States) != 1 || component.States[0].Name.Value != "count" {
+		t.Fatalf("unexpected component states: %+v", component.States)
+	}
+	if component.Render == nil || component.Render.Body == nil {
+		t.Fatal("expected render block")
+	}
+	if component.Build == nil || component.Build.Body == nil {
+		t.Fatal("expected build block")
+	}
+	if len(component.Handlers) != 1 || component.Handlers[0].Event.Value != "click" {
+		t.Fatalf("unexpected event handlers: %+v", component.Handlers)
+	}
+}
+
 func testLetStatement(t *testing.T, s ast.Statement, name string) bool {
 	if s.TokenLiteral() != "let" {
 		t.Errorf("s.TokenLiteral not 'let'. got=%q", s.TokenLiteral())

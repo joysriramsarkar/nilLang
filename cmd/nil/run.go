@@ -15,6 +15,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
+	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
 	"github.com/joysriramsarkar/nilLang/pkg/config"
 )
 
@@ -137,10 +138,12 @@ func runBundleFile(bundlePath string, useVM bool) {
 
 	// Fallback to compiled bytecode if available
 	if bcBytes, err := r.GetBytecode(); err == nil && len(bcBytes) > 0 {
-		machine := vm.New(&compiler.Bytecode{
-			Instructions: bcBytes,
-			Constants:    []object.Object{},
-		})
+		bytecode, err := pkgcompiler.DecodeBytecode(bcBytes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ অবৈধ NABC বাইটকোড: %s\n", err)
+			os.Exit(1)
+		}
+		machine := vm.New(bytecode)
 		if err := machine.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ রানটাইম ত্রুটি: %s\n", err)
 			os.Exit(1)

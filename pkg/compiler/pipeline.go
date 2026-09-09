@@ -7,6 +7,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 )
 
@@ -59,7 +60,17 @@ func (p *Pipeline) Compile() error {
 			len(psr.Errors()), formatErrors(psr.Errors()))
 	}
 
-	// Phase 3: Bytecode compilation
+	// Phase 3: Static type checking
+	checker := typecheck.NewChecker()
+	if !checker.CheckProgram(program) {
+		for _, diagnostic := range checker.Diagnostics {
+			p.errors = append(p.errors, diagnostic.String())
+		}
+		return fmt.Errorf("type checking failed with %d error(s):\n%s",
+			len(p.errors), formatErrors(p.errors))
+	}
+
+	// Phase 4: Bytecode compilation
 	comp := compiler.New()
 	if err := comp.Compile(program); err != nil {
 		return fmt.Errorf("bytecode compilation failed: %w", err)
@@ -79,7 +90,15 @@ func (p *Pipeline) GetBytecodeBytes() []byte {
 	if p.bytecode == nil {
 		return nil
 	}
-	return p.bytecode.Instructions
+	image, err := EncodeBytecode(p.bytecode)
+	if err != nil {
+		return nil
+	}
+	return image
+}
+
+func (p *Pipeline) GetBytecodeImage() ([]byte, error) {
+	return EncodeBytecode(p.bytecode)
 }
 
 // GetDisassembly returns the disassembled bytecode

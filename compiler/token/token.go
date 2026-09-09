@@ -59,6 +59,8 @@ const (
 	RETURN = "RETURN"
 	WHILE  = "WHILE"
 	FOR    = "FOR"
+	TASK   = "TASK"
+	AWAIT  = "AWAIT"
 	IMPORT = "IMPORT"
 	EXPORT = "EXPORT"
 	AS     = "AS"
@@ -94,6 +96,8 @@ var keywords = map[string]TokenType{
 	"return":    RETURN,
 	"while":     WHILE,
 	"for":       FOR,
+	"task":      TASK,
+	"await":     AWAIT,
 	"import":    IMPORT,
 	"export":    EXPORT,
 	"as":        AS,

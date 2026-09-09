@@ -197,6 +197,19 @@ type EntityDef struct {
 	Fields []EntityFieldDef
 }
 
+type ComponentDef struct {
+	Name       string
+	States     []string
+	RenderFunc string
+	BuildFunc  string
+	Events     map[string]string
+}
+
+func (c *ComponentDef) String() string {
+	return fmt.Sprintf("component %s { states=%s render=%s build=%s events=%d }\n",
+		c.Name, strings.Join(c.States, ","), c.RenderFunc, c.BuildFunc, len(c.Events))
+}
+
 func (e *EntityDef) String() string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("entity %s {\n", e.Name))
@@ -208,15 +221,19 @@ func (e *EntityDef) String() string {
 }
 
 type Program struct {
-	Functions map[string]*Function
-	Entities  map[string]*EntityDef
-	Main      *Function
+	Functions  map[string]*Function
+	Entities   map[string]*EntityDef
+	Components map[string]*ComponentDef
+	Main       *Function
 }
 
 func (p *Program) String() string {
 	var b strings.Builder
 	for _, ent := range p.Entities {
 		b.WriteString(ent.String())
+	}
+	for _, component := range p.Components {
+		b.WriteString(component.String())
 	}
 	if p.Main != nil {
 		b.WriteString(p.Main.String())

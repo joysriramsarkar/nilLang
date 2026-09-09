@@ -1,0 +1,184 @@
+let nilAnalyze = fn(program) {
+    let diagnostics = [];
+    let scopes = [{}];
+    let builtins = [
+        "len", "print", "println", "puts", "type", "first", "last", "rest",
+        "push", "append", "set", "str", "int", "time", "assert", "lower",
+        "upper", "trim", "split", "join", "contains", "hasPrefix", "hasSuffix",
+        "replace", "substr", "readFile", "writeFile", "fileExists", "isDir",
+        "listDir", "makeDir", "removeFile", "cwd", "chdir", "exec", "clear", "input"
+        , "tensor", "tensorShape", "tensorGet", "tensorAdd", "tensorMul",
+        "tensorSlice", "tensorDtype", "tensorCast", "tensorDot",
+        "tensorMatmul", "tensorSum"
+    ];
+
+    let scopeIndex = fn() {
+        return len(scopes) - 1;
+    };
+
+    let define = fn(name, node) {
+        let scope = scopes[scopeIndex()];
+        if (scope[name] != null) {
+            diagnostics = push(diagnostics, {
+                "code": "E1001", "message": "duplicate binding: " + name,
+                "line": node["line"], "column": node["column"]
+            });
+        } else {
+            scope[name] = true;
+        }
+    };
+
+    let resolve = fn(name) {
+        let index = len(scopes) - 1;
+        while (index >= 0) {
+            if (scopes[index][name] != null) {
+                return true;
+            }
+            index = index - 1;
+        }
+        return false;
+    };
+
+    let reportUndefined = fn(node) {
+        let name = node["value"];
+        if (!resolve(name)) {
+            diagnostics = push(diagnostics, {
+                "code": "E1002", "message": "undefined identifier: " + name,
+                "line": node["line"], "column": node["column"]
+            });
+        }
+    };
+
+    let visit = null;
+    let visitList = fn(nodes) {
+        let index = 0;
+        while (index < len(nodes)) {
+            visit(nodes[index]);
+            index = index + 1;
+        }
+    };
+
+    visit = fn(node) {
+        if (node == null) {
+            return null;
+        }
+        let kind = node["kind"];
+        if (kind == "Program") {
+            visitList(node["statements"]);
+        } else {
+            if (kind == "BlockStatement") {
+                let outerScopes = scopes;
+                scopes = push(scopes, {});
+                visitList(node["statements"]);
+                scopes = outerScopes;
+            } else {
+                if (kind == "LetStatement") {
+                    if (node["value"]["kind"] == "FunctionLiteral") {
+                        define(node["name"]["value"], node["name"]);
+                        visit(node["value"]);
+                    } else {
+                        visit(node["value"]);
+                        define(node["name"]["value"], node["name"]);
+                    }
+                } else {
+                    if (kind == "AssignStatement") {
+                        reportUndefined(node["name"]);
+                        visit(node["value"]);
+                    } else {
+                        if (kind == "IndexAssignStatement") {
+                            visit(node["left"]);
+                            visit(node["index"]);
+                            visit(node["value"]);
+                        } else {
+                            if (kind == "ReturnStatement") {
+                                visit(node["value"]);
+                            } else {
+                                if (kind == "ExpressionStatement") {
+                                    visit(node["expression"]);
+                                } else {
+                                    if (kind == "WhileStatement") {
+                                        visit(node["condition"]);
+                                        visit(node["body"]);
+                                    } else {
+                                        if (kind == "Identifier") {
+                                            reportUndefined(node);
+                                        } else {
+                                            if (kind == "PrefixExpression") {
+                                                visit(node["right"]);
+                                            } else {
+                                                if (kind == "InfixExpression") {
+                                                    visit(node["left"]);
+                                                    visit(node["right"]);
+                                                } else {
+                                                    if (kind == "IfExpression") {
+                                                        visit(node["condition"]);
+                                                        visit(node["consequence"]);
+                                                        visit(node["alternative"]);
+                                                    } else {
+                                                        if (kind == "FunctionLiteral") {
+                                                            let functionScope = {};
+                                                            let outerScopes = scopes;
+                                                            scopes = push(scopes, functionScope);
+                                                            if (node["name"] != "") {
+                                                                define(node["name"], node);
+                                                            }
+                                                            let parameters = node["parameters"];
+                                                            let index = 0;
+                                                            while (index < len(parameters)) {
+                                                                define(parameters[index]["value"], parameters[index]);
+                                                                index = index + 1;
+                                                            }
+                                                            visit(node["body"]);
+                                                            scopes = outerScopes;
+                                                        } else {
+                                                            if (kind == "CallExpression") {
+                                                                visit(node["function"]);
+                                                                visitList(node["arguments"]);
+                                                            } else {
+                                                                if (kind == "ArrayLiteral") {
+                                                                    visitList(node["elements"]);
+                                                                } else {
+                                                                    if (kind == "HashLiteral") {
+                                                                        let pairs = node["pairs"];
+                                                                        let index = 0;
+                                                                        while (index < len(pairs)) {
+                                                                            visit(pairs[index]["key"]);
+                                                                            visit(pairs[index]["value"]);
+                                                                            index = index + 1;
+                                                                        }
+                                                                    } else {
+                                                                        if (kind == "IndexExpression") {
+                                                                            visit(node["left"]);
+                                                                            visit(node["index"]);
+                                                                        } else {
+                                                                            if (kind == "DotExpression") {
+                                                                                visit(node["left"]);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    };
+
+    let index = 0;
+    while (index < len(builtins)) {
+        scopes[0][builtins[index]] = true;
+        index = index + 1;
+    }
+    visit(program);
+    return {"ok": len(diagnostics) == 0, "diagnostics": diagnostics};
+};

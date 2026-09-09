@@ -20,6 +20,16 @@ func (l *Lowerer) LowerProgram(prog *ast.Program) *Program {
 		Statements: []Statement{},
 	}
 	for _, s := range prog.Statements {
+		if app, ok := s.(*ast.AppStatement); ok {
+			if app.Body != nil {
+				for _, nested := range app.Body.Statements {
+					if hs := l.lowerStatement(nested); hs != nil {
+						hp.Statements = append(hp.Statements, hs)
+					}
+				}
+			}
+			continue
+		}
 		if hs := l.lowerStatement(s); hs != nil {
 			hp.Statements = append(hp.Statements, hs)
 		}
@@ -46,6 +56,53 @@ func (l *Lowerer) lowerStatement(stmt ast.Statement) Statement {
 			Value:    val,
 			Constant: false,
 		}
+
+	case *ast.StateDeclaration:
+		value := l.lowerExpression(s.Value)
+		var valueType types.Type = types.Any
+		if s.Type != "" {
+			if parsed, err := types.Parse(s.Type); err == nil {
+				valueType = parsed
+			}
+		} else if value != nil {
+			valueType = value.Type()
+		}
+		name := ""
+		if s.Name != nil {
+			name = s.Name.Value
+			l.symbols[name] = valueType
+		}
+		return &LetStmt{Name: name, VarType: valueType, Value: value}
+
+	case *ast.ComponentLiteral:
+		component := &ComponentDeclStmt{}
+		if s.Name != nil {
+			component.Name = s.Name.Value
+			l.symbols[component.Name] = types.Any
+		}
+		for _, state := range s.States {
+			if lowered, ok := l.lowerStatement(state).(*LetStmt); ok {
+				component.States = append(component.States, lowered)
+			}
+		}
+		if s.Render != nil {
+			component.Render = l.lowerBlock(s.Render.Body)
+		}
+		if s.Build != nil {
+			component.Build = l.lowerBlock(s.Build.Body)
+		}
+		for _, handler := range s.Handlers {
+			name := ""
+			if handler.Event != nil {
+				name = handler.Event.Value
+			}
+			parameters := make([]string, 0, len(handler.Parameters))
+			for _, parameter := range handler.Parameters {
+				parameters = append(parameters, parameter.Value)
+			}
+			component.Handlers = append(component.Handlers, ComponentEventDecl{Name: name, Params: parameters, Body: l.lowerBlock(handler.Body)})
+		}
+		return component
 
 	case *ast.AssignStatement:
 		val := l.lowerExpression(s.Value)

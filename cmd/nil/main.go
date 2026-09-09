@@ -42,6 +42,8 @@ func main() {
 	switch command {
 	case "build":
 		cmdBuild()
+	case "native":
+		cmdNative()
 	case "run":
 		cmdRun()
 	case "init", "create":
@@ -108,11 +110,12 @@ func printUsage() {
 	fmt.Println("  hir [file.nil]             হাই-লেভেল ইন্টারমিডিয়েট রিপ্রেজেন্টেশন (HIR) দেখুন")
 	fmt.Println("  mir [file.nil]             মিড-লেভেল ইন্টারমিডিয়েট রিপ্রেজেন্টেশন (MIR / CFG) দেখুন")
 	fmt.Println("  build [target|-allos]      টার্গেট ওএস (linux, windows, macos, onuron, android, wasm, web) বা -allos এর জন্য বিল্ড করুন")
+	fmt.Println("  native <file.nil> [-o out] সীমিত integer NilLang প্রোগ্রামকে host machine code-এ কম্পাইল করুন")
 	fmt.Println("  run [file] [-vm]           প্রজেক্ট বা .nil ফাইল রান করুন")
-	fmt.Println("  dev [--port 8080]          Alap ওয়েব লাইভ সার্ভার ও হট-রিলোড রান করুন")
+	fmt.Println("  dev [file.nil] [--port 8080] Alap UI live server ও event rerender loop চালান")
 	fmt.Println("  routes                     নিবন্ধিত সমস্ত Radix Tree HTTP রাউট টেবিল দেখুন")
 	fmt.Println("  db [migrate|rollback]      এন্টারপ্রাইজ ডেটাবেস মাইগ্রেশন চালান")
-	fmt.Println("  render [file.nil]          Alap UI পেজ ও ড্যাশবোর্ড রেন্ডার করুন")
+	fmt.Println("  render [file.nil] [--event <name>] Alap UI render করুন; event dispatch করে reactive preview নিন")
 	fmt.Println("  repl                       ইন্টারঅ্যাক্টিভ REPL চালু করুন")
 	fmt.Println("  fmt                        কোড ফরম্যাট করুন")
 	fmt.Println("  clean                      বিল্ড আর্টিফ্যাক্ট মুছে ফেলুন")

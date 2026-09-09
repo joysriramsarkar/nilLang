@@ -16,6 +16,54 @@ import (
 var stdinReader = bufio.NewReader(os.Stdin)
 
 var Builtins = map[string]*object.Builtin{
+	"emit": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) < 1 || len(args) > 2 {
+				return newError("wrong number of arguments to `emit`. got=%d, want=1 or 2", len(args))
+			}
+			if len(args) == 2 {
+				return args[1]
+			}
+			return NULL
+		},
+	},
+	"Channel": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `Channel`. got=%d, want=1", len(args))
+			}
+			capacity, ok := args[0].(*object.Integer)
+			if !ok || capacity.Value < 0 {
+				return newError("channel capacity must be a non-negative integer")
+			}
+			return object.NewChannel(int(capacity.Value))
+		},
+	},
+	"send": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments to `send`. got=%d, want=2", len(args))
+			}
+			channel, ok := args[0].(*object.Channel)
+			if !ok {
+				return newError("first argument to `send` must be CHANNEL, got %s", args[0].Type())
+			}
+			channel.Values <- args[1]
+			return NULL
+		},
+	},
+	"receive": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `receive`. got=%d, want=1", len(args))
+			}
+			channel, ok := args[0].(*object.Channel)
+			if !ok {
+				return newError("argument to `receive` must be CHANNEL, got %s", args[0].Type())
+			}
+			return <-channel.Values
+		},
+	},
 	"len": {
 		Fn: func(args ...object.Object) object.Object {
 			if len(args) != 1 {

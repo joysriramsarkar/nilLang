@@ -1,0 +1,362 @@
+let nilParserPrecedence = {
+    "||": 1, "&&": 2, "==": 3, "!=": 3,
+    "<": 4, ">": 4, "<=": 4, ">=": 4,
+    "+": 5, "-": 5, "*": 6, "/": 6, "%": 6,
+    "(": 8, "[": 9, ".": 9
+};
+
+let nilAstNode = fn(kind, token) {
+    return {
+        "kind": kind,
+        "literal": token["literal"],
+        "line": token["line"],
+        "column": token["column"]
+    };
+};
+
+let nilParse = fn(source) {
+    let tokens = nilLex(source);
+    let position = 0;
+    let errors = [];
+
+    let current = fn() {
+        return tokens[position];
+    };
+
+    let advance = fn() {
+        let token = current();
+        if (position < len(tokens) - 1) {
+            position = position + 1;
+        }
+        return token;
+    };
+
+    let errorAt = fn(token, message) {
+        errors = push(errors, {
+            "message": message,
+            "line": token["line"],
+            "column": token["column"]
+        });
+        return null;
+    };
+
+    let expect = fn(tokenType) {
+        let token = current();
+        if (token["type"] != tokenType) {
+            return errorAt(token, "expected " + tokenType + ", got " + token["type"]);
+        }
+        return advance();
+    };
+
+    let precedence = fn(tokenType) {
+        let value = nilParserPrecedence[tokenType];
+        if (value == null) {
+            return 0;
+        }
+        return value;
+    };
+
+    let parseExpression = null;
+    let parseStatement = null;
+    let parseBlock = null;
+    let parseExpressionList = null;
+
+    parseBlock = fn() {
+        let opening = expect("{");
+        if (opening == null) {
+            return null;
+        }
+        let statements = [];
+        while (current()["type"] != "}" && current()["type"] != "EOF") {
+            let before = position;
+            let statement = parseStatement();
+            if (statement != null) {
+                statements = push(statements, statement);
+            }
+            if (position == before) {
+                advance();
+            }
+        }
+        expect("}");
+        let block = nilAstNode("BlockStatement", opening);
+        block["statements"] = statements;
+        return block;
+    };
+
+    parseExpressionList = fn(endToken) {
+        let expressions = [];
+        if (current()["type"] == endToken) {
+            advance();
+            return expressions;
+        }
+        expressions = push(expressions, parseExpression(0));
+        while (current()["type"] == ",") {
+            advance();
+            let expressions = push(expressions, parseExpression(0));
+        }
+        expect(endToken);
+        return expressions;
+    };
+
+    let parsePrefix = fn() {
+        let token = advance();
+        let tokenType = token["type"];
+
+        if (tokenType == "IDENT") {
+            let node = nilAstNode("Identifier", token);
+            node["value"] = token["literal"];
+            return node;
+        }
+        if (tokenType == "INT") {
+            return nilAstNode("IntegerLiteral", token);
+        }
+        if (tokenType == "FLOAT") {
+            return nilAstNode("FloatLiteral", token);
+        }
+        if (tokenType == "STRING") {
+            let node = nilAstNode("StringLiteral", token);
+            node["value"] = token["literal"];
+            return node;
+        }
+        if (tokenType == "TRUE" || tokenType == "FALSE") {
+            let node = nilAstNode("Boolean", token);
+            node["value"] = tokenType == "TRUE";
+            return node;
+        }
+        if (tokenType == "NULL") {
+            return nilAstNode("NullLiteral", token);
+        }
+        if (tokenType == "!" || tokenType == "-") {
+            let node = nilAstNode("PrefixExpression", token);
+            node["operator"] = token["literal"];
+            node["right"] = parseExpression(7);
+            return node;
+        }
+        if (tokenType == "(") {
+            let expression = parseExpression(0);
+            expect(")");
+            return expression;
+        }
+        if (tokenType == "[") {
+            let node = nilAstNode("ArrayLiteral", token);
+            node["elements"] = parseExpressionList("]");
+            return node;
+        }
+        if (tokenType == "{") {
+            let node = nilAstNode("HashLiteral", token);
+            let pairs = [];
+            while (current()["type"] != "}" && current()["type"] != "EOF") {
+                let key = parseExpression(0);
+                expect(":");
+                let value = parseExpression(0);
+                pairs = push(pairs, {"key": key, "value": value});
+                if (current()["type"] == ",") {
+                    advance();
+                } else {
+                    if (current()["type"] != "}") {
+                        errorAt(current(), "expected , or }, got " + current()["type"]);
+                    }
+                }
+            }
+            expect("}");
+            node["pairs"] = pairs;
+            return node;
+        }
+        if (tokenType == "IF") {
+            let node = nilAstNode("IfExpression", token);
+            if (current()["type"] == "(") {
+                advance();
+                node["condition"] = parseExpression(0);
+                expect(")");
+            } else {
+                node["condition"] = parseExpression(0);
+            }
+            node["consequence"] = parseBlock();
+            node["alternative"] = null;
+            if (current()["type"] == "ELSE") {
+                advance();
+                if (current()["type"] == "IF") {
+                    let nestedToken = current();
+                    let nested = parsePrefix();
+                    let alternative = nilAstNode("BlockStatement", nestedToken);
+                    alternative["statements"] = [{"kind": "ExpressionStatement", "literal": "if", "line": nestedToken["line"], "column": nestedToken["column"], "expression": nested}];
+                    node["alternative"] = alternative;
+                } else {
+                    node["alternative"] = parseBlock();
+                }
+            }
+            return node;
+        }
+        if (tokenType == "FN") {
+            let node = nilAstNode("FunctionLiteral", token);
+            node["name"] = "";
+            if (current()["type"] == "IDENT") {
+                node["name"] = advance()["literal"];
+            }
+            expect("(");
+            let parameters = [];
+            if (current()["type"] != ")") {
+                let parameterToken = expect("IDENT");
+                if (parameterToken != null) {
+                    let parameter = nilAstNode("Identifier", parameterToken);
+                    parameter["value"] = parameterToken["literal"];
+                    parameters = push(parameters, parameter);
+                }
+                while (current()["type"] == ",") {
+                    advance();
+                    let parameterToken = expect("IDENT");
+                    if (parameterToken != null) {
+                        let parameter = nilAstNode("Identifier", parameterToken);
+                        parameter["value"] = parameterToken["literal"];
+                        parameters = push(parameters, parameter);
+                    }
+                }
+            }
+            expect(")");
+            node["parameters"] = parameters;
+            node["body"] = parseBlock();
+            return node;
+        }
+
+        return errorAt(token, "no prefix parser for " + tokenType);
+    };
+
+    parseExpression = fn(minimumPrecedence) {
+        let left = parsePrefix();
+        if (left == null) {
+            return null;
+        }
+
+        while (current()["type"] != ";" && current()["type"] != "EOF" && current()["type"] != ")" && current()["type"] != "]" && current()["type"] != "}" && current()["type"] != "," && current()["type"] != ":" && precedence(current()["type"]) > minimumPrecedence) {
+            let operatorToken = advance();
+            let operatorPrecedence = precedence(operatorToken["type"]);
+            if (operatorToken["type"] == "(") {
+                let expression = nilAstNode("CallExpression", operatorToken);
+                expression["function"] = left;
+                expression["arguments"] = parseExpressionList(")");
+                left = expression;
+            } else {
+                if (operatorToken["type"] == "[") {
+                    let expression = nilAstNode("IndexExpression", operatorToken);
+                    expression["left"] = left;
+                    expression["index"] = parseExpression(0);
+                    expect("]");
+                    left = expression;
+                } else {
+                    if (operatorToken["type"] == ".") {
+                        let memberToken = expect("IDENT");
+                        let expression = nilAstNode("DotExpression", operatorToken);
+                        expression["left"] = left;
+                        if (memberToken != null) {
+                            let member = nilAstNode("Identifier", memberToken);
+                            member["value"] = memberToken["literal"];
+                            expression["member"] = member;
+                        }
+                        left = expression;
+                    } else {
+                        let right = parseExpression(operatorPrecedence);
+                        let expression = nilAstNode("InfixExpression", operatorToken);
+                        expression["operator"] = operatorToken["literal"];
+                        expression["left"] = left;
+                        expression["right"] = right;
+                        left = expression;
+                    }
+                }
+            }
+        }
+        return left;
+    };
+
+    parseStatement = fn() {
+        let token = current();
+        if (token["type"] == "LET" || token["type"] == "CONST") {
+            advance();
+            let nameToken = expect("IDENT");
+            if (nameToken == null) {
+                return null;
+            }
+            if (expect("=") == null) {
+                return null;
+            }
+            let statement = nilAstNode("LetStatement", token);
+            let name = nilAstNode("Identifier", nameToken);
+            name["value"] = nameToken["literal"];
+            statement["name"] = name;
+            statement["value"] = parseExpression(0);
+            if (current()["type"] == ";") {
+                advance();
+            }
+            return statement;
+        }
+        if (token["type"] == "RETURN") {
+            advance();
+            let statement = nilAstNode("ReturnStatement", token);
+            statement["value"] = parseExpression(0);
+            if (current()["type"] == ";") {
+                advance();
+            }
+            return statement;
+        }
+
+        if (token["type"] == "WHILE") {
+            advance();
+            let statement = nilAstNode("WhileStatement", token);
+            if (current()["type"] == "(") {
+                advance();
+                statement["condition"] = parseExpression(0);
+                expect(")");
+            } else {
+                statement["condition"] = parseExpression(0);
+            }
+            statement["body"] = parseBlock();
+            return statement;
+        }
+
+        let expression = parseExpression(0);
+        if (current()["type"] == "=") {
+            let assignmentToken = advance();
+            let value = parseExpression(0);
+            let kind = expression["kind"];
+            if (kind == "Identifier") {
+                let statement = nilAstNode("AssignStatement", expression);
+                statement["name"] = expression;
+                statement["value"] = value;
+                if (current()["type"] == ";") {
+                    advance();
+                }
+                return statement;
+            }
+            if (kind == "IndexExpression") {
+                let statement = {"kind": "IndexAssignStatement", "literal": "="};
+                statement["left"] = expression["left"];
+                statement["index"] = expression["index"];
+                statement["value"] = value;
+                if (current()["type"] == ";") {
+                    advance();
+                }
+                return statement;
+            }
+            errorAt(assignmentToken, "invalid assignment target");
+        }
+        let statement = nilAstNode("ExpressionStatement", token);
+        statement["expression"] = expression;
+        if (current()["type"] == ";") {
+            advance();
+        }
+        return statement;
+    };
+
+    let statements = [];
+    while (current()["type"] != "EOF") {
+        let before = position;
+        let statement = parseStatement();
+        if (statement != null) {
+            statements = push(statements, statement);
+        }
+        if (position == before) {
+            advance();
+        }
+    }
+
+    return {"kind": "Program", "statements": statements, "errors": errors};
+};

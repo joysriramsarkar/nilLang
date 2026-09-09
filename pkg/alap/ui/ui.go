@@ -158,7 +158,7 @@ func (p *Page) RenderSSR(theme Theme, state map[string]interface{}) string {
 </style>
 </head>
 <body>
-<div style="max-width: 900px; margin: 0 auto;">
+<div data-alap-root style="max-width: 900px; margin: 0 auto;">
   <h1 style="color:%s;">%s</h1>
 `, escapedTitle, theme.BackgroundColor, theme.TextColor, theme.SurfaceColor, theme.BorderRadius, theme.AccentColor, theme.PrimaryColor, theme.PrimaryColor, theme.BorderRadius, theme.AccentColor, escapedTitle))
 
@@ -185,7 +185,7 @@ func (p *Page) RenderSSR(theme Theme, state map[string]interface{}) string {
 		}
 	}
 
-	sb.WriteString(`</div></body></html>`)
+	sb.WriteString(`</div><script src="/alap-runtime.js"></script></body></html>`)
 	return sb.String()
 }
 
