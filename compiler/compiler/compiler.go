@@ -390,10 +390,16 @@ func (c *Compiler) Compile(node ast.Node) error {
 		case "-=":
 			c.emit(code.OpSub)
 		}
-		if symbol.Scope == GlobalScope {
+		// Emit the correct store opcode for each variable scope.
+		// FreeScope means the variable lives in an outer closure's
+		// CaptureCell — we must write back through the cell pointer.
+		switch symbol.Scope {
+		case GlobalScope:
 			c.emit(code.OpSetGlobal, symbol.Index)
-		} else {
+		case LocalScope:
 			c.emit(code.OpSetLocal, symbol.Index)
+		case FreeScope:
+			c.emit(code.OpSetFree, symbol.Index)
 		}
 
 	case *ast.Identifier:
@@ -483,8 +489,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 		numLocals := c.symbolTable.numDefinitions
 		instructions := c.leaveScope()
 
+		// When capturing free variables for a new closure, we must push the
+		// raw CaptureCell pointer (not the unwrapped value) so the VM can
+		// share the cell between parent and child closures. For non-free
+		// (local/global) captures we push the value and the VM wraps it in a
+		// new cell inside pushClosure.
 		for _, s := range freeSymbols {
-			c.loadSymbol(s)
+			c.loadSymbolForCapture(s)
 		}
 
 		compiledFn := &object.CompiledFunction{
@@ -556,11 +567,34 @@ func (c *Compiler) loadSymbol(s Symbol) {
 	case BuiltinScope:
 		c.emit(code.OpGetBuiltin, s.Index)
 	case FreeScope:
+		// OpGetFree reads the cell's .Value. During closure creation we
+		// need the raw cell pointer so the inner closure can share it.
+		// We always emit OpGetFree here; the pushClosure logic in the VM
+		// detects whether the stack value is already a CaptureCell and
+		// re-uses it, avoiding double-wrapping.
 		c.emit(code.OpGetFree, s.Index)
 	case FunctionScope:
 		c.emit(code.OpCurrentClosure)
 	}
 }
+
+// loadSymbolForCapture is used only when building the free-variable list
+// for a new OpClosure instruction. For free-scoped symbols we need to push
+// the raw CaptureCell pointer (not the unwrapped value) so the inner closure
+// can share mutation with the outer one. The VM's pushClosure detects the
+// CaptureCell type and re-uses the pointer instead of wrapping a new cell.
+func (c *Compiler) loadSymbolForCapture(s Symbol) {
+	if s.Scope == FreeScope {
+		// OpGetFreeCell pushes the raw *CaptureCell (not .Value).
+		// The VM's pushClosure will then detect it's already a cell and
+		// share the pointer, giving both closures the same mutable cell.
+		c.emit(code.OpGetFreeCell, s.Index)
+	} else {
+		// For locals/globals: push the current value; VM wraps a new cell.
+		c.loadSymbol(s)
+	}
+}
+
 
 func (c *Compiler) Bytecode() *Bytecode {
 	return &Bytecode{

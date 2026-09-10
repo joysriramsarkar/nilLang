@@ -27,6 +27,7 @@ const (
 	HASH_OBJ              = "HASH"
 	COMPILED_FUNCTION_OBJ = "COMPILED_FUNCTION"
 	CLOSURE_OBJ           = "CLOSURE"
+	CAPTURE_CELL_OBJ      = "CAPTURE_CELL"
 	ENTITY_OBJ            = "ENTITY"
 	FUTURE_OBJ            = "FUTURE"
 	CHANNEL_OBJ           = "CHANNEL"
@@ -190,9 +191,20 @@ type CompiledFunction struct {
 func (cf *CompiledFunction) Type() ObjectType { return COMPILED_FUNCTION_OBJ }
 func (cf *CompiledFunction) Inspect() string  { return fmt.Sprintf("CompiledFunction[%p]", cf) }
 
+// CaptureCell is a heap-allocated mutable cell shared between closures.
+// When a closure captures a variable that may be mutated, we wrap it in a
+// CaptureCell so that all closures sharing the same captured variable see
+// the same mutable cell rather than an immutable value copy.
+type CaptureCell struct {
+	Value Object
+}
+
+func (cc *CaptureCell) Type() ObjectType { return CAPTURE_CELL_OBJ }
+func (cc *CaptureCell) Inspect() string  { return fmt.Sprintf("Cell(%s)", cc.Value.Inspect()) }
+
 type Closure struct {
 	Fn   *CompiledFunction
-	Free []Object
+	Free []*CaptureCell // shared mutable cells, not value copies
 }
 
 func (c *Closure) Type() ObjectType { return CLOSURE_OBJ }

@@ -211,7 +211,7 @@ func cmdDev() {
 	})
 
 	svc.GET("/api/metrics", func(ctx *routing.Context) (interface{}, error) {
-		metricsText := fmt.Sprintf(`# HELP alap_http_requests_total Total HTTP requests handled
+		metricsText := `# HELP alap_http_requests_total Total HTTP requests handled
 # TYPE alap_http_requests_total counter
 alap_http_requests_total{service="AlapEnterpriseWeb",status="200"} 128
 # HELP alap_http_request_duration_seconds Latency summary
@@ -224,7 +224,7 @@ alap_realtime_connected_clients 6
 # HELP alap_db_active_transactions Active ORM transactions
 # TYPE alap_db_active_transactions gauge
 alap_db_active_transactions 0
-`)
+`
 		return server.HTMLResponse{HTML: metricsText}, nil
 	})
 

@@ -81,16 +81,23 @@ func (vm *VM) currentFrame() *Frame {
 	return vm.frames[vm.framesIndex-1]
 }
 
-func (vm *VM) pushFrame(f *Frame) {
+func (vm *VM) pushFrame(f *Frame) error {
+	if vm.framesIndex >= MaxFrames {
+		return fmt.Errorf("stack overflow: maximum call depth %d exceeded", MaxFrames)
+	}
 	vm.frames[vm.framesIndex] = f
 	vm.framesIndex++
+	return nil
 }
 
-func (vm *VM) popFrame() *Frame {
+func (vm *VM) popFrame() (*Frame, error) {
+	if vm.framesIndex <= 0 {
+		return nil, fmt.Errorf("internal error: frame stack underflow")
+	}
 	vm.framesIndex--
 	frame := vm.frames[vm.framesIndex]
 	vm.frames[vm.framesIndex] = nil
-	return frame
+	return frame, nil
 }
 
 func (vm *VM) push(o object.Object) error {
@@ -104,10 +111,13 @@ func (vm *VM) push(o object.Object) error {
 	return nil
 }
 
-func (vm *VM) pop() object.Object {
+func (vm *VM) pop() (object.Object, error) {
+	if vm.sp <= 0 {
+		return nil, fmt.Errorf("internal error: stack underflow")
+	}
 	o := vm.stack[vm.sp-1]
 	vm.truncateStack(vm.sp - 1)
-	return o
+	return o, nil
 }
 
 func (vm *VM) truncateStack(newSP int) {
@@ -146,7 +156,11 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpPop:
-			vm.lastPoppedStackElem = vm.pop()
+			val, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			vm.lastPoppedStackElem = val
 
 		case code.OpTrue:
 			err := vm.push(True)
@@ -167,8 +181,14 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpAnd:
-			right := vm.pop()
-			left := vm.pop()
+			right, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			left, err := vm.pop()
+			if err != nil {
+				return err
+			}
 			if isTruthy(left) && isTruthy(right) {
 				_ = vm.push(True)
 			} else {
@@ -176,8 +196,14 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpOr:
-			right := vm.pop()
-			left := vm.pop()
+			right, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			left, err := vm.pop()
+			if err != nil {
+				return err
+			}
 			if isTruthy(left) || isTruthy(right) {
 				_ = vm.push(True)
 			} else {
@@ -204,7 +230,10 @@ func (vm *VM) Run() error {
 			pos := int(code.ReadUint16(ins[ip+1:]))
 			vm.currentFrame().ip += 2
 
-			condition := vm.pop()
+			condition, err := vm.pop()
+			if err != nil {
+				return err
+			}
 			if !isTruthy(condition) {
 				vm.currentFrame().ip = pos - 1
 			}
@@ -219,7 +248,11 @@ func (vm *VM) Run() error {
 			globalIndex := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2
 
-			vm.globals[globalIndex] = vm.pop()
+			val, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			vm.globals[globalIndex] = val
 
 		case code.OpGetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
@@ -258,10 +291,16 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpIndex:
-			index := vm.pop()
-			left := vm.pop()
+			index, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			left, err := vm.pop()
+			if err != nil {
+				return err
+			}
 
-			err := vm.executeIndexExpression(left, index)
+			err = vm.executeIndexExpression(left, index)
 			if err != nil {
 				return err
 			}
@@ -276,30 +315,37 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpReturnValue:
-			returnValue := vm.pop()
-
-			frame := vm.popFrame()
-			if frame.basePointer > 0 {
-				vm.truncateStack(frame.basePointer - 1)
-			} else {
-				vm.truncateStack(0)
-			}
-
-			err := vm.push(returnValue)
+			returnValue, err := vm.pop()
 			if err != nil {
 				return err
 			}
 
-		case code.OpReturn:
-			frame := vm.popFrame()
+			frame, err := vm.popFrame()
+			if err != nil {
+				return err
+			}
 			if frame.basePointer > 0 {
 				vm.truncateStack(frame.basePointer - 1)
 			} else {
 				vm.truncateStack(0)
 			}
 
-			err := vm.push(Null)
+			if err := vm.push(returnValue); err != nil {
+				return err
+			}
+
+		case code.OpReturn:
+			frame, err := vm.popFrame()
 			if err != nil {
+				return err
+			}
+			if frame.basePointer > 0 {
+				vm.truncateStack(frame.basePointer - 1)
+			} else {
+				vm.truncateStack(0)
+			}
+
+			if err := vm.push(Null); err != nil {
 				return err
 			}
 
@@ -307,8 +353,12 @@ func (vm *VM) Run() error {
 			localIndex := code.ReadUint8(ins[ip+1:])
 			vm.currentFrame().ip += 1
 
+			val, err := vm.pop()
+			if err != nil {
+				return err
+			}
 			frame := vm.currentFrame()
-			vm.stack[frame.basePointer+int(localIndex)] = vm.pop()
+			vm.stack[frame.basePointer+int(localIndex)] = val
 
 		case code.OpGetLocal:
 			localIndex := code.ReadUint8(ins[ip+1:])
@@ -347,10 +397,35 @@ func (vm *VM) Run() error {
 			vm.currentFrame().ip += 1
 
 			currentClosure := vm.currentFrame().cl
-			err := vm.push(currentClosure.Free[freeIndex])
+			err := vm.push(currentClosure.Free[freeIndex].Value)
 			if err != nil {
 				return err
 			}
+
+		case code.OpGetFreeCell:
+			// Pushes the raw *CaptureCell pointer (not the unwrapped value).
+			// Used only in the free-variable setup before OpClosure so that
+			// the inner closure can share the same heap cell as the outer one.
+			freeIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentFrame().ip += 1
+
+			currentClosure := vm.currentFrame().cl
+			err := vm.push(currentClosure.Free[freeIndex]) // push the cell itself
+			if err != nil {
+				return err
+			}
+
+		case code.OpSetFree:
+			freeIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentFrame().ip += 1
+
+			// Write the new value back into the shared mutable cell.
+			// All closures sharing this cell will see the updated value.
+			newVal, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			vm.currentFrame().cl.Free[freeIndex].Value = newVal
 
 		case code.OpCurrentClosure:
 			currentClosure := vm.currentFrame().cl
@@ -360,7 +435,11 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpTask:
-			closure, ok := vm.pop().(*object.Closure)
+			rawClosure, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			closure, ok := rawClosure.(*object.Closure)
 			if !ok {
 				return fmt.Errorf("task body is not a closure")
 			}
@@ -387,7 +466,11 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpAwait:
-			future, ok := vm.pop().(*object.Future)
+			rawFuture, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			future, ok := rawFuture.(*object.Future)
 			if !ok {
 				return fmt.Errorf("cannot await non-future value")
 			}
@@ -403,19 +486,26 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpToString:
-			val := vm.pop()
-			err := vm.push(&object.String{Value: val.Inspect()})
+			val, err := vm.pop()
 			if err != nil {
+				return err
+			}
+			if err := vm.push(&object.String{Value: val.Inspect()}); err != nil {
 				return err
 			}
 
 		case code.OpStringConcat:
-			right := vm.pop()
-			left := vm.pop()
+			right, errR := vm.pop()
+			if errR != nil {
+				return errR
+			}
+			left, errL := vm.pop()
+			if errL != nil {
+				return errL
+			}
 			leftStr := left.(*object.String).Value
 			rightStr := right.(*object.String).Value
-			err := vm.push(&object.String{Value: leftStr + rightStr})
-			if err != nil {
+			if err := vm.push(&object.String{Value: leftStr + rightStr}); err != nil {
 				return err
 			}
 
@@ -427,7 +517,11 @@ func (vm *VM) Run() error {
 			name := vm.constants[nativeIndex].(*object.String).Value
 			args := make([]object.Object, numArgs)
 			for i := numArgs - 1; i >= 0; i-- {
-				args[i] = vm.pop()
+				arg, err := vm.pop()
+				if err != nil {
+					return err
+				}
+				args[i] = arg
 			}
 
 			if vm.CapabilityChecker != nil {
@@ -452,8 +546,14 @@ func (vm *VM) Run() error {
 }
 
 func (vm *VM) executeBinaryOperation(op code.Opcode) error {
-	right := vm.pop()
-	left := vm.pop()
+	right, err := vm.pop()
+	if err != nil {
+		return err
+	}
+	left, err := vm.pop()
+	if err != nil {
+		return err
+	}
 
 	leftType := left.Type()
 	rightType := right.Type()
@@ -540,8 +640,14 @@ func (vm *VM) executeBinaryStringOperation(op code.Opcode, left, right object.Ob
 }
 
 func (vm *VM) executeComparison(op code.Opcode) error {
-	right := vm.pop()
-	left := vm.pop()
+	right, err := vm.pop()
+	if err != nil {
+		return err
+	}
+	left, err := vm.pop()
+	if err != nil {
+		return err
+	}
 
 	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
 		return vm.executeIntegerComparison(op, left, right)
@@ -612,7 +718,10 @@ func (vm *VM) executeIntegerComparison(op code.Opcode, left, right object.Object
 }
 
 func (vm *VM) executeBangOperator() error {
-	operand := vm.pop()
+	operand, err := vm.pop()
+	if err != nil {
+		return err
+	}
 
 	switch operand {
 	case True:
@@ -622,12 +731,19 @@ func (vm *VM) executeBangOperator() error {
 	case Null:
 		return vm.push(True)
 	default:
+		// Zero integer is falsy
+		if intObj, ok := operand.(*object.Integer); ok && intObj.Value == 0 {
+			return vm.push(True)
+		}
 		return vm.push(False)
 	}
 }
 
 func (vm *VM) executeMinusOperator() error {
-	operand := vm.pop()
+	operand, err := vm.pop()
+	if err != nil {
+		return err
+	}
 
 	switch operand := operand.(type) {
 	case *object.Integer:
@@ -768,9 +884,21 @@ func (vm *VM) pushClosure(constIndex, numFree int) error {
 		return fmt.Errorf("not a function: %+v", constant)
 	}
 
-	free := make([]object.Object, numFree)
+	// Wrap each captured value in a new CaptureCell (or re-use existing cell
+	// if the captured variable is itself a free variable in the current closure).
+	// This way, all closures that capture the same variable share a pointer to
+	// the same heap-allocated cell, enabling mutable by-reference semantics.
+	free := make([]*object.CaptureCell, numFree)
 	for i := 0; i < numFree; i++ {
-		free[i] = vm.stack[vm.sp-numFree+i]
+		raw := vm.stack[vm.sp-numFree+i]
+		// If the raw stack value is already a CaptureCell (because it was
+		// loaded from the outer closure's Free slice via OpGetFree and we
+		// stored the cell itself — see compiler emit path), share it directly.
+		if cell, ok := raw.(*object.CaptureCell); ok {
+			free[i] = cell
+		} else {
+			free[i] = &object.CaptureCell{Value: raw}
+		}
 	}
 	vm.truncateStack(vm.sp - numFree)
 

@@ -13,16 +13,6 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 )
 
-func loadBenchmarkAST(b *testing.B, filename string) *parser.Parser {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		b.Fatalf("failed to read %s: %v", filename, err)
-	}
-	l := lexer.New(string(data))
-	p := parser.New(l)
-	return p
-}
-
 func loadBytecode(b *testing.B, filename string) *compiler.Bytecode {
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -45,8 +35,7 @@ func loadBytecode(b *testing.B, filename string) *compiler.Bytecode {
 // 1. Fibonacci Benchmarks
 func BenchmarkVMFibonacci(b *testing.B) {
 	bc := loadBytecode(b, filepath.Join(".", "fibonacci.nil"))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		machine := vm.New(bc)
 		if err := machine.Run(); err != nil {
 			b.Fatalf("VM error: %v", err)
@@ -61,8 +50,7 @@ func BenchmarkEvaluatorFibonacci(b *testing.B) {
 	}
 	src := string(data)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		l := lexer.New(src)
 		p := parser.New(l)
 		prog := p.ParseProgram()
@@ -74,8 +62,7 @@ func BenchmarkEvaluatorFibonacci(b *testing.B) {
 // 2. Prime Calculation Benchmarks
 func BenchmarkVMPrimeSieve(b *testing.B) {
 	bc := loadBytecode(b, filepath.Join(".", "prime_sieve.nil"))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		machine := vm.New(bc)
 		if err := machine.Run(); err != nil {
 			b.Fatalf("VM error: %v", err)
@@ -90,8 +77,7 @@ func BenchmarkEvaluatorPrimeSieve(b *testing.B) {
 	}
 	src := string(data)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		l := lexer.New(src)
 		p := parser.New(l)
 		prog := p.ParseProgram()
@@ -103,8 +89,7 @@ func BenchmarkEvaluatorPrimeSieve(b *testing.B) {
 // 3. Closure Counter Benchmarks
 func BenchmarkVMClosureCounter(b *testing.B) {
 	bc := loadBytecode(b, filepath.Join(".", "closure_counter.nil"))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		machine := vm.New(bc)
 		if err := machine.Run(); err != nil {
 			b.Fatalf("VM error: %v", err)
@@ -119,8 +104,7 @@ func BenchmarkEvaluatorClosureCounter(b *testing.B) {
 	}
 	src := string(data)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		l := lexer.New(src)
 		p := parser.New(l)
 		prog := p.ParseProgram()
@@ -132,8 +116,7 @@ func BenchmarkEvaluatorClosureCounter(b *testing.B) {
 // 4. Matrix Multiplication / Dot Product Benchmarks
 func BenchmarkVMMatrixMul(b *testing.B) {
 	bc := loadBytecode(b, filepath.Join(".", "matrix_mul.nil"))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		machine := vm.New(bc)
 		if err := machine.Run(); err != nil {
 			b.Fatalf("VM error: %v", err)
@@ -148,8 +131,7 @@ func BenchmarkEvaluatorMatrixMul(b *testing.B) {
 	}
 	src := string(data)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		l := lexer.New(src)
 		p := parser.New(l)
 		prog := p.ParseProgram()

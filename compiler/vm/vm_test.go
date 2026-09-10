@@ -161,7 +161,11 @@ func TestPopClearsStackRoot(t *testing.T) {
 	if err := machine.push(value); err != nil {
 		t.Fatal(err)
 	}
-	if popped := machine.pop(); popped != value {
+	popped, err := machine.pop()
+	if err != nil {
+		t.Fatalf("pop failed: %s", err)
+	}
+	if popped != value {
 		t.Fatalf("pop returned %T, want original array", popped)
 	}
 	if machine.stack[0] != nil {
@@ -188,8 +192,14 @@ func TestTruncateStackClearsAllVacatedRoots(t *testing.T) {
 func TestPopFrameClearsFrameRoot(t *testing.T) {
 	machine := New(&compiler.Bytecode{})
 	frame := NewFrame(&object.Closure{Fn: &object.CompiledFunction{}}, 0)
-	machine.pushFrame(frame)
-	if popped := machine.popFrame(); popped != frame {
+	if err := machine.pushFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+	popped, err := machine.popFrame()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if popped != frame {
 		t.Fatal("popFrame did not return the pushed frame")
 	}
 	if machine.frames[1] != nil {

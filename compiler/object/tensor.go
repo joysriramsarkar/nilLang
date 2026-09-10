@@ -127,6 +127,14 @@ func TensorMul(left, right *Tensor) (*Tensor, error) {
 }
 
 func tensorElementwise(left, right *Tensor, operation func(float64, float64) float64) (*Tensor, error) {
+	if sameShape(left.Shape, right.Shape) {
+		size := len(left.Data)
+		data := make([]float64, size)
+		for index := range data {
+			data[index] = operation(left.Data[index], right.Data[index])
+		}
+		return NewTensorWithDType(data, append([]int(nil), left.Shape...), promoteTensorDType(left.DType, right.DType))
+	}
 	shape, err := broadcastShape(left.Shape, right.Shape)
 	if err != nil {
 		return nil, err

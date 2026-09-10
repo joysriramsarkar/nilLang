@@ -211,7 +211,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		if isError(left) {
 			return left
 		}
-		return evalDotExpression(left, node.Member.Value, env)
+		return evalDotExpression(left, node.Member.Value)
 	case *ast.HashLiteral:
 		return evalHashLiteral(node, env)
 	case *ast.ImportStatement:
@@ -758,7 +758,7 @@ func evalIndexAssign(left, index, val object.Object) object.Object {
 	}
 }
 
-func evalDotExpression(left object.Object, member string, env *object.Environment) object.Object {
+func evalDotExpression(left object.Object, member string) object.Object {
 	switch obj := left.(type) {
 	case *object.Channel:
 		switch strings.ToLower(member) {

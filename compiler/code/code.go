@@ -82,7 +82,9 @@ const (
 	OpGetLocal
 	OpGetBuiltin
 	OpClosure
-	OpGetFree
+	OpGetFree     // read cell.Value — normal execution path
+	OpGetFreeCell // push raw *CaptureCell pointer — used only during closure creation
+	OpSetFree     // write back to a shared mutable capture cell
 	OpCurrentClosure
 	OpToString
 	OpStringConcat
@@ -130,6 +132,8 @@ var definitions = map[Opcode]*Definition{
 	OpGetBuiltin:       {"OpGetBuiltin", []int{1}},
 	OpClosure:          {"OpClosure", []int{2, 1}},
 	OpGetFree:          {"OpGetFree", []int{1}},
+	OpGetFreeCell:      {"OpGetFreeCell", []int{1}},
+	OpSetFree:          {"OpSetFree", []int{1}},
 	OpCurrentClosure:   {"OpCurrentClosure", []int{}},
 	OpToString:         {"OpToString", []int{}},
 	OpStringConcat:     {"OpStringConcat", []int{}},

@@ -10,10 +10,8 @@ import (
 
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
-	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
@@ -156,28 +154,32 @@ func runBundleFile(bundlePath string, useVM bool) {
 	os.Exit(1)
 }
 
+// executeSource parses, type-checks, and executes Nilang source.
+// ALL source execution paths MUST go through this function so that
+// the frontend.ParseAndCheck gate is the single enforcement point.
 func executeSource(source string, useVM bool) {
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
+	// ── Frontend Gate: Parse + Typecheck ─────────────────────────────────────
+	result := frontend.ParseAndCheck(source)
 
-	if len(p.Errors()) > 0 {
+	if len(result.ParseErrors) > 0 {
 		fmt.Fprintf(os.Stderr, "❌ সিনট্যাক্স ত্রুটি:\n")
-		for _, e := range p.Errors() {
+		for _, e := range result.ParseErrors {
 			fmt.Fprintf(os.Stderr, "   %s\n", e)
 		}
 		os.Exit(1)
 	}
 
-	checker := typecheck.NewChecker()
-	if !checker.CheckProgram(program) {
+	if !result.OK {
 		fmt.Fprintln(os.Stderr, "❌ টাইপ ত্রুটি:")
-		for _, diagnostic := range checker.Diagnostics {
-			fmt.Fprintf(os.Stderr, "   %s\n", diagnostic.String())
+		for _, d := range result.Diagnostics {
+			fmt.Fprintf(os.Stderr, "   %s\n", d.String())
 		}
 		os.Exit(1)
 	}
 
+	program := result.Program
+
+	// ── Backend: VM or Tree-Walking Evaluator ────────────────────────────────
 	if useVM {
 		comp := compiler.New()
 		err := comp.Compile(program)
@@ -198,10 +200,10 @@ func executeSource(source string, useVM bool) {
 	env := object.NewEnvironment()
 	registerBuiltins(env)
 
-	result := evaluator.Eval(program, env)
-	if result != nil {
-		if result.Type() == object.ERROR_OBJ {
-			fmt.Fprintf(os.Stderr, "❌ রানটাইম ত্রুটি: %s\n", result.Inspect())
+	result2 := evaluator.Eval(program, env)
+	if result2 != nil {
+		if result2.Type() == object.ERROR_OBJ {
+			fmt.Fprintf(os.Stderr, "❌ রানটাইম ত্রুটি: %s\n", result2.Inspect())
 			os.Exit(1)
 		}
 	}
