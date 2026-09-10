@@ -112,96 +112,94 @@ func (c *Checker) HasCapability(cap string) bool {
 	return c.capabilities[cap]
 }
 
-func (c *Checker) initBuiltins() {
-	// Standard builtins
-	c.currentScope.SetFunc("puts", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.Void,
-		Effects:    []string{"io"},
-	})
-	c.currentScope.SetFunc("println", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.Void,
-		Effects:    []string{"io"},
-	})
-	c.currentScope.SetFunc("print", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.Void,
-		Effects:    []string{"io"},
-	})
-	c.currentScope.SetFunc("len", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.Int,
-		Effects:    []string{"pure"},
-	})
-	c.currentScope.SetFunc("str", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.String,
-		Effects:    []string{"pure"},
-	})
-	c.currentScope.SetFunc("push", &types.FunctionType{
-		Params:     []types.Type{types.Any, types.Any},
-		ReturnType: types.Any,
-		Effects:    []string{"pure"},
-	})
-	c.currentScope.SetFunc("first", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.Any,
-		Effects:    []string{"pure"},
-	})
-	c.currentScope.SetFunc("last", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.Any,
-		Effects:    []string{"pure"},
-	})
-	c.currentScope.SetFunc("rest", &types.FunctionType{
-		Params:     []types.Type{types.Any},
-		ReturnType: types.Any,
-		Effects:    []string{"pure"},
-	})
-	c.currentScope.SetFunc("assert", &types.FunctionType{
-		Params:     []types.Type{types.Bool, types.String},
-		ReturnType: types.Void,
-		Effects:    []string{"pure"},
-	})
-	c.currentScope.SetFunc("emit", &types.FunctionType{
-		Params:     []types.Type{types.Any, types.Any},
-		ReturnType: types.Any,
-		Effects:    []string{"ui"},
-	})
-	for _, builtin := range []struct {
-		name   string
-		params []types.Type
-	}{
-		{"tensor", []types.Type{types.Any, types.Any}},
-		{"tensorShape", []types.Type{types.Any}},
-		{"tensorGet", []types.Type{types.Any, types.Any}},
-		{"tensorAdd", []types.Type{types.Any, types.Any}},
-		{"tensorMul", []types.Type{types.Any, types.Any}},
-		{"tensorSlice", []types.Type{types.Any, types.Any, types.Any}},
-		{"tensorDtype", []types.Type{types.Any}},
-		{"tensorCast", []types.Type{types.Any, types.String}},
-		{"tensorDot", []types.Type{types.Any, types.Any}},
-		{"tensorMatmul", []types.Type{types.Any, types.Any}},
-		{"tensorSum", []types.Type{types.Any}},
-		{"Ok", []types.Type{types.Any}},
-		{"Err", []types.Type{types.Any}},
-		{"Some", []types.Type{types.Any}},
-		{"None", []types.Type{}},
-		{"unwrap", []types.Type{types.Any}},
-		{"unwrapOr", []types.Type{types.Any, types.Any}},
-		{"isOk", []types.Type{types.Any}},
-		{"isErr", []types.Type{types.Any}},
-		{"isSome", []types.Type{types.Any}},
-		{"isNone", []types.Type{types.Any}},
-		{"native", []types.Type{types.Any}},
-	} {
-		c.currentScope.SetFunc(builtin.name, &types.FunctionType{
-			Params:     builtin.params,
-			ReturnType: types.Any,
-			Effects:    []string{"pure"},
-		})
+func (c *Checker) registerBuiltin(name string, params []types.Type, minArgs, maxArgs int, ret types.Type, effects ...string) {
+	fn := &types.FunctionType{
+		Params:     params,
+		ReturnType: ret,
+		Effects:    effects,
+		MinArgs:    minArgs,
+		MaxArgs:    maxArgs,
 	}
+	c.currentScope.SetFunc(name, fn)
+	c.currentScope.SetVar(name, fn)
+}
+
+func (c *Checker) initBuiltins() {
+	// Variadic IO & System
+	c.registerBuiltin("print", []types.Type{}, 0, -1, types.Void, "io")
+	c.registerBuiltin("println", []types.Type{}, 0, -1, types.Void, "io")
+	c.registerBuiltin("puts", []types.Type{}, 0, -1, types.Void, "io")
+	c.registerBuiltin("native", []types.Type{types.String}, 1, -1, types.Any, "pure")
+	c.registerBuiltin("exec", []types.Type{types.String}, 1, -1, types.Int, "io")
+
+	// Optional Arguments Builtins
+	c.registerBuiltin("assert", []types.Type{types.Bool, types.String}, 1, 2, types.Void, "pure")
+	c.registerBuiltin("emit", []types.Type{types.Any, types.Any}, 1, 2, types.Any, "ui")
+	c.registerBuiltin("trim", []types.Type{types.Any, types.String}, 1, 2, types.String, "pure")
+	c.registerBuiltin("split", []types.Type{types.Any, types.String}, 1, 2, &types.GenericType{Base: "List", Parameters: []types.Type{types.String}}, "pure")
+	c.registerBuiltin("substr", []types.Type{types.String, types.Int, types.Int}, 2, 3, types.String, "pure")
+	c.registerBuiltin("input", []types.Type{types.String}, 0, 1, types.String, "io")
+	c.registerBuiltin("listDir", []types.Type{types.String}, 0, 1, &types.GenericType{Base: "List", Parameters: []types.Type{types.String}}, "io")
+	c.registerBuiltin("exit", []types.Type{types.Int}, 0, 1, types.Void, "io")
+
+	// 0-argument Builtins
+	c.registerBuiltin("time", []types.Type{}, 0, 0, types.Int, "pure")
+	c.registerBuiltin("clear", []types.Type{}, 0, 0, types.Void, "io")
+	c.registerBuiltin("cwd", []types.Type{}, 0, 0, types.String, "io")
+	c.registerBuiltin("None", []types.Type{}, 0, 0, &types.OptionalType{Base: types.Any}, "pure")
+
+	// 1-argument Builtins
+	c.registerBuiltin("len", []types.Type{types.Any}, 1, 1, types.Int, "pure")
+	c.registerBuiltin("type", []types.Type{types.Any}, 1, 1, types.String, "pure")
+	c.registerBuiltin("str", []types.Type{types.Any}, 1, 1, types.String, "pure")
+	c.registerBuiltin("int", []types.Type{types.Any}, 1, 1, types.Int, "pure")
+	c.registerBuiltin("first", []types.Type{types.Any}, 1, 1, types.Any, "pure")
+	c.registerBuiltin("last", []types.Type{types.Any}, 1, 1, types.Any, "pure")
+	c.registerBuiltin("rest", []types.Type{types.Any}, 1, 1, types.Any, "pure")
+	c.registerBuiltin("lower", []types.Type{types.Any}, 1, 1, types.String, "pure")
+	c.registerBuiltin("upper", []types.Type{types.Any}, 1, 1, types.String, "pure")
+	c.registerBuiltin("readFile", []types.Type{types.String}, 1, 1, types.String, "io")
+	c.registerBuiltin("fileExists", []types.Type{types.String}, 1, 1, types.Bool, "io")
+	c.registerBuiltin("isDir", []types.Type{types.String}, 1, 1, types.Bool, "io")
+	c.registerBuiltin("makeDir", []types.Type{types.String}, 1, 1, types.Bool, "io")
+	c.registerBuiltin("removeFile", []types.Type{types.String}, 1, 1, types.Bool, "io")
+	c.registerBuiltin("chdir", []types.Type{types.String}, 1, 1, types.Bool, "io")
+	c.registerBuiltin("Channel", []types.Type{types.Int}, 1, 1, types.Any, "concurrency")
+	c.registerBuiltin("receive", []types.Type{types.Any}, 1, 1, types.Any, "concurrency")
+	c.registerBuiltin("Ok", []types.Type{types.Any}, 1, 1, &types.GenericType{Base: "Result", Parameters: []types.Type{types.Any}}, "pure")
+	c.registerBuiltin("Err", []types.Type{types.Any}, 1, 1, &types.GenericType{Base: "Result", Parameters: []types.Type{types.Any}}, "pure")
+	c.registerBuiltin("Some", []types.Type{types.Any}, 1, 1, &types.OptionalType{Base: types.Any}, "pure")
+	c.registerBuiltin("unwrap", []types.Type{types.Any}, 1, 1, types.Any, "pure")
+	c.registerBuiltin("isOk", []types.Type{types.Any}, 1, 1, types.Bool, "pure")
+	c.registerBuiltin("isErr", []types.Type{types.Any}, 1, 1, types.Bool, "pure")
+	c.registerBuiltin("isSome", []types.Type{types.Any}, 1, 1, types.Bool, "pure")
+	c.registerBuiltin("isNone", []types.Type{types.Any}, 1, 1, types.Bool, "pure")
+	c.registerBuiltin("tensorShape", []types.Type{types.Any}, 1, 1, types.Any, "pure")
+	c.registerBuiltin("tensorDtype", []types.Type{types.Any}, 1, 1, types.String, "pure")
+	c.registerBuiltin("tensorSum", []types.Type{types.Any}, 1, 1, types.Any, "pure")
+
+	// 2-argument Builtins
+	c.registerBuiltin("push", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("append", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("join", []types.Type{types.Any, types.String}, 2, 2, types.String, "pure")
+	c.registerBuiltin("contains", []types.Type{types.Any, types.Any}, 2, 2, types.Bool, "pure")
+	c.registerBuiltin("hasPrefix", []types.Type{types.Any, types.Any}, 2, 2, types.Bool, "pure")
+	c.registerBuiltin("hasSuffix", []types.Type{types.Any, types.Any}, 2, 2, types.Bool, "pure")
+	c.registerBuiltin("writeFile", []types.Type{types.String, types.String}, 2, 2, types.Bool, "io")
+	c.registerBuiltin("send", []types.Type{types.Any, types.Any}, 2, 2, types.Void, "concurrency")
+	c.registerBuiltin("unwrapOr", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensor", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensorGet", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensorAdd", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensorMul", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensorCast", []types.Type{types.Any, types.String}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensorDot", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensorMatmul", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+
+	// 3-argument Builtins
+	c.registerBuiltin("set", []types.Type{types.Any, types.Any, types.Any}, 3, 3, types.Any, "pure")
+	c.registerBuiltin("replace", []types.Type{types.Any, types.Any, types.Any}, 3, 3, types.String, "pure")
+	c.registerBuiltin("tensorSlice", []types.Type{types.Any, types.Any, types.Any}, 3, 3, types.Any, "pure")
 }
 
 func (c *Checker) CheckProgram(prog *ast.Program) bool {
@@ -242,8 +240,26 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 			if fnLit.Name == "" {
 				fnLit.Name = s.Name.Value
 			}
+			var placeholderParams []types.Type
+			var expectedRet types.Type = types.Any
+			if s.Type != "" {
+				if pt, err := types.Parse(s.Type); err == nil {
+					if ft, ok := pt.(*types.FunctionType); ok {
+						placeholderParams = ft.Params
+						expectedRet = ft.ReturnType
+					}
+				}
+			}
+			if placeholderParams == nil {
+				for range fnLit.Parameters {
+					placeholderParams = append(placeholderParams, types.Any)
+				}
+			}
 			placeholder := &types.FunctionType{
-				ReturnType: types.Any,
+				Params:     placeholderParams,
+				ReturnType: expectedRet,
+				MinArgs:    len(placeholderParams),
+				MaxArgs:    len(placeholderParams),
 			}
 			c.currentScope.SetFunc(s.Name.Value, placeholder)
 			c.currentScope.SetVar(s.Name.Value, placeholder)
@@ -266,6 +282,11 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 				c.currentScope.SetConst(s.Name.Value, declarationType)
 			} else {
 				c.currentScope.SetVar(s.Name.Value, declarationType)
+			}
+			if ft, ok := declarationType.(*types.FunctionType); ok {
+				c.currentScope.SetFunc(s.Name.Value, ft)
+			} else if ft, ok := valType.(*types.FunctionType); ok {
+				c.currentScope.SetFunc(s.Name.Value, ft)
 			}
 		}
 
@@ -528,34 +549,79 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 		if !cond.Equals(types.Bool) && !cond.Equals(types.Any) {
 			c.report("E0101", fmt.Sprintf("If condition must evaluate to Bool, got %s", cond), e.Token.Line, e.Token.Column)
 		}
-		conseqType := types.Void
+		var conseqType types.Type = types.Void
 		if e.Consequence != nil {
 			c.currentScope = NewScope(c.currentScope)
-			for _, s := range e.Consequence.Statements {
+			for i, s := range e.Consequence.Statements {
+				if i == len(e.Consequence.Statements)-1 {
+					if exprStmt, ok := s.(*ast.ExpressionStatement); ok {
+						conseqType = c.inferExpression(exprStmt.Expression)
+						continue
+					} else if retStmt, ok := s.(*ast.ReturnStatement); ok && retStmt.ReturnValue != nil {
+						conseqType = c.inferExpression(retStmt.ReturnValue)
+						continue
+					}
+				}
 				c.checkStatement(s)
 			}
 			c.currentScope = c.currentScope.parent
 		}
+		var altType types.Type = types.Void
 		if e.Alternative != nil {
 			c.currentScope = NewScope(c.currentScope)
-			for _, s := range e.Alternative.Statements {
+			for i, s := range e.Alternative.Statements {
+				if i == len(e.Alternative.Statements)-1 {
+					if exprStmt, ok := s.(*ast.ExpressionStatement); ok {
+						altType = c.inferExpression(exprStmt.Expression)
+						continue
+					} else if retStmt, ok := s.(*ast.ReturnStatement); ok && retStmt.ReturnValue != nil {
+						altType = c.inferExpression(retStmt.ReturnValue)
+						continue
+					}
+				}
 				c.checkStatement(s)
 			}
 			c.currentScope = c.currentScope.parent
 		}
-		return conseqType
+		if e.Alternative == nil {
+			return conseqType
+		}
+		if conseqType.Equals(altType) {
+			return conseqType
+		}
+		if conseqType.AssignableTo(altType) {
+			return altType
+		}
+		if altType.AssignableTo(conseqType) {
+			return conseqType
+		}
+		return types.NewUnion(conseqType, altType)
 
 	case *ast.FunctionLiteral:
 		fnScope := NewScope(c.currentScope)
 		var paramTypes []types.Type
-		for _, p := range e.Parameters {
-			paramTypes = append(paramTypes, types.Any)
-			fnScope.SetVar(p.Value, types.Any)
+
+		var expectedParams []types.Type
+		if e.Name != "" {
+			if existing, ok := c.currentScope.GetFunc(e.Name); ok && len(existing.Params) == len(e.Parameters) {
+				expectedParams = existing.Params
+			}
+		}
+
+		for i, p := range e.Parameters {
+			pt := types.Type(types.Any)
+			if i < len(expectedParams) && expectedParams[i] != nil {
+				pt = expectedParams[i]
+			}
+			paramTypes = append(paramTypes, pt)
+			fnScope.SetVar(p.Value, pt)
 		}
 
 		fnType := &types.FunctionType{
 			Params:     paramTypes,
 			ReturnType: types.Any,
+			MinArgs:    len(paramTypes),
+			MaxArgs:    len(paramTypes),
 		}
 		if e.Name != "" {
 			c.currentScope.SetFunc(e.Name, fnType)
@@ -587,11 +653,24 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 			}
 		}
 
-		for _, arg := range e.Arguments {
-			c.inferExpression(arg)
+		if fnType != nil && !fnType.Equals(types.Any) && fnSig == nil {
+			c.report("E0106", fmt.Sprintf("cannot call expression of non-function type %s", fnType), e.Token.Line, e.Token.Column)
 		}
 
 		if fnSig != nil {
+			argCount := len(e.Arguments)
+			if !fnSig.CheckArity(argCount) {
+				min := fnSig.MinExpectedArgs()
+				max := fnSig.MaxExpectedArgs()
+				if max == -1 {
+					c.report("E0105", fmt.Sprintf("wrong number of arguments to function. got=%d, want at least %d", argCount, min), e.Token.Line, e.Token.Column)
+				} else if min == max {
+					c.report("E0105", fmt.Sprintf("wrong number of arguments to function. got=%d, want=%d", argCount, min), e.Token.Line, e.Token.Column)
+				} else {
+					c.report("E0105", fmt.Sprintf("wrong number of arguments to function. got=%d, want=%d..%d", argCount, min, max), e.Token.Line, e.Token.Column)
+				}
+			}
+
 			// Check effects in pure function
 			if c.inPureFn {
 				for _, eff := range fnSig.Effects {
@@ -600,12 +679,45 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 					}
 				}
 			}
+		}
+
+		for i, arg := range e.Arguments {
+			argType := c.inferExpression(arg)
+			if fnSig != nil && i < len(fnSig.Params) {
+				paramType := fnSig.Params[i]
+				if paramType != nil && !paramType.Equals(types.Any) {
+					if !argType.AssignableTo(paramType) {
+						line, col := exprPosition(arg)
+						if line == 0 {
+							line, col = e.Token.Line, e.Token.Column
+						}
+						c.report("E0101", fmt.Sprintf("cannot pass argument %d of type %s to parameter of type %s", i+1, argType, paramType), line, col)
+					}
+				}
+			}
+		}
+
+		if fnSig != nil && fnSig.ReturnType != nil {
 			return fnSig.ReturnType
 		}
 
 		return types.Any
 
 	case *ast.ArrayLiteral:
+		if len(e.Elements) == 0 {
+			return &types.GenericType{Base: "List", Parameters: []types.Type{types.Any}}
+		}
+		firstElemType := c.inferExpression(e.Elements[0])
+		homogeneous := true
+		for _, el := range e.Elements[1:] {
+			elType := c.inferExpression(el)
+			if !elType.Equals(firstElemType) {
+				homogeneous = false
+			}
+		}
+		if homogeneous && !firstElemType.Equals(types.Void) {
+			return &types.GenericType{Base: "List", Parameters: []types.Type{firstElemType}}
+		}
 		return &types.GenericType{Base: "List", Parameters: []types.Type{types.Any}}
 
 	case *ast.HashLiteral:
@@ -620,6 +732,44 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 
 	default:
 		return types.Any
+	}
+}
+
+func exprPosition(e ast.Expression) (int, int) {
+	if e == nil {
+		return 0, 0
+	}
+	switch n := e.(type) {
+	case *ast.Identifier:
+		return n.Token.Line, n.Token.Column
+	case *ast.IntegerLiteral:
+		return n.Token.Line, n.Token.Column
+	case *ast.FloatLiteral:
+		return n.Token.Line, n.Token.Column
+	case *ast.StringLiteral:
+		return n.Token.Line, n.Token.Column
+	case *ast.Boolean:
+		return n.Token.Line, n.Token.Column
+	case *ast.NullLiteral:
+		return n.Token.Line, n.Token.Column
+	case *ast.CallExpression:
+		return n.Token.Line, n.Token.Column
+	case *ast.PrefixExpression:
+		return n.Token.Line, n.Token.Column
+	case *ast.InfixExpression:
+		return n.Token.Line, n.Token.Column
+	case *ast.FunctionLiteral:
+		return n.Token.Line, n.Token.Column
+	case *ast.ArrayLiteral:
+		return n.Token.Line, n.Token.Column
+	case *ast.HashLiteral:
+		return n.Token.Line, n.Token.Column
+	case *ast.IndexExpression:
+		return n.Token.Line, n.Token.Column
+	case *ast.DotExpression:
+		return n.Token.Line, n.Token.Column
+	default:
+		return 0, 0
 	}
 }
 

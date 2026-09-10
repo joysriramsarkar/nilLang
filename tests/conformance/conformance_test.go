@@ -1629,6 +1629,11 @@ func TestStaticDiagnosticConformance(t *testing.T) {
 		{name: "Undefined Assignment", source: `missing = 1;`, expectedCode: "E0102"},
 		{name: "Missing Initializer", source: `let count: Int;`, expectedCode: "E0103"},
 		{name: "Constant Mutation", source: `const limit = 10; limit = 20;`, expectedCode: "E0104"},
+		{name: "Arity Mismatch Too Few", source: `len();`, expectedCode: "E0105"},
+		{name: "Arity Mismatch Too Many", source: `len("a", "b");`, expectedCode: "E0105"},
+		{name: "User Function Arity Mismatch", source: `let add = fn(a, b) { a + b }; add(1);`, expectedCode: "E0105"},
+		{name: "Non Callable Invocation", source: `let num = 42; num();`, expectedCode: "E0106"},
+		{name: "Argument Type Mismatch", source: `assert("not_a_bool");`, expectedCode: "E0101"},
 	}
 
 	for _, testCase := range testCases {

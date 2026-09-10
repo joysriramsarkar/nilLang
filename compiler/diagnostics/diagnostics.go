@@ -116,7 +116,12 @@ func (d *Diagnostic) Format(useColor bool) string {
 var DiagnosticCatalog = map[string]string{
 	"E0101": "Type Mismatch: Expression type does not conform to the expected target type.",
 	"E0102": "Undefined Symbol: The requested identifier is not found in the current or enclosing lexical scopes.",
-	"E0103": "Arity Mismatch: Function called with incorrect number of arguments.",
+	"E0103": "Missing Initializer: Variable requires an initializer until definite assignment is supported.",
+	"E0104": "Const Mutation: Cannot assign to constant.",
+	"E0105": "Arity Mismatch: Function called with incorrect number of arguments.",
+	"E0106": "Non Callable Type: Attempted to call an expression whose type is not a function.",
+	"E0107": "Invalid Member Access: Accessing non-existent field or member on struct or object.",
+	"E0108": "Incompatible Binary Op: Binary operator applied to incompatible operand types.",
 	"E0201": "Capability Violation: Operation requires a system capability not declared in the project manifest.",
 	"E0202": "Effect Disallowed: Function performs side-effects (IO, mutation, async) within a declared pure context.",
 	"E0301": "AI Hallucination Detected: Referenced component member does not exist in standard truth tables.",

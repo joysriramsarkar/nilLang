@@ -237,10 +237,15 @@ func (p *Parser) parseStateDeclaration() *ast.StateDeclaration {
 	// Optional type: state count: i32 = 0
 	if p.peekTokenIs(token.COLON) {
 		p.nextToken() // cur is :
-		if !p.expectPeek(token.IDENT) {
+		if p.peekTokenIs(token.ASSIGN) || p.peekTokenIs(token.SEMICOLON) {
+			p.peekError(token.IDENT)
 			return nil
 		}
-		stmt.Type = p.curToken.Literal
+		stmt.Type = p.parseTypeAnnotation()
+		if stmt.Type == "" {
+			p.peekError(token.IDENT)
+			return nil
+		}
 	}
 
 	if p.peekTokenIs(token.ASSIGN) {
@@ -285,6 +290,14 @@ func (p *Parser) parseEntityStatement() *ast.EntityStatement {
 				if p.peekTokenIs(token.IDENT) {
 					p.nextToken() // cur is type
 					field.Type = p.curToken.Literal
+					if p.peekTokenIs(token.LT) {
+						p.nextToken()
+						field.Type += "<"
+						for !p.curTokenIs(token.GT) && !p.curTokenIs(token.EOF) {
+							p.nextToken()
+							field.Type += p.curToken.Literal
+						}
+					}
 				}
 			}
 
@@ -326,6 +339,45 @@ func (p *Parser) parseEntityStatement() *ast.EntityStatement {
 
 func isEntityFieldModifier(lit string) bool {
 	return lit == "primary" || lit == "required" || lit == "unique" || lit == "relation"
+}
+
+func (p *Parser) parseTypeAnnotation() string {
+	var parts []string
+	parenDepth := 0
+	angleDepth := 0
+
+	for !p.peekTokenIs(token.EOF) {
+		if parenDepth == 0 && angleDepth == 0 {
+			if p.peekTokenIs(token.ASSIGN) || p.peekTokenIs(token.SEMICOLON) ||
+				p.peekTokenIs(token.COMMA) || p.peekTokenIs(token.RBRACE) ||
+				(p.peekTokenIs(token.IDENT) && isEntityFieldModifier(p.peekToken.Literal)) {
+				break
+			}
+		}
+		p.nextToken()
+		if p.curTokenIs(token.LPAREN) {
+			parenDepth++
+		} else if p.curTokenIs(token.RPAREN) {
+			if parenDepth > 0 {
+				parenDepth--
+			}
+		} else if p.curTokenIs(token.LT) {
+			angleDepth++
+		} else if p.curTokenIs(token.GT) {
+			if angleDepth > 0 {
+				angleDepth--
+			}
+		}
+		parts = append(parts, p.curToken.Literal)
+		if parenDepth == 0 && angleDepth == 0 {
+			if p.peekTokenIs(token.ASSIGN) || p.peekTokenIs(token.SEMICOLON) ||
+				p.peekTokenIs(token.COMMA) || p.peekTokenIs(token.RBRACE) ||
+				(p.peekTokenIs(token.IDENT) && isEntityFieldModifier(p.peekToken.Literal)) {
+				break
+			}
+		}
+	}
+	return strings.Join(parts, "")
 }
 
 func (p *Parser) parseImportStatement() *ast.ImportStatement {
@@ -387,10 +439,15 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 
 	if p.peekTokenIs(token.COLON) {
 		p.nextToken()
-		if !p.expectPeek(token.IDENT) {
+		if p.peekTokenIs(token.ASSIGN) || p.peekTokenIs(token.SEMICOLON) {
+			p.peekError(token.IDENT)
 			return nil
 		}
-		stmt.Type = p.curToken.Literal
+		stmt.Type = p.parseTypeAnnotation()
+		if stmt.Type == "" {
+			p.peekError(token.IDENT)
+			return nil
+		}
 	}
 
 	if p.peekTokenIs(token.ASSIGN) {

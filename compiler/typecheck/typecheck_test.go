@@ -362,3 +362,201 @@ func TestTypecheckRecursiveLetFunction(t *testing.T) {
 		t.Fatalf("expected recursive let function to pass, got: %v", checker.Diagnostics)
 	}
 }
+
+func TestTypecheckArityMismatch(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		errMsg string
+	}{
+		{
+			name:   "builtin too few args",
+			input:  `len();`,
+			errMsg: "wrong number of arguments",
+		},
+		{
+			name:   "builtin too many args",
+			input:  `len("a", "b");`,
+			errMsg: "wrong number of arguments",
+		},
+		{
+			name:   "zero arg builtin called with arg",
+			input:  `time(1);`,
+			errMsg: "wrong number of arguments",
+		},
+		{
+			name:   "assert too few args",
+			input:  `assert();`,
+			errMsg: "wrong number of arguments",
+		},
+		{
+			name:   "assert too many args",
+			input:  `assert(true, "msg", 123);`,
+			errMsg: "wrong number of arguments",
+		},
+		{
+			name:   "user lambda too few args",
+			input:  `let f = fn(a, b) { a + b }; f(1);`,
+			errMsg: "wrong number of arguments",
+		},
+		{
+			name:   "user lambda too many args",
+			input:  `let f = fn(a, b) { a + b }; f(1, 2, 3);`,
+			errMsg: "wrong number of arguments",
+		},
+		{
+			name:   "user named fn too few args",
+			input:  `fn calc(x, y, z) { x + y + z }; calc(1, 2);`,
+			errMsg: "wrong number of arguments",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := parseProgram(t, tc.input)
+			prog := p.ParseProgram()
+			if len(p.Errors()) > 0 {
+				t.Fatalf("parse errors: %v", p.Errors())
+			}
+
+			checker := NewChecker()
+			if checker.CheckProgram(prog) {
+				t.Fatalf("expected arity mismatch error for %q, but typecheck passed", tc.input)
+			}
+
+			found := false
+			for _, d := range checker.Diagnostics {
+				if d.Code == "E0105" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected E0105 diagnostic, got: %v", checker.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestTypecheckNonCallableInvocation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "calling int", input: `let n = 42; n();`},
+		{name: "calling string", input: `let s = "hello"; s(1);`},
+		{name: "calling bool", input: `let b = true; b(1, 2);`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := parseProgram(t, tc.input)
+			prog := p.ParseProgram()
+			if len(p.Errors()) > 0 {
+				t.Fatalf("parse errors: %v", p.Errors())
+			}
+
+			checker := NewChecker()
+			if checker.CheckProgram(prog) {
+				t.Fatalf("expected non-callable error for %q, but typecheck passed", tc.input)
+			}
+
+			found := false
+			for _, d := range checker.Diagnostics {
+				if d.Code == "E0106" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected E0106 diagnostic, got: %v", checker.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestTypecheckArgumentTypeMismatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "builtin bool argument mismatch",
+			input: `assert("not_a_bool");`,
+		},
+		{
+			name:  "builtin second argument string mismatch",
+			input: `assert(true, 123);`,
+		},
+		{
+			name:  "user typed fn first arg mismatch",
+			input: `let add: fn(Int, Int) -> Int = fn(a, b) { a + b }; add("wrong", 2);`,
+		},
+		{
+			name:  "user typed fn second arg mismatch",
+			input: `let add: fn(Int, Int) -> Int = fn(a, b) { a + b }; add(1, false);`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := parseProgram(t, tc.input)
+			prog := p.ParseProgram()
+			if len(p.Errors()) > 0 {
+				t.Fatalf("parse errors: %v", p.Errors())
+			}
+
+			checker := NewChecker()
+			if checker.CheckProgram(prog) {
+				t.Fatalf("expected type mismatch error for %q, but typecheck passed", tc.input)
+			}
+
+			found := false
+			for _, d := range checker.Diagnostics {
+				if d.Code == "E0101" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected E0101 diagnostic, got: %v", checker.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestTypecheckIfExpressionTypeInference(t *testing.T) {
+	// Valid matching type
+	p1 := parseProgram(t, `let val: Int = if (true) { 10 } else { 20 };`)
+	prog1 := p1.ParseProgram()
+	checker1 := NewChecker()
+	if !checker1.CheckProgram(prog1) {
+		t.Fatalf("expected valid if-expression assignment, got: %v", checker1.Diagnostics)
+	}
+
+	// Mismatched type
+	p2 := parseProgram(t, `let val: String = if (true) { 10 } else { 20 };`)
+	prog2 := p2.ParseProgram()
+	checker2 := NewChecker()
+	if checker2.CheckProgram(prog2) {
+		t.Fatalf("expected failure when assigning int if-expression to String variable")
+	}
+}
+
+func TestTypecheckHomogeneousArrayInference(t *testing.T) {
+	// Valid matching List<Int>
+	p1 := parseProgram(t, `let arr: List<Int> = [1, 2, 3];`)
+	prog1 := p1.ParseProgram()
+	checker1 := NewChecker()
+	if !checker1.CheckProgram(prog1) {
+		t.Fatalf("expected valid List<Int> assignment, got: %v", checker1.Diagnostics)
+	}
+
+	// Incompatible List<String>
+	p2 := parseProgram(t, `let arr: List<String> = [1, 2, 3];`)
+	prog2 := p2.ParseProgram()
+	checker2 := NewChecker()
+	if checker2.CheckProgram(prog2) {
+		t.Fatalf("expected failure when assigning [1, 2, 3] to List<String>")
+	}
+}

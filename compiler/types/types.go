@@ -326,10 +326,26 @@ func (g *GenericType) Equals(other Type) bool {
 	return true
 }
 func (g *GenericType) AssignableTo(target Type) bool {
+	if target == nil {
+		return false
+	}
 	if _, ok := target.(AnyType); ok {
 		return true
 	}
-	return g.Equals(target)
+	if u, ok := target.(*UnionType); ok {
+		return u.Contains(g)
+	}
+	o, ok := target.(*GenericType)
+	if !ok || g.Base != o.Base || len(g.Parameters) != len(o.Parameters) {
+		return false
+	}
+	for i := range g.Parameters {
+		if o.Parameters[i].Equals(Any) || g.Parameters[i].AssignableTo(o.Parameters[i]) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // ─── FUNCTION TYPE ──────────────────────────────────────────────────────────
@@ -338,6 +354,8 @@ type FunctionType struct {
 	Params     []Type
 	ReturnType Type
 	Effects    []string
+	MinArgs    int // minimum argument count required
+	MaxArgs    int // maximum argument count allowed (-1 for variadic / unlimited)
 }
 
 func (f *FunctionType) Kind() TypeKind { return KindFunction }
@@ -360,6 +378,39 @@ func (f *FunctionType) String() string {
 	}
 	return fmt.Sprintf("fn(%s) -> %s%s", strings.Join(p, ", "), ret, eff)
 }
+
+// MinExpectedArgs returns the effective minimum argument count.
+func (f *FunctionType) MinExpectedArgs() int {
+	if f.MinArgs > 0 {
+		return f.MinArgs
+	}
+	if f.MaxArgs == -1 {
+		return 0
+	}
+	return len(f.Params)
+}
+
+// MaxExpectedArgs returns the effective maximum argument count (-1 for variadic / unlimited).
+func (f *FunctionType) MaxExpectedArgs() int {
+	if f.MaxArgs != 0 || len(f.Params) == 0 {
+		return f.MaxArgs
+	}
+	return len(f.Params)
+}
+
+// CheckArity verifies if argCount is within [MinExpectedArgs(), MaxExpectedArgs()].
+func (f *FunctionType) CheckArity(argCount int) bool {
+	min := f.MinExpectedArgs()
+	max := f.MaxExpectedArgs()
+	if argCount < min {
+		return false
+	}
+	if max >= 0 && argCount > max {
+		return false
+	}
+	return true
+}
+
 func (f *FunctionType) Equals(other Type) bool {
 	o, ok := other.(*FunctionType)
 	if !ok || len(f.Params) != len(o.Params) {
@@ -378,11 +429,33 @@ func (f *FunctionType) Equals(other Type) bool {
 	}
 	return true
 }
+
 func (f *FunctionType) AssignableTo(target Type) bool {
+	if target == nil {
+		return false
+	}
 	if _, ok := target.(AnyType); ok {
 		return true
 	}
-	return f.Equals(target)
+	if u, ok := target.(*UnionType); ok {
+		return u.Contains(f)
+	}
+	o, ok := target.(*FunctionType)
+	if !ok || len(f.Params) != len(o.Params) {
+		return false
+	}
+	for i := range f.Params {
+		if f.Params[i].Equals(Any) || o.Params[i].Equals(Any) || o.Params[i].AssignableTo(f.Params[i]) {
+			continue
+		}
+		return false
+	}
+	if f.ReturnType != nil && o.ReturnType != nil {
+		if !f.ReturnType.Equals(Any) && !o.ReturnType.Equals(Any) && !f.ReturnType.AssignableTo(o.ReturnType) {
+			return false
+		}
+	}
+	return true
 }
 
 // ─── TRAIT TYPE ─────────────────────────────────────────────────────────────

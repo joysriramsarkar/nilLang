@@ -31,6 +31,10 @@ const (
 	AND = "&&"
 	OR  = "||"
 
+	BIT_AND  = "&"
+	BIT_OR   = "|"
+	QUESTION = "?"
+
 	PLUS_ASSIGN  = "+="
 	MINUS_ASSIGN = "-="
 

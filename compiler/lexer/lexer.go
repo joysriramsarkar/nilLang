@@ -109,7 +109,7 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			tok = token.Token{Type: token.AND, Literal: string(ch) + string(l.ch), Line: curLine, Column: curCol}
 		} else {
-			tok = newToken(token.ILLEGAL, l.ch, curLine, curCol)
+			tok = newToken(token.BIT_AND, l.ch, curLine, curCol)
 		}
 	case '|':
 		if l.peekChar() == '|' {
@@ -117,8 +117,10 @@ func (l *Lexer) NextToken() token.Token {
 			l.readChar()
 			tok = token.Token{Type: token.OR, Literal: string(ch) + string(l.ch), Line: curLine, Column: curCol}
 		} else {
-			tok = newToken(token.ILLEGAL, l.ch, curLine, curCol)
+			tok = newToken(token.BIT_OR, l.ch, curLine, curCol)
 		}
+	case '?':
+		tok = newToken(token.QUESTION, l.ch, curLine, curCol)
 	case ';':
 		tok = newToken(token.SEMICOLON, l.ch, curLine, curCol)
 	case ':':
