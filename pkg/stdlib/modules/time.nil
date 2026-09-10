@@ -1,0 +1,24 @@
+// Nilang Standard Library
+// Module: std/time
+//
+// Dates, durations, and timestamps.
+
+import "std/time/instant" as instant;
+import "std/time/duration" as duration;
+import "std/time/date" as date;
+
+let now = fn() {
+    return instant.nowUnix();
+};
+
+let sleep = fn(millis) {
+    return native("std.time.sleep", millis);
+};
+
+let today = fn() {
+    return date.today();
+};
+
+let isBefore = instant.isBefore;
+let isAfter = instant.isAfter;
+let equals = instant.equals;

@@ -9,11 +9,14 @@ import (
 
 func TestBundledStandardModules(t *testing.T) {
 	for _, name := range []string{
-		"std/core", "std/math", "std/strings", "std/collections",
-		"std/testing", "std/io", "std/fs", "std/data/csv",
-		"std/data/json", "std/data/base64", "std/crypto/hash",
-		"std/crypto/hmac", "std/crypto/random", "std/net/http",
-		"std/net/url", "std/concurrency/task", "std/concurrency/channel",
+		"std/core", "std/math", "std/math/decimal", "std/money",
+		"std/strings", "std/collections", "std/testing", "std/io",
+		"std/fs", "std/data/csv", "std/data/json", "std/data/base64",
+		"std/crypto", "std/crypto/hash", "std/crypto/hmac", "std/crypto/random",
+		"std/net/http", "std/net/http/router", "std/net/url",
+		"std/http", "std/json", "std/base64", "std/time",
+		"std/db", "std/db/query_builder",
+		"std/concurrency/task", "std/concurrency/channel",
 	} {
 		if !stdlib.Exists(name) {
 			t.Fatalf("missing bundled module %q", name)
@@ -100,5 +103,52 @@ func TestHostCryptoAndBase64(t *testing.T) {
 	}
 	if len(randBytes.(*object.String).Value) == 0 {
 		t.Fatalf("expected non-empty base64 random bytes")
+	}
+}
+
+func TestHostDBAndSleep(t *testing.T) {
+	// Sleep
+	sleepMs := &object.Integer{Value: 5}
+	if _, err := stdlib.CallHost(stdlib.NativeTimeSleep, []object.Object{sleepMs}); err != nil {
+		t.Fatalf("Sleep error: %v", err)
+	}
+
+	// SQLite In-Memory DB
+	dsn := &object.String{Value: "file:testdb?mode=memory&cache=shared"}
+	createSQL := &object.String{Value: "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, price INTEGER);"}
+	if _, err := stdlib.CallHost(stdlib.NativeDBSQLExec, []object.Object{dsn, createSQL}); err != nil {
+		t.Fatalf("DB create table failed: %v", err)
+	}
+
+	insertSQL := &object.String{Value: "INSERT INTO items (name, price) VALUES (?, ?);"}
+	insertParams := &object.Array{Elements: []object.Object{
+		&object.String{Value: "Nilang Book"},
+		&object.Integer{Value: 450},
+	}}
+	res, err := stdlib.CallHost(stdlib.NativeDBSQLExec, []object.Object{dsn, insertSQL, insertParams})
+	if err != nil {
+		t.Fatalf("DB insert failed: %v", err)
+	}
+	if affected, ok := res.(*object.Integer); !ok || affected.Value != 1 {
+		t.Fatalf("expected 1 row affected, got %v", res)
+	}
+
+	querySQL := &object.String{Value: "SELECT id, name, price FROM items WHERE price >= ?;"}
+	queryParams := &object.Array{Elements: []object.Object{&object.Integer{Value: 400}}}
+	qRes, err := stdlib.CallHost(stdlib.NativeDBSQLQuery, []object.Object{dsn, querySQL, queryParams})
+	if err != nil {
+		t.Fatalf("DB query failed: %v", err)
+	}
+	rows, ok := qRes.(*object.Array)
+	if !ok || len(rows.Elements) != 1 {
+		t.Fatalf("expected 1 row returned, got %v", qRes)
+	}
+	firstRow, ok := rows.Elements[0].(*object.Hash)
+	if !ok {
+		t.Fatalf("expected row to be Hash, got %T", rows.Elements[0])
+	}
+	nameKey := (&object.String{Value: "name"}).HashKey()
+	if p, exists := firstRow.Pairs[nameKey]; !exists || p.Value.(*object.String).Value != "Nilang Book" {
+		t.Fatalf("expected name='Nilang Book', got %+v", firstRow)
 	}
 }

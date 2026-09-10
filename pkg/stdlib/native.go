@@ -7,6 +7,8 @@ const (
 	CapCrypto     = "std.crypto"
 	CapNetwork    = "std.net"
 	CapFilesystem = "std.fs"
+	CapDatabase   = "std.db"
+	CapTime       = "std.time"
 )
 
 const (
@@ -20,4 +22,7 @@ const (
 	NativeRandom     = "std.crypto.random_bytes"
 	NativeHTTPGet    = "std.http.get"
 	NativeHTTPPost   = "std.http.post"
+	NativeDBSQLQuery = "std.db.query"
+	NativeDBSQLExec  = "std.db.exec"
+	NativeTimeSleep  = "std.time.sleep"
 )

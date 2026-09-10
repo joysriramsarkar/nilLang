@@ -156,3 +156,21 @@ let average = fn(values) {
 
     return total / len(values);
 };
+
+import "std/math/decimal" as decimalModule;
+import "std/money" as moneyModule;
+
+let decimal = decimalModule.new;
+let decimalAdd = decimalModule.add;
+let decimalSub = decimalModule.sub;
+let decimalMul = decimalModule.mul;
+let decimalDiv = decimalModule.div;
+let decimalToString = decimalModule.toString;
+
+let money = moneyModule.new;
+let moneyOfMinor = moneyModule.ofMinor;
+let moneyOfMajor = moneyModule.ofMajor;
+let moneyAdd = moneyModule.add;
+let moneySub = moneyModule.sub;
+let moneyMulQty = moneyModule.mulQty;
+let moneyFormat = moneyModule.format;

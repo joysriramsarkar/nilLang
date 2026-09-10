@@ -1,12 +1,12 @@
 // Nilang Standard Library
 // Module: std/crypto/hash
 //
-// Cryptographic hashing must use a vetted host implementation.
+// Cryptographic hashing via host runtime.
 
 let sha256 = fn(value) {
-    return null;
+    return native("std.crypto.sha256", value);
 };
 
 let sha512 = fn(value) {
-    return null;
+    return native("std.crypto.sha512", value);
 };

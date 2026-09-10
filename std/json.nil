@@ -1,7 +1,7 @@
 // Nilang Standard Library
-// Module: std/data/json
+// Module: std/json
 //
-// Standard JSON serialization and deserialization via host runtime.
+// Standard JSON serialization and deserialization convenience module.
 
 let encode = fn(value) {
     return native("std.json.encode", value);

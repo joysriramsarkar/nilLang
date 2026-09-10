@@ -1,0 +1,60 @@
+// Nilang Standard Library
+// Module: std/net/http/router
+//
+// HTTP router, request and response builders.
+
+import "std/data/json" as json;
+
+let response = fn(status, headers, body) {
+    let h = headers;
+    if (h == null) {
+        h = {};
+    }
+    return {
+        "status": status,
+        "headers": h,
+        "body": body
+    };
+};
+
+let responseJson = fn(status, data) {
+    return {
+        "status": status,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.encode(data)
+    };
+};
+
+let responseText = fn(status, text) {
+    return {
+        "status": status,
+        "headers": {"Content-Type": "text/plain"},
+        "body": text
+    };
+};
+
+let new = fn() {
+    return {
+        "routes": {}
+    };
+};
+
+let get = fn(router, path, handler) {
+    router["routes"]["GET:" + path] = handler;
+    return router;
+};
+
+let post = fn(router, path, handler) {
+    router["routes"]["POST:" + path] = handler;
+    return router;
+};
+
+let handle = fn(router, req) {
+    let key = req["method"] + ":" + req["path"];
+    let routes = router["routes"];
+    if (routes[key] != null) {
+        let handler = routes[key];
+        return handler(req);
+    }
+    return responseText(404, "Not Found");
+};

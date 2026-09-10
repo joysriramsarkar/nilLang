@@ -1,0 +1,65 @@
+// Nilang Standard Library
+// Module: std/db
+//
+// SQL database connection, query builder, and transaction support.
+
+import "std/db/query_builder" as queryBuilder;
+
+let connect = fn(dsn) {
+    let dbDsn = dsn;
+    if (dbDsn == null || dbDsn == "") {
+        dbDsn = ":memory:";
+    }
+
+    let queryFn = fn(sql, params) {
+        let p = params;
+        if (p == null) {
+            p = [];
+        }
+        return native("std.db.query", dbDsn, sql, p);
+    };
+
+    let execFn = fn(sql, params) {
+        let p = params;
+        if (p == null) {
+            p = [];
+        }
+        return native("std.db.exec", dbDsn, sql, p);
+    };
+
+    return {
+        "dsn": dbDsn,
+        "query": queryFn,
+        "exec": execFn
+    };
+};
+
+let query = fn(conn, sql, params) {
+    return conn["query"](sql, params);
+};
+
+let exec = fn(conn, sql, params) {
+    return conn["exec"](sql, params);
+};
+
+let transaction = fn(conn, block) {
+    conn["exec"]("BEGIN TRANSACTION;", []);
+    let res = block();
+    if (isErr(res)) {
+        conn["exec"]("ROLLBACK;", []);
+        return res;
+    }
+    conn["exec"]("COMMIT;", []);
+    return res;
+};
+
+let table = fn(tableName) {
+    return queryBuilder.new(tableName);
+};
+
+let select = queryBuilder.select;
+let where = queryBuilder.where;
+let limit = queryBuilder.limit;
+let order = queryBuilder.order;
+let buildSql = queryBuilder.buildSql;
+let execute = queryBuilder.execute;

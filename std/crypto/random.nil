@@ -1,12 +1,8 @@
 // Nilang Standard Library
 // Module: std/crypto/random
 //
-// Cryptographically secure randomness requires a host capability.
+// Cryptographically secure pseudorandom generation.
 
 let bytes = fn(count) {
-    return null;
-};
-
-let integer = fn(maximum) {
-    return null;
+    return native("std.crypto.random_bytes", count);
 };

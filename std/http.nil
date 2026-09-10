@@ -1,0 +1,16 @@
+// Nilang Standard Library
+// Module: std/http
+//
+// HTTP client, server, and router convenience module.
+
+import "std/net/http" as http;
+
+let get = http.get;
+let post = http.post;
+let response = http.response;
+let responseJson = http.responseJson;
+let responseText = http.responseText;
+let newRouter = http.newRouter;
+let routerGet = http.routerGet;
+let routerPost = http.routerPost;
+let routerHandle = http.routerHandle;

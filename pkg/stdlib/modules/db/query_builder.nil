@@ -1,0 +1,65 @@
+// Nilang Standard Library
+// Module: std/db/query_builder
+//
+// Declarative SQL query builder and parameter binding.
+
+let new = fn(table) {
+    return {
+        "table": table,
+        "selectCols": ["*"],
+        "whereClauses": [],
+        "whereParams": [],
+        "limitVal": 0,
+        "orderBy": ""
+    };
+};
+
+let select = fn(qb, cols) {
+    qb["selectCols"] = cols;
+    return qb;
+};
+
+let where = fn(qb, col, op, val) {
+    let clause = col + " " + op + " ?";
+    qb["whereClauses"] = push(qb["whereClauses"], clause);
+    qb["whereParams"] = push(qb["whereParams"], val);
+    return qb;
+};
+
+let limit = fn(qb, n) {
+    qb["limitVal"] = n;
+    return qb;
+};
+
+let order = fn(qb, col, desc) {
+    let dir = "ASC";
+    if (desc) {
+        dir = "DESC";
+    }
+    qb["orderBy"] = col + " " + dir;
+    return qb;
+};
+
+let buildSql = fn(qb) {
+    let colsStr = join(qb["selectCols"], ", ");
+    let sql = "SELECT " + colsStr + " FROM " + qb["table"];
+
+    if (len(qb["whereClauses"]) > 0) {
+        sql = sql + " WHERE " + join(qb["whereClauses"], " AND ");
+    }
+
+    if (qb["orderBy"] != "") {
+        sql = sql + " ORDER BY " + qb["orderBy"];
+    }
+
+    if (qb["limitVal"] > 0) {
+        sql = sql + " LIMIT " + str(qb["limitVal"]);
+    }
+
+    return sql;
+};
+
+let execute = fn(qb, conn) {
+    let sql = buildSql(qb);
+    return conn["query"](sql, qb["whereParams"]);
+};

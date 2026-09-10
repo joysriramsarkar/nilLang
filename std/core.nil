@@ -43,3 +43,26 @@ let repeat = fn(value, count) {
 let swap = fn(a, b) {
     return [b, a];
 };
+
+let ok = fn(val) {
+    return Ok(val);
+};
+
+let err = fn(val) {
+    return Err(val);
+};
+
+let some = fn(val) {
+    return Some(val);
+};
+
+let none = fn() {
+    return None();
+};
+
+let error = fn(code, message) {
+    return {
+        "code": code,
+        "message": message
+    };
+};

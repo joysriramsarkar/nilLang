@@ -1,0 +1,119 @@
+// Nilang Standard Library
+// Module: std/math/decimal
+//
+// Exact fixed-point decimal arithmetic without float64 inaccuracies.
+
+let new = fn(value, scale) {
+    return {
+        "value": value,
+        "scale": scale
+    };
+};
+
+let alignScales = fn(a, b) {
+    let maxScale = a["scale"];
+    if (b["scale"] > maxScale) {
+        maxScale = b["scale"];
+    }
+
+    let aVal = a["value"];
+    let bVal = b["value"];
+
+    let diffA = maxScale - a["scale"];
+    let i = 0;
+    while (i < diffA) {
+        aVal = aVal * 10;
+        i = i + 1;
+    }
+
+    let diffB = maxScale - b["scale"];
+    let j = 0;
+    while (j < diffB) {
+        bVal = bVal * 10;
+        j = j + 1;
+    }
+
+    return {
+        "aVal": aVal,
+        "bVal": bVal,
+        "scale": maxScale
+    };
+};
+
+let add = fn(a, b) {
+    let aligned = alignScales(a, b);
+    return new(aligned["aVal"] + aligned["bVal"], aligned["scale"]);
+};
+
+let sub = fn(a, b) {
+    let aligned = alignScales(a, b);
+    return new(aligned["aVal"] - aligned["bVal"], aligned["scale"]);
+};
+
+let mul = fn(a, b) {
+    return new(a["value"] * b["value"], a["scale"] + b["scale"]);
+};
+
+let div = fn(a, b, precision) {
+    if (b["value"] == 0) {
+        return Err("division by zero");
+    }
+
+    let multiplier = 1;
+    let i = 0;
+    while (i < precision) {
+        multiplier = multiplier * 10;
+        i = i + 1;
+    }
+
+    let newVal = (a["value"] * multiplier) / b["value"];
+    let newScale = a["scale"] - b["scale"] + precision;
+
+    return Ok(new(newVal, newScale));
+};
+
+let toString = fn(dec) {
+    let val = dec["value"];
+    let scale = dec["scale"];
+    let isNeg = val < 0;
+    if (isNeg) {
+        val = -val;
+    }
+
+    if (scale == 0) {
+        let s = str(val);
+        if (isNeg) {
+            return "-" + s;
+        }
+        return s;
+    }
+
+    let divisor = 1;
+    let i = 0;
+    while (i < scale) {
+        divisor = divisor * 10;
+        i = i + 1;
+    }
+
+    let major = val / divisor;
+    let minor = val % divisor;
+
+    let minorStr = str(minor);
+    while (len(minorStr) < scale) {
+        minorStr = "0" + minorStr;
+    }
+
+    let res = str(major) + "." + minorStr;
+    if (isNeg) {
+        return "-" + res;
+    }
+    return res;
+};
+
+let fromInt = fn(n) {
+    return new(n, 0);
+};
+
+let fromMinor = fn(minorUnits, scale) {
+    return new(minorUnits, scale);
+};

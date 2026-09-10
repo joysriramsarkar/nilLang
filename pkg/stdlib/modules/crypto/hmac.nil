@@ -1,6 +1,8 @@
 // Nilang Standard Library
 // Module: std/crypto/hmac
+//
+// Keyed-hash message authentication code (HMAC).
 
 let sha256 = fn(key, message) {
-    return null;
+    return native("std.crypto.hmac_sha256", key, message);
 };

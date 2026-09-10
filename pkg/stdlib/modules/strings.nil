@@ -81,3 +81,35 @@ let words = fn(value) {
 let joinLines = fn(values) {
     return join(values, "\n");
 };
+
+let joinStrings = fn(values, delim) {
+    return join(values, delim);
+};
+
+let splitString = fn(value, delim) {
+    return split(value, delim);
+};
+
+let trimString = fn(value) {
+    return trim(value);
+};
+
+let toLower = fn(value) {
+    return lower(value);
+};
+
+let toUpper = fn(value) {
+    return upper(value);
+};
+
+let replaceAll = fn(value, oldVal, newVal) {
+    return replace(value, oldVal, newVal);
+};
+
+let substring = fn(value, start, length) {
+    return substr(value, start, length);
+};
+
+let length = fn(value) {
+    return len(value);
+};

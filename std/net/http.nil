@@ -1,13 +1,22 @@
 // Nilang Standard Library
 // Module: std/net/http
 //
-// HTTP is intentionally a host-backed module.
-// No fake implementation is exposed.
+// HTTP client, server, and router.
+
+import "std/net/http/router" as router;
 
 let get = fn(url) {
-    return null;
+    return native("std.http.get", url);
 };
 
 let post = fn(url, body) {
-    return null;
+    return native("std.http.post", url, body);
 };
+
+let response = router.response;
+let responseJson = router.responseJson;
+let responseText = router.responseText;
+let newRouter = router.new;
+let routerGet = router.get;
+let routerPost = router.post;
+let routerHandle = router.handle;

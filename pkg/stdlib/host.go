@@ -6,21 +6,63 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 )
+
+var (
+	dbPoolMu sync.Mutex
+	dbPool   = make(map[string]*sql.DB)
+)
+
+func getDB(dsn string) (*sql.DB, error) {
+	if dsn == "" {
+		dsn = ":memory:"
+	}
+	dbPoolMu.Lock()
+	defer dbPoolMu.Unlock()
+	if db, ok := dbPool[dsn]; ok {
+		return db, nil
+	}
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite db %q: %w", dsn, err)
+	}
+	dbPool[dsn] = db
+	return db, nil
+}
 
 // CallHost implements the host-backed part of std. It deliberately returns
 // ordinary Nilang objects so the evaluator and VM can share the same contract.
 func CallHost(name string, args []object.Object) (object.Object, error) {
 	switch name {
+	case NativeTimeSleep:
+		if len(args) != 1 {
+			return nil, fmt.Errorf("std.time.sleep expects 1 argument (milliseconds)")
+		}
+		ms, ok := args[0].(*object.Integer)
+		if !ok || ms.Value < 0 {
+			return nil, fmt.Errorf("std.time.sleep expects non-negative INTEGER milliseconds")
+		}
+		time.Sleep(time.Duration(ms.Value) * time.Millisecond)
+		return &object.Null{}, nil
+
+	case NativeDBSQLQuery:
+		return dbQuery(args)
+
+	case NativeDBSQLExec:
+		return dbExec(args)
 	case NativeJSONEncode:
 		if len(args) != 1 {
 			return nil, fmt.Errorf("std.json.encode expects 1 argument")
@@ -244,4 +286,105 @@ func fromGo(v any) object.Object {
 	default:
 		return &object.Null{}
 	}
+}
+
+func dbQuery(args []object.Object) (object.Object, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("std.db.query expects (dsn, query, [params])")
+	}
+	dsnObj, ok := args[0].(*object.String)
+	if !ok {
+		return nil, fmt.Errorf("std.db.query expects dsn to be STRING")
+	}
+	queryObj, ok := args[1].(*object.String)
+	if !ok {
+		return nil, fmt.Errorf("std.db.query expects query to be STRING")
+	}
+	var params []any
+	if len(args) >= 3 {
+		if arr, ok := args[2].(*object.Array); ok {
+			for _, elem := range arr.Elements {
+				g, err := toGo(elem)
+				if err != nil {
+					return nil, err
+				}
+				params = append(params, g)
+			}
+		}
+	}
+	db, err := getDB(dsnObj.Value)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.Query(queryObj.Value, params...)
+	if err != nil {
+		return nil, fmt.Errorf("db query error: %w", err)
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	var resultRows []object.Object
+	for rows.Next() {
+		colValues := make([]any, len(cols))
+		colPointers := make([]any, len(cols))
+		for i := range colValues {
+			colPointers[i] = &colValues[i]
+		}
+		if err := rows.Scan(colPointers...); err != nil {
+			return nil, fmt.Errorf("row scan error: %w", err)
+		}
+		rowMap := make(map[string]object.Object, len(cols))
+		for i, col := range cols {
+			val := colValues[i]
+			if b, ok := val.([]byte); ok {
+				rowMap[col] = &object.String{Value: string(b)}
+			} else {
+				rowMap[col] = fromGo(val)
+			}
+		}
+		resultRows = append(resultRows, MakeHash(rowMap))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &object.Array{Elements: resultRows}, nil
+}
+
+func dbExec(args []object.Object) (object.Object, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("std.db.exec expects (dsn, query, [params])")
+	}
+	dsnObj, ok := args[0].(*object.String)
+	if !ok {
+		return nil, fmt.Errorf("std.db.exec expects dsn to be STRING")
+	}
+	queryObj, ok := args[1].(*object.String)
+	if !ok {
+		return nil, fmt.Errorf("std.db.exec expects query to be STRING")
+	}
+	var params []any
+	if len(args) >= 3 {
+		if arr, ok := args[2].(*object.Array); ok {
+			for _, elem := range arr.Elements {
+				g, err := toGo(elem)
+				if err != nil {
+					return nil, err
+				}
+				params = append(params, g)
+			}
+		}
+	}
+	db, err := getDB(dsnObj.Value)
+	if err != nil {
+		return nil, err
+	}
+	res, err := db.Exec(queryObj.Value, params...)
+	if err != nil {
+		return nil, fmt.Errorf("db exec error: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return &object.Integer{Value: affected}, nil
 }
