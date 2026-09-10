@@ -11,9 +11,10 @@ const (
 )
 
 type Symbol struct {
-	Name  string
-	Scope SymbolScope
-	Index int
+	Name     string
+	Scope    SymbolScope
+	Index    int
+	Constant bool
 }
 
 type SymbolTable struct {
@@ -48,6 +49,17 @@ func (s *SymbolTable) Define(name string) Symbol {
 	s.store[name] = symbol
 	s.numDefinitions++
 	return symbol
+}
+
+func (s *SymbolTable) DefineConst(name string) Symbol {
+	symbol := s.Define(name)
+	symbol.Constant = true
+	s.store[name] = symbol
+	return symbol
+}
+
+func (s *SymbolTable) NumDefinitions() int {
+	return s.numDefinitions
 }
 
 func (s *SymbolTable) Resolve(name string) (Symbol, bool) {

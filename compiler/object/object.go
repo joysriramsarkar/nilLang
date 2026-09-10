@@ -237,13 +237,14 @@ func (c *Channel) Inspect() string  { return "channel" }
 // ─── ENVIRONMENT ────────────────────────────────────────────────────────────
 
 type Environment struct {
-	store map[string]Object
-	outer *Environment
+	store     map[string]Object
+	constants map[string]bool
+	outer     *Environment
 }
 
 func NewEnvironment() *Environment {
 	s := make(map[string]Object)
-	return &Environment{store: s, outer: nil}
+	return &Environment{store: s, constants: make(map[string]bool), outer: nil}
 }
 
 func NewEnclosedEnvironment(outer *Environment) *Environment {
@@ -265,15 +266,33 @@ func (e *Environment) Set(name string, val Object) Object {
 	return val
 }
 
+func (e *Environment) SetConst(name string, val Object) Object {
+	e.store[name] = val
+	e.constants[name] = true
+	return val
+}
+
+func (e *Environment) IsConst(name string) bool {
+	if _, ok := e.store[name]; ok {
+		return e.constants[name]
+	}
+	if e.outer != nil {
+		return e.outer.IsConst(name)
+	}
+	return false
+}
+
 func (e *Environment) Assign(name string, val Object) bool {
 	if _, ok := e.store[name]; ok {
+		if e.constants[name] {
+			return false
+		}
 		e.store[name] = val
 		return true
 	}
 	if e.outer != nil {
 		return e.outer.Assign(name, val)
 	}
-	e.store[name] = val
 	return false
 }
 

@@ -21,6 +21,25 @@ func TestAwaitRejectsNonFuture(t *testing.T) {
 	}
 }
 
+func TestAssignmentRejectsUndefinedVariable(t *testing.T) {
+	l := lexer.New(`missing = 1;`)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parse errors: %v", p.Errors())
+	}
+	env := object.NewEnvironment()
+
+	evaluated := Eval(program, env)
+	errorObject, ok := evaluated.(*object.Error)
+	if !ok || errorObject.Message != "identifier not found: missing" {
+		t.Fatalf("unexpected assignment result: %T (%+v)", evaluated, evaluated)
+	}
+	if _, exists := env.Get("missing"); exists {
+		t.Fatal("undefined assignment must not create a binding")
+	}
+}
+
 func TestTaskChannelCommunication(t *testing.T) {
 	evaluated := testEval(`
 let messages = Channel(1);

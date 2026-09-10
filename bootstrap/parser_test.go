@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"testing"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
@@ -60,8 +61,32 @@ if (transform(1, 2) == 1) { "yes"; } else { "no"; };
 		t.Fatalf("Nil parser errors: %v", errors)
 	}
 	delete(got, "errors")
+	sortHashPairs(got)
+	sortHashPairs(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("procedural AST differs: %s", firstDifference("Program", got, want))
+	}
+}
+
+func sortHashPairs(val any) {
+	switch v := val.(type) {
+	case map[string]any:
+		if v["kind"] == "HashLiteral" {
+			if pairs, ok := v["pairs"].([]any); ok {
+				sort.Slice(pairs, func(i, j int) bool {
+					pi, _ := pairs[i].(map[string]any)
+					pj, _ := pairs[j].(map[string]any)
+					return fmt.Sprint(pi["key"]) < fmt.Sprint(pj["key"])
+				})
+			}
+		}
+		for _, child := range v {
+			sortHashPairs(child)
+		}
+	case []any:
+		for _, elem := range v {
+			sortHashPairs(elem)
+		}
 	}
 }
 

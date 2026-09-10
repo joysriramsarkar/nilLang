@@ -204,7 +204,7 @@ func (p *Parser) parseStatement() ast.Statement {
 		if p.curToken.Literal == "app" && (p.peekTokenIs(token.LBRACE) || p.peekTokenIs(token.IDENT)) {
 			return p.parseAppStatement()
 		}
-		if p.peekTokenIs(token.ASSIGN) {
+		if p.peekTokenIs(token.ASSIGN) || p.peekTokenIs(token.PLUS_ASSIGN) || p.peekTokenIs(token.MINUS_ASSIGN) {
 			return p.parseAssignStatement()
 		}
 		return p.parseExpressionStatement()
@@ -377,7 +377,7 @@ func (p *Parser) parseImportStatement() *ast.ImportStatement {
 }
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
-	stmt := &ast.LetStatement{Token: p.curToken}
+	stmt := &ast.LetStatement{Token: p.curToken, Constant: p.curTokenIs(token.CONST)}
 
 	if !p.expectPeek(token.IDENT) {
 		return nil
@@ -385,13 +385,22 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
-	if !p.expectPeek(token.ASSIGN) {
-		return nil
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken()
+		if !p.expectPeek(token.IDENT) {
+			return nil
+		}
+		stmt.Type = p.curToken.Literal
 	}
 
-	p.nextToken()
-
-	stmt.Value = p.parseExpression(LOWEST)
+	if p.peekTokenIs(token.ASSIGN) {
+		p.nextToken()
+		p.nextToken()
+		stmt.Value = p.parseExpression(LOWEST)
+	} else if stmt.Constant {
+		p.peekError(token.ASSIGN)
+		return nil
+	}
 
 	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
@@ -418,9 +427,12 @@ func (p *Parser) parseAssignStatement() *ast.AssignStatement {
 	stmt := &ast.AssignStatement{Token: p.curToken}
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
-	if !p.expectPeek(token.ASSIGN) {
+	if !p.peekTokenIs(token.ASSIGN) && !p.peekTokenIs(token.PLUS_ASSIGN) && !p.peekTokenIs(token.MINUS_ASSIGN) {
+		p.peekError(token.ASSIGN)
 		return nil
 	}
+	p.nextToken()
+	stmt.Operator = p.curToken.Literal
 
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)

@@ -5,76 +5,104 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/joysriramsarkar/nilLang/compiler/formatter"
 )
 
 func cmdFmt() {
-	projectDir, err := os.Getwd()
+	checkMode := false
+	targetPath := "."
+
+	for i := 2; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if arg == "--check" || arg == "-c" {
+			checkMode = true
+		} else if !strings.HasPrefix(arg, "-") {
+			targetPath = arg
+		}
+	}
+
+	info, err := os.Stat(targetPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ কারেন্ট ডিরেক্টরি পেতে সমস্যা: %s\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Invalid path %s: %s\n", targetPath, err)
 		os.Exit(1)
 	}
 
-	count := 0
-	err = filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
+	formattedCount := 0
+	unformattedCount := 0
+	errorCount := 0
+
+	formatSingle := func(filePath string) error {
+		data, err := os.ReadFile(filePath)
 		if err != nil {
 			return err
 		}
+		original := string(data)
+		formatted, err := formatter.Format(original)
+		if err != nil {
+			return fmt.Errorf("%s: %w", filePath, err)
+		}
 
-		if info.IsDir() {
-			// Skip build and hidden directories
-			name := info.Name()
-			if name == "build" || name == ".git" || strings.HasPrefix(name, ".") {
-				return filepath.SkipDir
+		if original != formatted {
+			unformattedCount++
+			if checkMode {
+				fmt.Printf("❌ Unformatted: %s\n", filePath)
+			} else {
+				if err := os.WriteFile(filePath, []byte(formatted), 0644); err != nil {
+					return fmt.Errorf("failed to write %s: %w", filePath, err)
+				}
+				fmt.Printf("Formatted: %s\n", filePath)
+				formattedCount++
+			}
+		}
+		return nil
+	}
+
+	if !info.IsDir() {
+		if strings.HasSuffix(targetPath, ".nil") {
+			if err := formatSingle(targetPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+				os.Exit(1)
+			}
+		}
+	} else {
+		err = filepath.Walk(targetPath, func(path string, fi os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if fi.IsDir() {
+				name := fi.Name()
+				if name == "build" || name == ".git" || name == "node_modules" || strings.HasPrefix(name, ".") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasSuffix(path, ".nil") {
+				if err := formatSingle(path); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: %s\n", err)
+					errorCount++
+				}
 			}
 			return nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error scanning directory: %s\n", err)
+			os.Exit(1)
 		}
+	}
 
-		if strings.HasSuffix(path, ".nil") {
-			if err := formatFile(path); err != nil {
-				fmt.Fprintf(os.Stderr, "⚠️ %s ফরম্যাট করতে সমস্যা: %s\n", path, err)
-			} else {
-				count++
-			}
+	if checkMode {
+		if unformattedCount > 0 {
+			fmt.Fprintf(os.Stderr, "\nFound %d unformatted file(s). Run 'nil fmt' to format them.\n", unformattedCount)
+			os.Exit(1)
+		} else {
+			fmt.Println("All .nil files are properly formatted.")
 		}
-
-		return nil
-	})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ ডিরেক্টরি স্ক্যান করতে সমস্যা: %s\n", err)
-		os.Exit(1)
+	} else {
+		if formattedCount > 0 {
+			fmt.Printf("Formatted %d file(s).\n", formattedCount)
+		} else {
+			fmt.Println("All files are already formatted.")
+		}
 	}
-
-	fmt.Printf("✅ %d টি .nil ফাইল ফরম্যাট করা হয়েছে\n", count)
-}
-
-func formatFile(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	content := string(data)
-
-	// Basic formatting rules
-	// 1. Ensure consistent indentation (4 spaces)
-	// 2. Remove trailing whitespace
-	// 3. Ensure single newline at end of file
-	// 4. Normalize spacing around operators
-
-	lines := strings.Split(content, "\n")
-	formatted := make([]string, 0, len(lines))
-
-	for _, line := range lines {
-		// Remove trailing whitespace
-		line = strings.TrimRight(line, " \t")
-		formatted = append(formatted, line)
-	}
-
-	result := strings.Join(formatted, "\n")
-
-	// Ensure single newline at end
-	result = strings.TrimRight(result, "\n") + "\n"
-
-	return os.WriteFile(path, []byte(result), 0644)
 }

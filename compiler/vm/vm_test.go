@@ -1,9 +1,12 @@
 package vm
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 
+	"github.com/joysriramsarkar/nilLang/compiler/code"
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
@@ -395,3 +398,25 @@ func TestGlobalLetStatements(t *testing.T) {
 		}
 	}
 }
+
+func TestCapabilitySecurityRejection(t *testing.T) {
+	// Emit OpNativeCall for "camera.capture"
+	ins := code.Make(code.OpNativeCall, 0, 0)
+	constants := []object.Object{&object.String{Value: "camera.capture"}}
+
+	bytecode := &compiler.Bytecode{
+		Instructions: ins,
+		Constants:    constants,
+	}
+
+	machine := New(bytecode)
+	machine.CapabilityChecker = func(apiName string) error {
+		return fmt.Errorf("camera capability not granted in manifest")
+	}
+
+	err := machine.Run()
+	if err == nil || !strings.Contains(err.Error(), "capability denied") {
+		t.Fatalf("expected capability denied error, got: %v", err)
+	}
+}
+

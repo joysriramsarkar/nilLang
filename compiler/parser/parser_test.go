@@ -41,6 +41,31 @@ let foobar = 838383;
 	}
 }
 
+func TestAnnotatedLetStatement(t *testing.T) {
+	p := New(lexer.New(`let count: i32 = 0;`))
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	statement, ok := program.Statements[0].(*ast.LetStatement)
+	if !ok {
+		t.Fatalf("expected let statement, got %T", program.Statements[0])
+	}
+	if statement.Name.Value != "count" || statement.Type != "i32" {
+		t.Fatalf("unexpected annotated let: %+v", statement)
+	}
+	if program.String() != "let count: i32 = 0;" {
+		t.Fatalf("annotation was not preserved in AST string: %q", program.String())
+	}
+}
+
+func TestAnnotatedLetRequiresTypeName(t *testing.T) {
+	p := New(lexer.New(`let count: = 0;`))
+	p.ParseProgram()
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parser error for missing let type name")
+	}
+}
+
 func TestAppStatement(t *testing.T) {
 	input := `
 app Hello {

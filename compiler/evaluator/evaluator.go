@@ -31,17 +31,33 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 		return &object.ReturnValue{Value: val}
 	case *ast.LetStatement:
+		if node.Value == nil {
+			return newError("variable %s requires an initializer", node.Name.Value)
+		}
 		val := Eval(node.Value, env)
 		if isError(val) {
 			return val
 		}
-		env.Set(node.Name.Value, val)
+		if node.Constant {
+			env.SetConst(node.Name.Value, val)
+		} else {
+			env.Set(node.Name.Value, val)
+		}
 	case *ast.AssignStatement:
-		val := Eval(node.Value, env)
+		if env.IsConst(node.Name.Value) {
+			return newError("cannot assign to constant: %s", node.Name.Value)
+		}
+		value := node.Value
+		if node.Operator == "+=" || node.Operator == "-=" {
+			value = &ast.InfixExpression{Token: node.Token, Left: node.Name, Operator: strings.TrimSuffix(node.Operator, "="), Right: node.Value}
+		}
+		val := Eval(value, env)
 		if isError(val) {
 			return val
 		}
-		env.Assign(node.Name.Value, val)
+		if !env.Assign(node.Name.Value, val) {
+			return newError("identifier not found: %s", node.Name.Value)
+		}
 		return val
 	case *ast.IndexAssignStatement:
 		left := Eval(node.Left, env)

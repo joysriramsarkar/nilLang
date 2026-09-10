@@ -13,6 +13,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/mir"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/wasm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	"github.com/joysriramsarkar/nilLang/pkg/compiler"
@@ -511,6 +512,15 @@ func buildWASM(cfg *config.ProjectConfig, projectDir string) {
 	prog := p.ParseProgram()
 	if len(p.Errors()) > 0 {
 		fmt.Fprintf(os.Stderr, "❌ সিনট্যাক্স এরর:\n%s\n", strings.Join(p.Errors(), "\n"))
+		os.Exit(1)
+	}
+
+	checker := typecheck.NewChecker()
+	if !checker.CheckProgram(prog) {
+		fmt.Fprintln(os.Stderr, "❌ টাইপ ত্রুটি:")
+		for _, diagnostic := range checker.Diagnostics {
+			fmt.Fprintf(os.Stderr, "   %s\n", diagnostic.String())
+		}
 		os.Exit(1)
 	}
 

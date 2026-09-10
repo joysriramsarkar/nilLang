@@ -8,6 +8,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 )
 
@@ -57,6 +58,15 @@ func compileSource(source string) (*compiler.Bytecode, error) {
 
 	if len(p.Errors()) != 0 {
 		return nil, fmt.Errorf("parser errors:\n%s", strings.Join(p.Errors(), "\n"))
+	}
+
+	checker := typecheck.NewChecker()
+	if !checker.CheckProgram(program) {
+		diagnostics := make([]string, 0, len(checker.Diagnostics))
+		for _, diagnostic := range checker.Diagnostics {
+			diagnostics = append(diagnostics, diagnostic.String())
+		}
+		return nil, fmt.Errorf("type checking failed:\n%s", strings.Join(diagnostics, "\n"))
 	}
 
 	comp := compiler.New()

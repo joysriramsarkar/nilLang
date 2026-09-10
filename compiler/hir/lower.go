@@ -1,6 +1,8 @@
 package hir
 
 import (
+	"strings"
+
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/types"
 )
@@ -54,7 +56,7 @@ func (l *Lowerer) lowerStatement(stmt ast.Statement) Statement {
 			Name:     name,
 			VarType:  valT,
 			Value:    val,
-			Constant: false,
+			Constant: s.Constant,
 		}
 
 	case *ast.StateDeclaration:
@@ -105,7 +107,11 @@ func (l *Lowerer) lowerStatement(stmt ast.Statement) Statement {
 		return component
 
 	case *ast.AssignStatement:
-		val := l.lowerExpression(s.Value)
+		value := s.Value
+		if s.Operator == "+=" || s.Operator == "-=" {
+			value = &ast.InfixExpression{Token: s.Token, Left: s.Name, Operator: strings.TrimSuffix(s.Operator, "="), Right: s.Value}
+		}
+		val := l.lowerExpression(value)
 		name := ""
 		if s.Name != nil {
 			name = s.Name.Value

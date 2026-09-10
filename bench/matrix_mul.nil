@@ -1,0 +1,21 @@
+fn dotProduct(a, b) {
+    let sum = 0;
+    let i = 0;
+    while (i < len(a)) {
+        sum = sum + a[i] * b[i];
+        i = i + 1;
+    }
+    return sum;
+}
+
+let v1 = [1, 2, 3, 4, 5, 6, 7, 8];
+let v2 = [8, 7, 6, 5, 4, 3, 2, 1];
+
+let iter = 0;
+let total = 0;
+while (iter < 100) {
+    total = total + dotProduct(v1, v2);
+    iter = iter + 1;
+}
+
+total;

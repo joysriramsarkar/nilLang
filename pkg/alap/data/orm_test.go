@@ -221,3 +221,30 @@ func TestRealDBPoolTransactionWithRetry(t *testing.T) {
 		t.Errorf("expected retry exhaustion message, got: %v", err)
 	}
 }
+
+func TestSQLInjectionResistance(t *testing.T) {
+	// Attack payloads
+	maliciousInputs := []string{
+		"' OR '1'='1",
+		"admin'--",
+		"'; DROP TABLE users; --",
+		"1' UNION SELECT username, password FROM users --",
+	}
+
+	for _, payload := range maliciousInputs {
+		sql, args := Table("users").
+			Where("username", "=", payload).
+			ToSQL()
+
+		// Verify that the payload is NOT injected into the raw SQL string
+		if strings.Contains(sql, payload) {
+			t.Fatalf("SQL Injection Vulnerability detected! Payload was concatenated directly into SQL: %s", sql)
+		}
+
+		// Verify that the payload is safely preserved in the parameter arguments slice
+		if len(args) != 1 || args[0] != payload {
+			t.Fatalf("Expected payload to be bound to args[0], got %v", args)
+		}
+	}
+}
+

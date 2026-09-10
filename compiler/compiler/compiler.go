@@ -220,6 +220,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		if c.lastInstructionIs(code.OpPop) {
 			c.removeLastPop()
+		} else if !c.lastInstructionIs(code.OpReturnValue) && !c.lastInstructionIs(code.OpReturn) {
+			c.emit(code.OpNull)
 		}
 
 		// Emit OpJump with placeholder offset
@@ -238,6 +240,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 			if c.lastInstructionIs(code.OpPop) {
 				c.removeLastPop()
+			} else if !c.lastInstructionIs(code.OpReturnValue) && !c.lastInstructionIs(code.OpReturn) {
+				c.emit(code.OpNull)
 			}
 		}
 
@@ -275,7 +279,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.LetStatement:
-		symbol := c.symbolTable.Define(node.Name.Value)
+		var symbol Symbol
+		if node.Constant {
+			symbol = c.symbolTable.DefineConst(node.Name.Value)
+		} else {
+			symbol = c.symbolTable.Define(node.Name.Value)
+		}
+		if node.Value == nil {
+			return fmt.Errorf("variable %s requires an initializer", node.Name.Value)
+		}
 		err := c.Compile(node.Value)
 		if err != nil {
 			return err
@@ -359,13 +371,24 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.AssignStatement:
-		err := c.Compile(node.Value)
-		if err != nil {
-			return err
-		}
 		symbol, ok := c.symbolTable.Resolve(node.Name.Value)
 		if !ok {
-			symbol = c.symbolTable.Define(node.Name.Value)
+			return fmt.Errorf("undefined variable %s", node.Name.Value)
+		}
+		if symbol.Constant {
+			return fmt.Errorf("cannot assign to constant %s", node.Name.Value)
+		}
+		if node.Operator == "+=" || node.Operator == "-=" {
+			c.loadSymbol(symbol)
+		}
+		if err := c.Compile(node.Value); err != nil {
+			return err
+		}
+		switch node.Operator {
+		case "+=":
+			c.emit(code.OpAdd)
+		case "-=":
+			c.emit(code.OpSub)
 		}
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
@@ -472,6 +495,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		fnIndex := c.addConstant(compiledFn)
 		c.emit(code.OpClosure, fnIndex, len(freeSymbols))
+
+		if node.Name != "" {
+			symbol := c.symbolTable.Define(node.Name)
+			if symbol.Scope == GlobalScope {
+				c.emit(code.OpSetGlobal, symbol.Index)
+				c.emit(code.OpGetGlobal, symbol.Index)
+			} else {
+				c.emit(code.OpSetLocal, symbol.Index)
+				c.emit(code.OpGetLocal, symbol.Index)
+			}
+		}
 
 	case *ast.TaskExpression:
 		function := &ast.FunctionLiteral{Token: node.Token, Parameters: []*ast.Identifier{}, Body: node.Body}

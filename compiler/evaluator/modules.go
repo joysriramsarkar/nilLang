@@ -28,6 +28,10 @@ var (
 
 	scriptDirMu    sync.Mutex
 	scriptDirStack []string
+
+	moduleCacheMu     sync.RWMutex
+	moduleCache       = make(map[string]*object.Hash)
+	moduleImportStack []string
 )
 
 // PushScriptDir pushes a directory onto the script import resolution stack
@@ -168,6 +172,38 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 		return newError("cannot find module or file '%s'", importPath)
 	}
 
+	canonicalPath, err := filepath.Abs(resolvedPath)
+	if err != nil {
+		canonicalPath = resolvedPath
+	}
+
+	moduleCacheMu.Lock()
+	// Check for circular dependency
+	for idx, visiting := range moduleImportStack {
+		if visiting == canonicalPath {
+			cycle := append(moduleImportStack[idx:], canonicalPath)
+			moduleCacheMu.Unlock()
+			return newError("E0301: circular dependency detected: %s", strings.Join(cycle, " -> "))
+		}
+	}
+
+	// Check cache
+	if cachedMod, ok := moduleCache[canonicalPath]; ok {
+		moduleCacheMu.Unlock()
+		return bindModuleToEnv(node, cachedMod, importPath, env)
+	}
+
+	moduleImportStack = append(moduleImportStack, canonicalPath)
+	moduleCacheMu.Unlock()
+
+	defer func() {
+		moduleCacheMu.Lock()
+		if len(moduleImportStack) > 0 {
+			moduleImportStack = moduleImportStack[:len(moduleImportStack)-1]
+		}
+		moduleCacheMu.Unlock()
+	}()
+
 	content, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		return newError("cannot read module file '%s': %s", resolvedPath, err)
@@ -193,12 +229,10 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 
 	// Collect declared symbols into module hash
 	modPairs := make(map[object.HashKey]object.HashPair)
-	// We expose symbols from subEnv store
 	for k, v := range subEnv.Store() {
 		sk := &object.String{Value: k}
 		modPairs[sk.HashKey()] = object.HashPair{Key: sk, Value: v}
 	}
-	// If the file explicitly returns a Hash, merge that
 	if resHash, isHash := res.(*object.Hash); isHash {
 		for k, v := range resHash.Pairs {
 			modPairs[k] = v
@@ -207,12 +241,20 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 
 	modObj := &object.Hash{Pairs: modPairs}
 
+	moduleCacheMu.Lock()
+	moduleCache[canonicalPath] = modObj
+	moduleCacheMu.Unlock()
+
+	return bindModuleToEnv(node, modObj, importPath, env)
+}
+
+func bindModuleToEnv(node *ast.ImportStatement, modObj *object.Hash, importPath string, env *object.Environment) object.Object {
 	if node.Alias != nil {
 		env.Set(node.Alias.Value, modObj)
 	} else if len(node.Names) > 0 {
 		for _, ident := range node.Names {
 			k := &object.String{Value: ident.Value}
-			if pair, exists := modPairs[k.HashKey()]; exists {
+			if pair, exists := modObj.Pairs[k.HashKey()]; exists {
 				env.Set(ident.Value, pair.Value)
 			}
 		}

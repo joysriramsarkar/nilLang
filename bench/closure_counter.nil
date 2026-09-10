@@ -1,0 +1,17 @@
+fn makeAdder(base) {
+    return fn(x) {
+        return base + x;
+    };
+}
+
+let add5 = makeAdder(5);
+let add10 = makeAdder(10);
+
+let i = 0;
+let total = 0;
+while (i < 100) {
+    total = total + add5(i) + add10(i);
+    i = i + 1;
+}
+
+total;

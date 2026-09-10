@@ -2,6 +2,7 @@ package typecheck
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
@@ -11,6 +12,7 @@ import (
 type Scope struct {
 	parent    *Scope
 	variables map[string]types.Type
+	constants map[string]bool
 	functions map[string]*types.FunctionType
 	structs   map[string]*types.StructType
 	entities  map[string]*types.EntityType
@@ -20,6 +22,7 @@ func NewScope(parent *Scope) *Scope {
 	return &Scope{
 		parent:    parent,
 		variables: make(map[string]types.Type),
+		constants: make(map[string]bool),
 		functions: make(map[string]*types.FunctionType),
 		structs:   make(map[string]*types.StructType),
 		entities:  make(map[string]*types.EntityType),
@@ -28,6 +31,21 @@ func NewScope(parent *Scope) *Scope {
 
 func (s *Scope) SetVar(name string, t types.Type) {
 	s.variables[name] = t
+}
+
+func (s *Scope) SetConst(name string, t types.Type) {
+	s.variables[name] = t
+	s.constants[name] = true
+}
+
+func (s *Scope) IsConst(name string) bool {
+	if _, ok := s.variables[name]; ok {
+		return s.constants[name]
+	}
+	if s.parent != nil {
+		return s.parent.IsConst(name)
+	}
+	return false
 }
 
 func (s *Scope) GetVar(name string) (types.Type, bool) {
@@ -191,11 +209,29 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		}
 
 	case *ast.LetStatement:
+		if s.Value == nil {
+			c.report("E0103", fmt.Sprintf("Variable %q requires an initializer until definite assignment is supported", s.Name.Value), s.Token.Line, s.Token.Column)
+			return
+		}
 		valType := c.inferExpression(s.Value)
-		var declType types.Type
+		declarationType := types.Type(valType)
+		if s.Type != "" {
+			var err error
+			declarationType, err = types.Parse(s.Type)
+			if err != nil {
+				c.report("E0101", fmt.Sprintf("Invalid type %q for variable %q: %v", s.Type, s.Name.Value, err), s.Token.Line, s.Token.Column)
+				return
+			}
+			if !valType.AssignableTo(declarationType) {
+				c.report("E0101", fmt.Sprintf("Cannot initialize variable %q of type %s with %s", s.Name.Value, declarationType, valType), s.Token.Line, s.Token.Column)
+			}
+		}
 		if s.Name != nil {
-			declType = valType
-			c.currentScope.SetVar(s.Name.Value, declType)
+			if s.Constant {
+				c.currentScope.SetConst(s.Name.Value, declarationType)
+			} else {
+				c.currentScope.SetVar(s.Name.Value, declarationType)
+			}
 		}
 
 	case *ast.StateDeclaration:
@@ -255,13 +291,21 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		c.currentScope = outerScope
 
 	case *ast.AssignStatement:
-		valType := c.inferExpression(s.Value)
 		if s.Name != nil {
 			varType, ok := c.currentScope.GetVar(s.Name.Value)
 			if !ok {
 				c.report("E0102", fmt.Sprintf("Undefined identifier %q in assignment", s.Name.Value), s.Token.Line, s.Token.Column)
 				return
 			}
+			if c.currentScope.IsConst(s.Name.Value) {
+				c.report("E0104", fmt.Sprintf("Cannot assign to constant %q", s.Name.Value), s.Token.Line, s.Token.Column)
+				return
+			}
+			value := s.Value
+			if s.Operator == "+=" || s.Operator == "-=" {
+				value = &ast.InfixExpression{Token: s.Token, Left: s.Name, Operator: strings.TrimSuffix(s.Operator, "="), Right: s.Value}
+			}
+			valType := c.inferExpression(value)
 			if !valType.AssignableTo(varType) {
 				c.report("E0101", fmt.Sprintf("Cannot assign %s to variable of type %s", valType, varType), s.Token.Line, s.Token.Column)
 			}
@@ -474,6 +518,17 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 			fnScope.SetVar(p.Value, types.Any)
 		}
 
+		fnType := &types.FunctionType{
+			Params:     paramTypes,
+			ReturnType: types.Any,
+		}
+		if e.Name != "" {
+			c.currentScope.SetFunc(e.Name, fnType)
+			c.currentScope.SetVar(e.Name, fnType)
+			fnScope.SetFunc(e.Name, fnType)
+			fnScope.SetVar(e.Name, fnType)
+		}
+
 		oldScope := c.currentScope
 		c.currentScope = fnScope
 		if e.Body != nil {
@@ -483,10 +538,7 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 		}
 		c.currentScope = oldScope
 
-		return &types.FunctionType{
-			Params:     paramTypes,
-			ReturnType: types.Any,
-		}
+		return fnType
 
 	case *ast.CallExpression:
 		fnType := c.inferExpression(e.Function)

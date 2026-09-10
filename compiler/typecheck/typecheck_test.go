@@ -37,6 +37,43 @@ func TestTypecheckValid(t *testing.T) {
 	}
 }
 
+func TestTypecheckAnnotatedLet(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantValid   bool
+		wantErrCode string
+	}{
+		{name: "matching initializer", input: `let count: i32 = 0;`, wantValid: true},
+		{name: "mismatched initializer", input: `let count: i32 = "zero";`, wantErrCode: "E0101"},
+		{name: "unknown annotation", input: `let count: Missing = 0;`, wantErrCode: "E0101"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			p := parseProgram(t, test.input)
+			program := p.ParseProgram()
+			if len(p.Errors()) > 0 {
+				t.Fatalf("parse errors: %v", p.Errors())
+			}
+
+			checker := NewChecker()
+			valid := checker.CheckProgram(program)
+			if valid != test.wantValid {
+				t.Fatalf("valid=%v, diagnostics=%v", valid, checker.Diagnostics)
+			}
+			if test.wantErrCode != "" {
+				for _, diagnostic := range checker.Diagnostics {
+					if diagnostic.Code == test.wantErrCode {
+						return
+					}
+				}
+				t.Fatalf("expected %s, diagnostics=%v", test.wantErrCode, checker.Diagnostics)
+			}
+		})
+	}
+}
+
 func TestTypecheckAppStatement(t *testing.T) {
 	p := parseProgram(t, `
 	app {
@@ -141,6 +178,26 @@ func TestTypecheckUndefinedVariable(t *testing.T) {
 	}
 }
 
+func TestTypecheckRejectsAssignmentToUndefinedVariable(t *testing.T) {
+	p := parseProgram(t, `missing = 1;`)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	checker := NewChecker()
+	if checker.CheckProgram(program) {
+		t.Fatal("expected assignment to an undefined variable to fail typechecking")
+	}
+
+	for _, diagnostic := range checker.Diagnostics {
+		if diagnostic.Code == "E0102" {
+			return
+		}
+	}
+	t.Fatalf("expected E0102, got diagnostics: %v", checker.Diagnostics)
+}
+
 func TestTypecheckWhileAndTemplate(t *testing.T) {
 	input := `
 	let name = "Nilang";
@@ -165,3 +222,121 @@ func TestTypecheckWhileAndTemplate(t *testing.T) {
 		t.Fatalf("Expected valid typecheck for while and template")
 	}
 }
+
+func TestTypecheckRejectsConstantMutation(t *testing.T) {
+	p := parseProgram(t, `
+	const MAX = 100;
+	MAX = 200;
+	`)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	checker := NewChecker()
+	if checker.CheckProgram(prog) {
+		t.Fatal("expected mutating a const to fail typechecking")
+	}
+
+	found := false
+	for _, d := range checker.Diagnostics {
+		if d.Code == "E0104" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected diagnostic E0104, got: %v", checker.Diagnostics)
+	}
+}
+
+func TestTypecheckScopeShadowingAndClosureCapture(t *testing.T) {
+	p := parseProgram(t, `
+	let x = 10;
+	fn outer() {
+		let x = "shadowed";
+		fn inner() {
+			return x;
+		}
+		return inner();
+	}
+	let result = outer();
+	`)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	checker := NewChecker()
+	if !checker.CheckProgram(prog) {
+		t.Fatalf("expected valid shadowing and closure to pass, got: %v", checker.Diagnostics)
+	}
+}
+
+func TestTypecheckCompoundAssignment(t *testing.T) {
+	p := parseProgram(t, `
+	let count = 0;
+	count += 5;
+	count -= 2;
+	`)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	checker := NewChecker()
+	if !checker.CheckProgram(prog) {
+		t.Fatalf("expected compound assignment to pass, got: %v", checker.Diagnostics)
+	}
+}
+
+func TestTypecheckEntityValidation(t *testing.T) {
+	// 1. Duplicate entity field should emit E0203
+	p := parseProgram(t, `
+	entity Product {
+		id: UUID primary;
+		name: String;
+		name: String;
+	}
+	`)
+	prog := p.ParseProgram()
+	checker := NewChecker()
+	if checker.CheckProgram(prog) {
+		t.Fatal("expected duplicate field to fail typecheck")
+	}
+	foundE0203 := false
+	for _, d := range checker.Diagnostics {
+		if d.Code == "E0203" {
+			foundE0203 = true
+			break
+		}
+	}
+	if !foundE0203 {
+		t.Fatalf("expected E0203 for duplicate field, got: %v", checker.Diagnostics)
+	}
+
+	// 2. Multiple primary keys should emit E0205
+	p2 := parseProgram(t, `
+	entity Account {
+		id: UUID primary;
+		email: String primary;
+	}
+	`)
+	prog2 := p2.ParseProgram()
+	checker2 := NewChecker()
+	if checker2.CheckProgram(prog2) {
+		t.Fatal("expected multiple primary keys to fail typecheck")
+	}
+	foundE0205 := false
+	for _, d := range checker2.Diagnostics {
+		if d.Code == "E0205" {
+			foundE0205 = true
+			break
+		}
+	}
+	if !foundE0205 {
+		t.Fatalf("expected E0205 for multiple primary keys, got: %v", checker2.Diagnostics)
+	}
+}
+
+

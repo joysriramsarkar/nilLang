@@ -78,6 +78,12 @@ ConstStatement ::= "const" Identifier ( ":" Type )? "=" Expression ";"
 AssignStatement::= Identifier ( "=" | "+=" | "-=" ) Expression ";"
 ReturnStatement::= "return" Expression? ";"
 
+An assignment updates an existing binding. It never declares a binding. The
+target is resolved lexically from the innermost scope outward; assigning to an
+unresolved identifier is a compile-time error (`E0102`). Bindings are introduced
+by declarations such as `let`, `const`, `state`, parameters, and named language
+constructs only.
+
 IfStatement    ::= "if" "(" Expression ")" BlockStatement ( "else" ( IfStatement | BlockStatement ) )?
 WhileStatement ::= "while" "(" Expression ")" BlockStatement
 ForStatement   ::= "for" "(" Identifier "in" Expression ")" BlockStatement

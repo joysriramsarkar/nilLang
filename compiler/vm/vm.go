@@ -36,6 +36,7 @@ type VM struct {
 	lastPoppedStackElem object.Object
 
 	NativeCallHandler func(name string, args []object.Object) (object.Object, error)
+	CapabilityChecker func(apiName string) error
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -121,7 +122,7 @@ func (vm *VM) Run() error {
 	var ins code.Instructions
 	var op code.Opcode
 
-	for vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
+	for vm.framesIndex > 0 && vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
 		vm.currentFrame().ip++
 
 		ip = vm.currentFrame().ip
@@ -278,7 +279,11 @@ func (vm *VM) Run() error {
 			returnValue := vm.pop()
 
 			frame := vm.popFrame()
-			vm.truncateStack(frame.basePointer - 1)
+			if frame.basePointer > 0 {
+				vm.truncateStack(frame.basePointer - 1)
+			} else {
+				vm.truncateStack(0)
+			}
 
 			err := vm.push(returnValue)
 			if err != nil {
@@ -287,7 +292,11 @@ func (vm *VM) Run() error {
 
 		case code.OpReturn:
 			frame := vm.popFrame()
-			vm.truncateStack(frame.basePointer - 1)
+			if frame.basePointer > 0 {
+				vm.truncateStack(frame.basePointer - 1)
+			} else {
+				vm.truncateStack(0)
+			}
 
 			err := vm.push(Null)
 			if err != nil {
@@ -421,6 +430,12 @@ func (vm *VM) Run() error {
 				args[i] = vm.pop()
 			}
 
+			if vm.CapabilityChecker != nil {
+				if err := vm.CapabilityChecker(name); err != nil {
+					return fmt.Errorf("capability denied: %w", err)
+				}
+			}
+
 			if vm.NativeCallHandler != nil {
 				res, err := vm.NativeCallHandler(name, args)
 				if err != nil {
@@ -533,6 +548,22 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	}
 	if isNumeric(left) && isNumeric(right) {
 		return vm.executeFloatComparison(op, left, right)
+	}
+	if left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ {
+		leftVal := left.(*object.String).Value
+		rightVal := right.(*object.String).Value
+		switch op {
+		case code.OpEqual:
+			return vm.push(nativeBoolToBooleanObject(leftVal == rightVal))
+		case code.OpNotEqual:
+			return vm.push(nativeBoolToBooleanObject(leftVal != rightVal))
+		case code.OpGreaterThan:
+			return vm.push(nativeBoolToBooleanObject(leftVal > rightVal))
+		case code.OpGreaterThanEqual:
+			return vm.push(nativeBoolToBooleanObject(leftVal >= rightVal))
+		default:
+			return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+		}
 	}
 
 	switch op {

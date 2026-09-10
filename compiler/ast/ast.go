@@ -44,19 +44,29 @@ func (p *Program) String() string {
 // ─── STATEMENTS ─────────────────────────────────────────────────────────────
 
 type LetStatement struct {
-	Token token.Token // token.LET
-	Name  *Identifier
-	Value Expression
+	Token    token.Token // token.LET or token.CONST
+	Name     *Identifier
+	Type     string
+	Value    Expression
+	Constant bool
 }
 
 func (ls *LetStatement) statementNode()       {}
 func (ls *LetStatement) TokenLiteral() string { return ls.Token.Literal }
 func (ls *LetStatement) String() string {
 	var out bytes.Buffer
-	out.WriteString(ls.TokenLiteral() + " ")
+	keyword := "let"
+	if ls.Constant {
+		keyword = "const"
+	}
+	out.WriteString(keyword + " ")
 	out.WriteString(ls.Name.String())
-	out.WriteString(" = ")
+	if ls.Type != "" {
+		out.WriteString(": ")
+		out.WriteString(ls.Type)
+	}
 	if ls.Value != nil {
+		out.WriteString(" = ")
 		out.WriteString(ls.Value.String())
 	}
 	out.WriteString(";")
@@ -64,9 +74,10 @@ func (ls *LetStatement) String() string {
 }
 
 type AssignStatement struct {
-	Token token.Token // token.IDENT
-	Name  *Identifier
-	Value Expression
+	Token    token.Token // token.IDENT
+	Name     *Identifier
+	Operator string
+	Value    Expression
 }
 
 func (as *AssignStatement) statementNode()       {}
@@ -74,7 +85,11 @@ func (as *AssignStatement) TokenLiteral() string { return as.Token.Literal }
 func (as *AssignStatement) String() string {
 	var out bytes.Buffer
 	out.WriteString(as.Name.String())
-	out.WriteString(" = ")
+	operator := as.Operator
+	if operator == "" {
+		operator = "="
+	}
+	out.WriteString(" " + operator + " ")
 	if as.Value != nil {
 		out.WriteString(as.Value.String())
 	}

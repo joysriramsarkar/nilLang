@@ -13,6 +13,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
@@ -164,6 +165,15 @@ func executeSource(source string, useVM bool) {
 		fmt.Fprintf(os.Stderr, "❌ সিনট্যাক্স ত্রুটি:\n")
 		for _, e := range p.Errors() {
 			fmt.Fprintf(os.Stderr, "   %s\n", e)
+		}
+		os.Exit(1)
+	}
+
+	checker := typecheck.NewChecker()
+	if !checker.CheckProgram(program) {
+		fmt.Fprintln(os.Stderr, "❌ টাইপ ত্রুটি:")
+		for _, diagnostic := range checker.Diagnostics {
+			fmt.Fprintf(os.Stderr, "   %s\n", diagnostic.String())
 		}
 		os.Exit(1)
 	}
