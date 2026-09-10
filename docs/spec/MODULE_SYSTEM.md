@@ -1,9 +1,17 @@
 # NilLang Module System Specification
 **Version:** 1.0.0-draft  
-**Status:** Authoritative Normative Specification  
-**Conformance Level:** Nilang 0.1 Core Freeze
+**Status:** Draft Normative Specification
+**Conformance Level:** Nilang 0.1 module subset
 
 ---
+
+## 0. Implementation Boundary
+
+Import parsing, evaluator module loading, cache-based single initialization,
+and cycle rejection are implemented. Complete export/private visibility,
+selective-import enforcement across every backend, package resolution through
+`nil.lock`, and concurrent initialization are planned. Sections describing
+those behaviors are target contracts until their module tests are enabled.
 
 ## 1. Overview & Principles
 

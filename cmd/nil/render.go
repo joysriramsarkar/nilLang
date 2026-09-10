@@ -10,6 +10,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/ui"
 )
 
@@ -24,6 +25,14 @@ func loadDeclarativeUI(source string) (*declarativeUIApp, error) {
 	program := p.ParseProgram()
 	if len(p.Errors()) > 0 {
 		return nil, fmt.Errorf("parse errors: %s", strings.Join(p.Errors(), "; "))
+	}
+	checker := typecheck.NewChecker()
+	if !checker.CheckProgram(program) {
+		diagnostics := make([]string, 0, len(checker.Diagnostics))
+		for _, diagnostic := range checker.Diagnostics {
+			diagnostics = append(diagnostics, diagnostic.String())
+		}
+		return nil, fmt.Errorf("type errors: %s", strings.Join(diagnostics, "; "))
 	}
 
 	env := object.NewEnvironment()

@@ -1,9 +1,16 @@
 # NilLang Execution Semantics Specification
 **Version:** 1.0.0-draft  
-**Status:** Authoritative Normative Specification  
-**Conformance Level:** Nilang 0.1 Core Freeze
+**Status:** Draft Normative Specification
+**Conformance Level:** Nilang 0.1 Core Freeze (implemented subset only)
 
 ---
+
+## 0. Normative Scope
+
+The evaluator/VM conformance suite is the executable authority for Nilang 0.1
+runtime semantics. A rule in this document is frozen only when both engines
+implement it and a conformance case covers it. Optimized VM and WASM parity are
+future conformance levels.
 
 ## 1. Evaluation Order & Determinism
 
@@ -74,7 +81,11 @@ Global Scope
   ```
 
 ### 3.2 Closure Capture
-Functions capture identifiers referenced from enclosing scopes (free variables) by reference:
+Functions capture identifiers referenced from enclosing scopes (free variables).
+Read-only capture and nearest-scope resolution are implemented by both engines.
+Mutable by-reference capture is implemented by the evaluator but remains
+planned for the Stack VM; it is therefore not a frozen Nilang 0.1 guarantee.
+The target semantics are:
 ```nil
 fn makeCounter() {
     let count = 0;
@@ -132,9 +143,13 @@ counter(); // 2
 
 ## 6. Conformance Obligations
 
-Every backend (Evaluator, Stack VM, Optimized VM, WASM) must produce bit-for-bit identical results for:
+The Evaluator and Stack VM must produce equivalent typed values or runtime
+error categories for:
 1. All arithmetic operations and division exceptions.
 2. Short-circuit side effects.
 3. Closure variable capture and mutation.
 4. Scope shadowing boundaries.
 5. Exit codes and standard output.
+
+Optimized VM and WASM become subject to this obligation only when they are
+added to the executable conformance harness.

@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
@@ -55,14 +57,19 @@ func main() {
 }
 
 func executeSource(source string) {
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
+	program, syntaxErrors, typeErrors := parseAndCheck(source)
 
-	if len(p.Errors()) > 0 {
+	if len(syntaxErrors) > 0 {
 		fmt.Fprintf(os.Stderr, "❌ Syntax errors:\n")
-		for _, e := range p.Errors() {
-			fmt.Fprintf(os.Stderr, "   %s\n", e)
+		for _, message := range syntaxErrors {
+			fmt.Fprintf(os.Stderr, "   %s\n", message)
+		}
+		os.Exit(1)
+	}
+	if len(typeErrors) > 0 {
+		fmt.Fprintln(os.Stderr, "❌ Type errors:")
+		for _, message := range typeErrors {
+			fmt.Fprintf(os.Stderr, "   %s\n", message)
 		}
 		os.Exit(1)
 	}
@@ -91,4 +98,25 @@ func executeSource(source string) {
 			}
 		}
 	}
+}
+
+func parseAndCheck(source string) (*ast.Program, []string, []string) {
+	l := lexer.New(source)
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	if len(p.Errors()) > 0 {
+		return program, p.Errors(), nil
+	}
+
+	checker := typecheck.NewChecker()
+	if checker.CheckProgram(program) {
+		return program, nil, nil
+	}
+
+	typeErrors := make([]string, 0, len(checker.Diagnostics))
+	for _, diagnostic := range checker.Diagnostics {
+		typeErrors = append(typeErrors, diagnostic.String())
+	}
+	return program, nil, typeErrors
 }

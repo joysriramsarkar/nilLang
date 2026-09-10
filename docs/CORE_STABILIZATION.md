@@ -43,6 +43,8 @@ land as an independently tested commit in the listed order.
    Owner: typechecker, evaluator, compiler symbol table, HIR lowering.
    Cover global, module, function, block, loop, component, handler, and closure
    scopes, including shadowing, capture, mutation, and lifetime.
+   Replace Stack VM free-value copies with shared capture cells before declaring
+   mutable closure capture conforming; `OpGetFree` is currently read-only.
    Test: the same scope corpus runs through checker, evaluator, and VM.
 
 5. **Add language conformance harness**

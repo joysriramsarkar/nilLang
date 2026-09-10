@@ -99,3 +99,50 @@ func TestRuntimeArchitecturalDecoupling(t *testing.T) {
 			strings.Join(violations, "\n"))
 	}
 }
+
+func TestCoreFreezeContract(t *testing.T) {
+	repositoryRoot := ".."
+	freezePath := filepath.Join(repositoryRoot, "CORE_FREEZE.md")
+	freeze, err := os.ReadFile(freezePath)
+	if err != nil {
+		t.Fatalf("core freeze contract is required: %v", err)
+	}
+
+	requiredFrozenAreas := []string{
+		"Language syntax frozen",
+		"Type semantics frozen",
+		"Scope semantics frozen",
+		"Assignment semantics frozen",
+		"Function semantics frozen",
+		"Module semantics frozen",
+		"Error semantics frozen",
+		"Concurrency semantics frozen",
+		"Memory semantics frozen",
+		"Effect semantics frozen",
+		"Capability semantics frozen",
+	}
+	for _, frozenArea := range requiredFrozenAreas {
+		if !strings.Contains(string(freeze), frozenArea) {
+			t.Errorf("core freeze contract is missing %q", frozenArea)
+		}
+	}
+
+	requiredSpecifications := []string{
+		"LANGUAGE_SPEC.md",
+		"MEMORY_MODEL.md",
+		"MODULE_SYSTEM.md",
+		"SEMANTICS.md",
+		"TYPE_SYSTEM.md",
+	}
+	for _, specification := range requiredSpecifications {
+		path := filepath.Join(repositoryRoot, "docs", "spec", specification)
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			t.Errorf("normative specification %s is required: %v", specification, statErr)
+			continue
+		}
+		if info.Size() == 0 {
+			t.Errorf("normative specification %s must not be empty", specification)
+		}
+	}
+}

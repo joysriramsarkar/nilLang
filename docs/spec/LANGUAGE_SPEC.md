@@ -1,9 +1,30 @@
 # NilLang (নীলাং) Formal Language Specification
 **Version:** 1.0.0-draft  
-**Status:** Authoritative Normative Specification  
+**Status:** Draft Normative Specification
 **Ecosystem:** NilLang Core Language, Alap Framework, Onuron OS  
 
 ---
+
+## 0. Conformance Status
+
+This document defines the target language and labels the Nilang 0.1 contract.
+Only behavior marked **Implemented** is a frozen compatibility guarantee.
+**Experimental** behavior may be exercised but is not stable. **Planned**
+behavior is design material and must not be accepted as an implementation
+claim.
+
+| Surface | Nilang 0.1 status |
+| --- | --- |
+| Literals, expressions, `let`, `const`, assignment, functions, closures, arrays, hashes, and control flow | Implemented |
+| Components, state, events, entities, `task`, `await`, and imports | Experimental |
+| Structs, enums, traits, generics syntax, unions, `Optional`, `Result`, and pattern matching | Planned |
+| Compile-time effect and capability enforcement | Planned |
+| AST -> typed HIR -> MIR as the only backend path | Planned |
+| Stack VM bytecode image | Implemented |
+| WASM target | Experimental |
+
+The repository tests, not an unchecked example in this draft, are the
+conformance evidence for an Implemented row.
 
 ## 1. Introduction & Design Philosophy
 
@@ -147,7 +168,7 @@ producer by the CLI renderer.
 | `Void` | Empty return | - | Unit type for side-effect operations |
 | `Any` | Dynamic object | `null` | Unchecked top type |
 
-### 4.2 Compound & Algebraic Types
+### 4.2 Compound & Algebraic Types (Planned Unless Marked Otherwise)
 1. **Struct**: Named collection of typed fields.
    ```nil
    struct User {
@@ -178,7 +199,7 @@ producer by the CLI renderer.
 
 ---
 
-## 5. Effect & Capability System
+## 5. Effect & Capability System (Planned)
 
 NilLang incorporates security and side-effect guarantees directly into the compiler type checker.
 
@@ -212,7 +233,7 @@ If a function invokes a Camera API when `"Camera"` is missing from the capabilit
 
 ## 6. Intermediate Representations (HIR & MIR)
 
-### 6.1 Compiler Pipeline Architecture
+### 6.1 Target Compiler Pipeline Architecture
 ```text
            Source Code (.nil)
                    │
@@ -338,7 +359,7 @@ Proposal (EXPERIMENTAL)
 
 ---
 
-## 8. WebAssembly (WASM) Target
+## 8. WebAssembly (Experimental Target)
 
 NilLang compiles directly from MIR to standard WebAssembly (WASM) modules (`.wasm`) and WebAssembly Text (`.wat`):
 - Generates standard WASM sections: Types, Functions, Exports, Memory, and Code.

@@ -7,6 +7,16 @@ import (
 	"github.com/joysriramsarkar/nilLang/pkg/alap/ui"
 )
 
+func TestLoadDeclarativeUIRejectsTypeErrorsBeforeEvaluation(t *testing.T) {
+	_, err := loadDeclarativeUI(`component Broken { render { missing = 1; return {"type": "Page"}; } }`)
+	if err == nil {
+		t.Fatal("expected undeclared assignment to fail type checking")
+	}
+	if !strings.Contains(err.Error(), "E0102") {
+		t.Fatalf("expected E0102 diagnostic, got: %v", err)
+	}
+}
+
 func TestDeclarativeUIAppDispatchRerenders(t *testing.T) {
 	app, err := loadDeclarativeUI(`
 component Counter {

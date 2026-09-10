@@ -1,9 +1,22 @@
 # NilLang Type System Specification
 **Version:** 1.0.0-draft  
-**Status:** Authoritative Normative Specification  
-**Conformance Level:** Nilang 0.1 Core Freeze
+**Status:** Draft Normative Specification
+**Conformance Level:** Nilang 0.1 Core Freeze (implemented subset only)
 
 ---
+
+## 0. Implementation Boundary
+
+Nilang 0.1 implements inference and checking for core literals, annotated and
+inferred bindings, constants, assignment, functions, arrays, hashes, entities,
+and components. Generic syntax, algebraic data types, exhaustive matching,
+function effect types, and domain scalar representations remain planned.
+
+`Any` is still inferred at untyped function parameters, component boundaries,
+and built-ins whose generic contracts have not been implemented. Explicit-only
+`Any` is the frozen target rule, not yet a conformance claim. Every new fallback
+to implicit `Any` is prohibited during the core freeze; existing origins are
+tracked by the P0 stabilization backlog.
 
 ## 1. Design Principles & Soundness Guarantee
 
@@ -11,7 +24,7 @@ NilLang enforces a sound, static, and structural type system. The compiler type 
 
 ### Cardinal Rules:
 1. **Verification-First Gate**: Compilation immediately aborts if any expression fails static verification. Downstream representations (HIR, MIR, Bytecode, WASM) are never constructed for ill-typed programs.
-2. **Explicit Intent for `Any`**: The `Any` type is an explicit top type indicating deliberate untyped/dynamic intent by the programmer (`let x: Any = ...`). Silent implicit fallback to `Any` during type inference is strictly prohibited. Uninferable expressions result in diagnostic `E0101`.
+2. **Explicit Intent for `Any` (target rule)**: The `Any` type is an explicit top type indicating deliberate untyped/dynamic intent by the programmer (`let x: Any = ...`). Existing implicit fallback sites are compatibility debt and must be removed before this rule becomes an implemented guarantee.
 3. **No Unsound Numeric Coercion**: Implicit promotion between integer sizes or between integers and floating-point values is prohibited. Conversions must be explicit via casting functions (`int(f)`, `float(i)`).
 4. **Definite Assignment**: Variables must be initialized upon declaration (`let x: Int = 10;`). Uninitialized variable declarations are rejected with `E0103`.
 
@@ -56,7 +69,7 @@ NilLang enforces a sound, static, and structural type system. The compiler type 
 
 ---
 
-## 4. Compound & Generic Types
+## 4. Compound & Generic Types (Partially Implemented)
 
 ### 4.1 Arrays (`Array<T>` / `List<T>`)
 An ordered, homogeneous sequence of elements:

@@ -251,6 +251,19 @@ func TestDualEngineConformance(t *testing.T) {
 			Expected: int64(50),
 		},
 		{
+			Name: "Nested Closure Captures Nearest Shadow",
+			Source: `
+			let x = 10;
+			fn outer() {
+				let x = 20;
+				fn inner() { return x; }
+				return inner();
+			}
+			outer() + x;
+			`,
+			Expected: int64(30),
+		},
+		{
 			Name: "Function Scoping Shadowing Preserves Outer Binding",
 			Source: `
 			let x = 100;
@@ -378,6 +391,41 @@ func TestDualEngineConformance(t *testing.T) {
 				t.Fatalf("[%s] Output mismatch! Got=%v (%T), Expected=%v (%T)",
 					tc.Name, evalVal, evalVal, tc.Expected, tc.Expected)
 			}
+		})
+	}
+}
+
+func TestStaticDiagnosticConformance(t *testing.T) {
+	testCases := []struct {
+		name         string
+		source       string
+		expectedCode string
+	}{
+		{name: "Type Mismatch", source: `let count: Int = "zero";`, expectedCode: "E0101"},
+		{name: "Undefined Read", source: `let count = missing;`, expectedCode: "E0102"},
+		{name: "Undefined Assignment", source: `missing = 1;`, expectedCode: "E0102"},
+		{name: "Missing Initializer", source: `let count: Int;`, expectedCode: "E0103"},
+		{name: "Constant Mutation", source: `const limit = 10; limit = 20;`, expectedCode: "E0104"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			parsed := parser.New(lexer.New(testCase.source))
+			program := parsed.ParseProgram()
+			if len(parsed.Errors()) > 0 {
+				t.Fatalf("parser errors: %v", parsed.Errors())
+			}
+
+			checker := typecheck.NewChecker()
+			if checker.CheckProgram(program) {
+				t.Fatalf("expected diagnostic %s", testCase.expectedCode)
+			}
+			for _, diagnostic := range checker.Diagnostics {
+				if diagnostic.Code == testCase.expectedCode {
+					return
+				}
+			}
+			t.Fatalf("expected diagnostic %s, got: %v", testCase.expectedCode, checker.Diagnostics)
 		})
 	}
 }

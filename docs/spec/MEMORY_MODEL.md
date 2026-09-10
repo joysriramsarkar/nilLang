@@ -1,9 +1,17 @@
 # NilLang Memory Model Specification
 **Version:** 1.0.0-draft  
-**Status:** Authoritative Normative Specification  
-**Conformance Level:** Nilang 0.1 Core Freeze
+**Status:** Draft Normative Specification
+**Conformance Level:** Nilang 0.1 GC design contract
 
 ---
+
+## 0. Implementation Boundary
+
+The repository contains a tracing mark-and-sweep collector with cycle tests.
+Integration of every VM value, closure, task, component, and native handle into
+one managed heap is not yet a Nilang 0.1 guarantee. Root kinds below are the
+required integration checklist; a root is conforming only when backed by a GC
+test.
 
 ## 1. Managed Execution & Memory Safety Guarantee
 
@@ -38,7 +46,8 @@ Objects allocated on the managed heap:
 
 ## 3. Native Interoperability & FFI Handle Retention
 
-When Nilang objects cross into native host code (Go runtime, C bridge, or Rust FFI):
+The future native-handle boundary must obey these rules when Nilang objects
+cross into host code (Go runtime, C bridge, or Rust FFI):
 1. **Explicit Retention (`RetainHandle`)**: Prevents the GC from reclaiming the target object while held by external foreign code.
 2. **Explicit Release (`ReleaseHandle`)**: Unregisters the foreign root, making the object eligible for future garbage collection cycles.
 3. Unmanaged pointer manipulation is strictly sequestered inside `unsafe` blocks.
