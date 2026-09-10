@@ -213,6 +213,16 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 			c.report("E0103", fmt.Sprintf("Variable %q requires an initializer until definite assignment is supported", s.Name.Value), s.Token.Line, s.Token.Column)
 			return
 		}
+		if fnLit, ok := s.Value.(*ast.FunctionLiteral); ok && s.Name != nil {
+			if fnLit.Name == "" {
+				fnLit.Name = s.Name.Value
+			}
+			placeholder := &types.FunctionType{
+				ReturnType: types.Any,
+			}
+			c.currentScope.SetFunc(s.Name.Value, placeholder)
+			c.currentScope.SetVar(s.Name.Value, placeholder)
+		}
 		valType := c.inferExpression(s.Value)
 		declarationType := types.Type(valType)
 		if s.Type != "" {

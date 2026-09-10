@@ -338,3 +338,27 @@ func TestTypecheckEntityValidation(t *testing.T) {
 		t.Fatalf("expected E0205 for multiple primary keys, got: %v", checker2.Diagnostics)
 	}
 }
+
+func TestTypecheckRecursiveLetFunction(t *testing.T) {
+	p := parseProgram(t, `
+	let fibonacci = fn(n) {
+		if (n == 0) {
+			return 0;
+		}
+		if (n == 1) {
+			return 1;
+		}
+		return fibonacci(n - 1) + fibonacci(n - 2);
+	};
+	let val = fibonacci(10);
+	`)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parse errors: %v", p.Errors())
+	}
+
+	checker := NewChecker()
+	if !checker.CheckProgram(prog) {
+		t.Fatalf("expected recursive let function to pass, got: %v", checker.Diagnostics)
+	}
+}

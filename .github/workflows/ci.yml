@@ -41,6 +41,7 @@ jobs:
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
 
@@ -75,17 +76,35 @@ jobs:
           go build -o bin/nilkey.exe ./cmd/nilkey
           go build -o bin/softbusd.exe ./cmd/softbusd
 
-      - name: Verify CLI version
+      - name: Verify CLI version (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
-          ./bin/nil version || .\bin\nil.exe version
+          ./bin/nil version
 
-      - name: Test Running Hello Onuron
+      - name: Verify CLI version (Windows)
+        if: matrix.os == 'windows-latest'
         run: |
-          ./bin/nil run examples/hello-onuron/src/main.nil || .\bin\nil.exe run examples/hello-onuron/src/main.nil
+          .\bin\nil.exe version
 
-      - name: Test Declarative UI Render
+      - name: Test Running Hello Onuron (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
-          ./bin/nil render || .\bin\nil.exe render
+          ./bin/nil run examples/hello-onuron/src/main.nil
+
+      - name: Test Running Hello Onuron (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          .\bin\nil.exe run examples/hello-onuron/src/main.nil
+
+      - name: Test Declarative UI Render (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          ./bin/nil render
+
+      - name: Test Declarative UI Render (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          .\bin\nil.exe render
 
   postgres-integration:
     name: PostgreSQL Integration Tests
