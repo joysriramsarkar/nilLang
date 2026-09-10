@@ -74,8 +74,8 @@ func TestLockfileIntegrityAndFrozen(t *testing.T) {
 
 	// Missing dependency in lockfile:
 	missingManifest := map[string]string{
-		"std-http":  "1.2.0",
-		"std-json":  "0.9.0",
+		"std-http": "1.2.0",
+		"std-json": "0.9.0",
 	}
 	if err := loadedLf.CheckFrozen(missingManifest); err == nil {
 		t.Fatal("expected CheckFrozen error on missing dependency, got nil")

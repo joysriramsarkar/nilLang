@@ -130,4 +130,3 @@ func TestConcurrentChildTaskAggregation(t *testing.T) {
 		t.Fatalf("expected sum %d, got %d", expectedSum, sum)
 	}
 }
-

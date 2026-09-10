@@ -338,5 +338,3 @@ func TestTypecheckEntityValidation(t *testing.T) {
 		t.Fatalf("expected E0205 for multiple primary keys, got: %v", checker2.Diagnostics)
 	}
 }
-
-

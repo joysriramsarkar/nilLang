@@ -376,7 +376,7 @@ func (ps *PurchaseService) ReceiveGoods(
 		// Update product in memory
 		if prod, found := ps.catalog.FindByID(it.ProductID); found {
 			newWAC := calculateWAC(prod.Stock, prod.Cost, recQty, it.CostPrice)
-			prod.Cost = newWAC
+			_ = ps.catalog.UpdateCost(it.ProductID, newWAC)
 			if ps.inventory != nil {
 				_, _ = ps.inventory.RecordMovement(it.ProductID, MovementPurchase, recQty, p.PONumber,
 					fmt.Sprintf("Goods received from %s", p.PONumber))

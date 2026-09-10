@@ -429,4 +429,3 @@ func TestCapabilitySecurityRejection(t *testing.T) {
 		t.Fatalf("expected capability denied error, got: %v", err)
 	}
 }
-

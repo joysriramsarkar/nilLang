@@ -213,4 +213,3 @@ func TestLSPUnknownMethodReturnsMethodNotFound(t *testing.T) {
 		t.Fatal("server did not exit within timeout")
 	}
 }
-

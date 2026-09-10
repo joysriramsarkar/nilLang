@@ -54,7 +54,8 @@ func NewCustomerRepository() *CustomerRepository {
 func (cr *CustomerRepository) AddCustomer(c *Customer) {
 	cr.mu.Lock()
 	defer cr.mu.Unlock()
-	cr.customers[c.ID] = c
+	cp := *c
+	cr.customers[c.ID] = &cp
 }
 
 // FindByID finds customer by ID
@@ -62,7 +63,11 @@ func (cr *CustomerRepository) FindByID(id string) (*Customer, bool) {
 	cr.mu.RLock()
 	defer cr.mu.RUnlock()
 	c, ok := cr.customers[id]
-	return c, ok
+	if !ok {
+		return nil, false
+	}
+	cp := *c
+	return &cp, true
 }
 
 // AllCustomers returns list of customers
@@ -71,7 +76,8 @@ func (cr *CustomerRepository) AllCustomers() []*Customer {
 	defer cr.mu.RUnlock()
 	list := make([]*Customer, 0, len(cr.customers))
 	for _, c := range cr.customers {
-		list = append(list, c)
+		cp := *c
+		list = append(list, &cp)
 	}
 	return list
 }

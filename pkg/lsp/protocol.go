@@ -107,10 +107,10 @@ type DidCloseTextDocumentParams struct {
 
 // Server Capabilities & Initialize
 type ServerCapabilities struct {
-	TextDocumentSync           int                       `json:"textDocumentSync"`
-	DocumentFormattingProvider bool                      `json:"documentFormattingProvider"`
-	HoverProvider              bool                      `json:"hoverProvider"`
-	CompletionProvider         *CompletionServerOptions  `json:"completionProvider,omitempty"`
+	TextDocumentSync           int                      `json:"textDocumentSync"`
+	DocumentFormattingProvider bool                     `json:"documentFormattingProvider"`
+	HoverProvider              bool                     `json:"hoverProvider"`
+	CompletionProvider         *CompletionServerOptions `json:"completionProvider,omitempty"`
 }
 
 type CompletionServerOptions struct {

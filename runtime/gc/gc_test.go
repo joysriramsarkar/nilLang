@@ -125,4 +125,3 @@ func TestGCLargeRingCycleReclamation(t *testing.T) {
 		t.Fatalf("expected 0 remaining objects, got %d", collector.ObjectCount())
 	}
 }
-

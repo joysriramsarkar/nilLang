@@ -90,4 +90,3 @@ func TestFormatterIfElseAndHash(t *testing.T) {
 		t.Fatalf("hash mismatch:\nGot:\n%s\nExpected:\n%s", fHash, expectedHash)
 	}
 }
-

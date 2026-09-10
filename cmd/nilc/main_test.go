@@ -54,4 +54,3 @@ func TestCompileSourceRejectsConstantReassignment(t *testing.T) {
 		t.Fatal("constant reassignment must not produce bytecode")
 	}
 }
-

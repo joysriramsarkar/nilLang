@@ -595,7 +595,6 @@ func (c *Compiler) loadSymbolForCapture(s Symbol) {
 	}
 }
 
-
 func (c *Compiler) Bytecode() *Bytecode {
 	return &Bytecode{
 		Instructions: c.currentInstructions(),

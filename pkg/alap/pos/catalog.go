@@ -62,12 +62,13 @@ func (c *CatalogRepository) AddCategory(cat *Category) {
 func (c *CatalogRepository) AddProduct(p *Product) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.products[p.ID] = p
+	cp := *p
+	c.products[p.ID] = &cp
 	if p.SKU != "" {
-		c.bySKU[strings.ToUpper(p.SKU)] = p
+		c.bySKU[strings.ToUpper(p.SKU)] = &cp
 	}
 	if p.Barcode != "" {
-		c.byBarcode[p.Barcode] = p
+		c.byBarcode[p.Barcode] = &cp
 	}
 }
 
@@ -76,7 +77,11 @@ func (c *CatalogRepository) FindByID(id string) (*Product, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	p, ok := c.products[id]
-	return p, ok
+	if !ok {
+		return nil, false
+	}
+	cp := *p
+	return &cp, true
 }
 
 // FindBySKU looks up product by exact SKU
@@ -84,7 +89,11 @@ func (c *CatalogRepository) FindBySKU(sku string) (*Product, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	p, ok := c.bySKU[strings.ToUpper(strings.TrimSpace(sku))]
-	return p, ok
+	if !ok {
+		return nil, false
+	}
+	cp := *p
+	return &cp, true
 }
 
 // FindByBarcode looks up product by exact Barcode
@@ -92,7 +101,11 @@ func (c *CatalogRepository) FindByBarcode(barcode string) (*Product, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	p, ok := c.byBarcode[strings.TrimSpace(barcode)]
-	return p, ok
+	if !ok {
+		return nil, false
+	}
+	cp := *p
+	return &cp, true
 }
 
 // Search finds products matching SKU, Barcode, English name or Bengali name
@@ -111,7 +124,8 @@ func (c *CatalogRepository) Search(query string) []*Product {
 			strings.Contains(strings.ToLower(p.NameBn), q) ||
 			strings.Contains(strings.ToLower(p.SKU), q) ||
 			strings.Contains(p.Barcode, q) {
-			results = append(results, p)
+			cp := *p
+			results = append(results, &cp)
 		}
 	}
 	return results
@@ -123,7 +137,8 @@ func (c *CatalogRepository) AllProducts() []*Product {
 	defer c.mu.RUnlock()
 	list := make([]*Product, 0, len(c.products))
 	for _, p := range c.products {
-		list = append(list, p)
+		cp := *p
+		list = append(list, &cp)
 	}
 	return list
 }
@@ -134,7 +149,8 @@ func (c *CatalogRepository) AllCategories() []*Category {
 	defer c.mu.RUnlock()
 	list := make([]*Category, 0, len(c.categories))
 	for _, cat := range c.categories {
-		list = append(list, cat)
+		cp := *cat
+		list = append(list, &cp)
 	}
 	return list
 }
@@ -155,4 +171,17 @@ func (c *CatalogRepository) UpdateStock(productID string, delta data.Decimal) (d
 	}
 	p.Stock = newStock
 	return p.Stock, nil
+}
+
+// UpdateCost updates WAC cost for a product
+func (c *CatalogRepository) UpdateCost(productID string, cost data.Money) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	p, exists := c.products[productID]
+	if !exists {
+		return fmt.Errorf("product not found: %s", productID)
+	}
+	p.Cost = cost
+	return nil
 }

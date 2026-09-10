@@ -575,8 +575,8 @@ func TestDualEngineConformance(t *testing.T) {
 			Expected: "Hello, World!",
 		},
 		{
-			Name: "String Length Non ASCII",
-			Source: `len("abc");`,
+			Name:     "String Length Non ASCII",
+			Source:   `len("abc");`,
 			Expected: int64(3),
 		},
 		{
@@ -605,18 +605,18 @@ func TestDualEngineConformance(t *testing.T) {
 
 		// ── FLOAT / INT MIXED ARITHMETIC ──────────────────────────────────────
 		{
-			Name: "Float Plus Int Promotes To Float",
-			Source: `1.5 + 2;`,
+			Name:     "Float Plus Int Promotes To Float",
+			Source:   `1.5 + 2;`,
 			Expected: float64(3.5),
 		},
 		{
-			Name: "Int Plus Float Promotes To Float",
-			Source: `3 + 0.14;`,
+			Name:     "Int Plus Float Promotes To Float",
+			Source:   `3 + 0.14;`,
 			Expected: float64(3.14),
 		},
 		{
-			Name: "Float Division",
-			Source: `7.0 / 2.0;`,
+			Name:     "Float Division",
+			Source:   `7.0 / 2.0;`,
 			Expected: float64(3.5),
 		},
 		{
@@ -625,13 +625,13 @@ func TestDualEngineConformance(t *testing.T) {
 			Expected: float64(3.5),
 		},
 		{
-			Name: "Float Comparison Equal",
-			Source: `1.5 == 1.5;`,
+			Name:     "Float Comparison Equal",
+			Source:   `1.5 == 1.5;`,
 			Expected: true,
 		},
 		{
-			Name: "Float Greater Than Int",
-			Source: `2.5 > 2;`,
+			Name:     "Float Greater Than Int",
+			Source:   `2.5 > 2;`,
 			Expected: true,
 		},
 

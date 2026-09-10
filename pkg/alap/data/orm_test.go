@@ -247,4 +247,3 @@ func TestSQLInjectionResistance(t *testing.T) {
 		}
 	}
 }
-
