@@ -1,0 +1,23 @@
+// Nilang Standard Library
+// Module: std/time/duration
+
+const SECOND = 1;
+const MINUTE = 60;
+const HOUR = 3600;
+const DAY = 86400;
+
+let seconds = fn(value) {
+    return value;
+};
+
+let minutes = fn(value) {
+    return value * MINUTE;
+};
+
+let hours = fn(value) {
+    return value * HOUR;
+};
+
+let days = fn(value) {
+    return value * DAY;
+};

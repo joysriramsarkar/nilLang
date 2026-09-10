@@ -1,0 +1,20 @@
+// Nilang Standard Library
+// Module: std/text/unicode
+//
+// High-level Unicode helpers available with the current string runtime.
+
+let lowercase = fn(value) {
+    return lower(value);
+};
+
+let uppercase = fn(value) {
+    return upper(value);
+};
+
+let trimText = fn(value) {
+    return trim(value);
+};
+
+let length = fn(value) {
+    return len(value);
+};

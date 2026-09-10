@@ -1,0 +1,14 @@
+// Nilang Standard Library
+// Module: std/concurrency/channel
+
+let create = fn(capacity) {
+    return Channel(capacity);
+};
+
+let sendValue = fn(channel, value) {
+    return send(channel, value);
+};
+
+let receiveValue = fn(channel) {
+    return receive(channel);
+};

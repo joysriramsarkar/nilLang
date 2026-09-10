@@ -1,0 +1,3 @@
+// std/json — host-backed, capability: std.json
+let encode = fn(value) { return native("std.json.encode", value); };
+let decode = fn(text) { return native("std.json.decode", text); };

@@ -1,0 +1,13 @@
+// Nilang Standard Library
+// Module: std/data/base64
+//
+// Base64 requires a host primitive for byte-level correctness.
+// This module defines the public contract only.
+
+let encode = fn(value) {
+    return null;
+};
+
+let decode = fn(value) {
+    return null;
+};

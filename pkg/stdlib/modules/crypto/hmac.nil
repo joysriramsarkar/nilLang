@@ -1,0 +1,6 @@
+// Nilang Standard Library
+// Module: std/crypto/hmac
+
+let sha256 = fn(key, message) {
+    return null;
+};

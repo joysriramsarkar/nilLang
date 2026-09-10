@@ -1,0 +1,8 @@
+// Nilang Standard Library
+// Module: std/net/socket
+//
+// Socket operations require a Network capability and host primitives.
+
+let connect = fn(address) {
+    return null;
+};

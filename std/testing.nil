@@ -1,0 +1,58 @@
+// Nilang Standard Library
+// Module: std/testing
+
+let assertTrue = fn(condition, message) {
+    return assert(condition, message);
+};
+
+let assertFalse = fn(condition, message) {
+    return assert(!condition, message);
+};
+
+let assertEqual = fn(actual, expected, message) {
+    if (actual != expected) {
+        if (message == null) {
+            return assert(false, "expected " + str(expected) + ", got " + str(actual));
+        }
+
+        return assert(false, message);
+    }
+
+    return true;
+};
+
+let assertNotEqual = fn(actual, expected, message) {
+    if (actual == expected) {
+        if (message == null) {
+            return assert(false, "values should not be equal");
+        }
+
+        return assert(false, message);
+    }
+
+    return true;
+};
+
+let assertNull = fn(value, message) {
+    if (message == null) {
+        return assert(value == null, "expected null, got " + str(value));
+    }
+
+    return assert(value == null, message);
+};
+
+let assertNotNull = fn(value, message) {
+    if (message == null) {
+        return assert(value != null, "expected non-null value");
+    }
+
+    return assert(value != null, message);
+};
+
+let assertContains = fn(value, target, message) {
+    if (message == null) {
+        message = "expected " + str(value) + " to contain " + str(target);
+    }
+
+    return assert(contains(value, target), message);
+};

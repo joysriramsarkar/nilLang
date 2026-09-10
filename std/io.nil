@@ -1,0 +1,52 @@
+// Nilang Standard Library
+// Module: std/io
+//
+// Host-backed facade over current Nilang IO builtins.
+
+let write = fn(value) {
+    return print(value);
+};
+
+let writeLine = fn(value) {
+    return println(value);
+};
+
+let readLine = fn(prompt) {
+    return input(prompt);
+};
+
+let readText = fn(path) {
+    return readFile(path);
+};
+
+let writeText = fn(path, content) {
+    return writeFile(path, content);
+};
+
+let exists = fn(path) {
+    return fileExists(path);
+};
+
+let isDirectory = fn(path) {
+    return isDir(path);
+};
+
+let directory = fn(path) {
+    return listDir(path);
+};
+
+let mkdir = fn(path) {
+    return makeDir(path);
+};
+
+let remove = fn(path) {
+    return removeFile(path);
+};
+
+let currentDirectory = fn() {
+    return cwd();
+};
+
+let changeDirectory = fn(path) {
+    return chdir(path);
+};

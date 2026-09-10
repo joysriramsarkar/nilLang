@@ -20,6 +20,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/pkg/stdlib"
 )
 
 var (
@@ -101,6 +102,11 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 	}
 
 	importPath := node.Path.Value
+
+	// Case 0: Embedded Standard Library module (std/...)
+	if strings.HasPrefix(importPath, "std/") && stdlib.Exists(importPath) {
+		return evalStdlibImport(node, importPath, env)
+	}
 
 	// Check if this is a native module
 	if mod, ok := GetNativeModule(importPath); ok {
@@ -243,6 +249,52 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 
 	moduleCacheMu.Lock()
 	moduleCache[canonicalPath] = modObj
+	moduleCacheMu.Unlock()
+
+	return bindModuleToEnv(node, modObj, importPath, env)
+}
+
+func evalStdlibImport(node *ast.ImportStatement, importPath string, env *object.Environment) object.Object {
+	moduleCacheMu.Lock()
+	if cachedMod, ok := moduleCache[importPath]; ok {
+		moduleCacheMu.Unlock()
+		return bindModuleToEnv(node, cachedMod, importPath, env)
+	}
+	moduleCacheMu.Unlock()
+
+	content, err := stdlib.Read(importPath)
+	if err != nil {
+		return newError("failed to read standard library module %q: %s", importPath, err)
+	}
+
+	l := lexer.New(content)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		return newError("parse error in standard library module %q: %s", importPath, strings.Join(p.Errors(), "; "))
+	}
+
+	subEnv := object.NewEnclosedEnvironment(env)
+	res := Eval(prog, subEnv)
+	if isError(res) {
+		return res
+	}
+
+	modPairs := make(map[object.HashKey]object.HashPair)
+	for k, v := range subEnv.Store() {
+		sk := &object.String{Value: k}
+		modPairs[sk.HashKey()] = object.HashPair{Key: sk, Value: v}
+	}
+	if resHash, isHash := res.(*object.Hash); isHash {
+		for k, v := range resHash.Pairs {
+			modPairs[k] = v
+		}
+	}
+
+	modObj := &object.Hash{Pairs: modPairs}
+
+	moduleCacheMu.Lock()
+	moduleCache[importPath] = modObj
 	moduleCacheMu.Unlock()
 
 	return bindModuleToEnv(node, modObj, importPath, env)

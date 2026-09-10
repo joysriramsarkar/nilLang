@@ -1,0 +1,16 @@
+// std/net/url — pure Nilang
+let scheme = fn(value) {
+    let parts = split(value, "://");
+    if (len(parts) < 2) { return ""; }
+    return first(parts);
+};
+let withoutScheme = fn(value) {
+    let parts = split(value, "://");
+    if (len(parts) < 2) { return value; }
+    return substr(value, len(parts[0]) + 3);
+};
+let host = fn(value) {
+    let parts = split(withoutScheme(value), "/");
+    if (len(parts) == 0) { return ""; }
+    return first(parts);
+};

@@ -2,6 +2,7 @@ package typecheck
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
@@ -183,6 +184,17 @@ func (c *Checker) initBuiltins() {
 		{"tensorDot", []types.Type{types.Any, types.Any}},
 		{"tensorMatmul", []types.Type{types.Any, types.Any}},
 		{"tensorSum", []types.Type{types.Any}},
+		{"Ok", []types.Type{types.Any}},
+		{"Err", []types.Type{types.Any}},
+		{"Some", []types.Type{types.Any}},
+		{"None", []types.Type{}},
+		{"unwrap", []types.Type{types.Any}},
+		{"unwrapOr", []types.Type{types.Any, types.Any}},
+		{"isOk", []types.Type{types.Any}},
+		{"isErr", []types.Type{types.Any}},
+		{"isSome", []types.Type{types.Any}},
+		{"isNone", []types.Type{types.Any}},
+		{"native", []types.Type{types.Any}},
 	} {
 		c.currentScope.SetFunc(builtin.name, &types.FunctionType{
 			Params:     builtin.params,
@@ -201,6 +213,19 @@ func (c *Checker) CheckProgram(prog *ast.Program) bool {
 
 func (c *Checker) checkStatement(stmt ast.Statement) {
 	switch s := stmt.(type) {
+	case *ast.ImportStatement:
+		if s.Alias != nil {
+			c.currentScope.SetVar(s.Alias.Value, types.Any)
+		} else if len(s.Names) > 0 {
+			for _, ident := range s.Names {
+				c.currentScope.SetVar(ident.Value, types.Any)
+			}
+		} else if s.Path != nil {
+			baseName := filepath.Base(s.Path.Value)
+			baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+			c.currentScope.SetVar(baseName, types.Any)
+		}
+
 	case *ast.AppStatement:
 		if s.Body != nil {
 			for _, nested := range s.Body.Statements {

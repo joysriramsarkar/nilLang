@@ -31,6 +31,8 @@ const (
 	ENTITY_OBJ            = "ENTITY"
 	FUTURE_OBJ            = "FUTURE"
 	CHANNEL_OBJ           = "CHANNEL"
+	RESULT_OBJ            = "RESULT"
+	OPTIONAL_OBJ          = "OPTIONAL"
 )
 
 type Object interface {
@@ -350,4 +352,47 @@ func (e *Entity) Inspect() string {
 	}
 	out.WriteString("}")
 	return out.String()
+}
+
+// ─── RESULT OBJECT (web-implications.md Section 1) ──────────────────────────
+
+type Result struct {
+	IsOk  bool
+	Value Object
+	Error Object
+}
+
+func (r *Result) Type() ObjectType { return RESULT_OBJ }
+func (r *Result) Inspect() string {
+	if r.IsOk {
+		val := "null"
+		if r.Value != nil {
+			val = r.Value.Inspect()
+		}
+		return fmt.Sprintf("Ok(%s)", val)
+	}
+	err := "null"
+	if r.Error != nil {
+		err = r.Error.Inspect()
+	}
+	return fmt.Sprintf("Err(%s)", err)
+}
+
+// ─── OPTIONAL OBJECT (web-implications.md Section 1) ────────────────────────
+
+type Optional struct {
+	HasValue bool
+	Value    Object
+}
+
+func (o *Optional) Type() ObjectType { return OPTIONAL_OBJ }
+func (o *Optional) Inspect() string {
+	if o.HasValue {
+		val := "null"
+		if o.Value != nil {
+			val = o.Value.Inspect()
+		}
+		return fmt.Sprintf("Some(%s)", val)
+	}
+	return "None"
 }

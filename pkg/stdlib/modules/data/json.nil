@@ -1,0 +1,13 @@
+// Nilang Standard Library
+// Module: std/data/json
+//
+// JSON needs a native serializer/parser for full correctness.
+// These are deliberately explicit placeholders until the host bridge lands.
+
+let encode = fn(value) {
+    return null;
+};
+
+let decode = fn(text) {
+    return null;
+};

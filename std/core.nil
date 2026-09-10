@@ -1,0 +1,45 @@
+// Nilang Standard Library
+// Module: std/core
+
+let identity = fn(value) {
+    return value;
+};
+
+let isNull = fn(value) {
+    return value == null;
+};
+
+let defaultValue = fn(value, fallback) {
+    if (value == null) {
+        return fallback;
+    }
+    return value;
+};
+
+let clamp = fn(value, low, high) {
+    if (value < low) {
+        return low;
+    }
+
+    if (value > high) {
+        return high;
+    }
+
+    return value;
+};
+
+let repeat = fn(value, count) {
+    let result = [];
+    let i = 0;
+
+    while (i < count) {
+        result = push(result, value);
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let swap = fn(a, b) {
+    return [b, a];
+};

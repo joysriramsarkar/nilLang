@@ -1,0 +1,33 @@
+{
+  "name": "nilang-stdlib",
+  "version": "0.1.0",
+  "language": "nilang",
+  "namespace": "std",
+  "modules": [
+    "core",
+    "math",
+    "strings",
+    "collections",
+    "testing",
+    "io",
+    "fs",
+    "process",
+    "time/instant",
+    "time/duration",
+    "time/date",
+    "net/url",
+    "data/csv",
+    "data/json",
+    "data/base64",
+    "text/encoding",
+    "text/unicode",
+    "crypto/hash",
+    "crypto/hmac",
+    "crypto/random",
+    "net/http",
+    "net/socket",
+    "concurrency/task",
+    "concurrency/channel",
+    "concurrency/sync"
+  ]
+}

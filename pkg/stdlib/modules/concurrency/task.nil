@@ -1,0 +1,14 @@
+// Nilang Standard Library
+// Module: std/concurrency/task
+//
+// `task` and `await` are language constructs in the current runtime.
+
+let spawn = fn(work) {
+    return task {
+        return work();
+    };
+};
+
+let wait = fn(future) {
+    return await future;
+};

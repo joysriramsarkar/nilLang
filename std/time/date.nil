@@ -1,0 +1,17 @@
+// Nilang Standard Library
+// Module: std/time/date
+//
+// Stable date API waits for a real Date type in core.
+// This file provides Unix-second helpers only.
+
+let unixNow = fn() {
+    return time();
+};
+
+let addSeconds = fn(timestamp, seconds) {
+    return timestamp + seconds;
+};
+
+let difference = fn(a, b) {
+    return a - b;
+};

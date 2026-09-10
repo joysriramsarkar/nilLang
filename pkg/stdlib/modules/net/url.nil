@@ -1,0 +1,37 @@
+// Nilang Standard Library
+// Module: std/net/url
+//
+// Conservative URL helpers implemented without a native parser.
+
+let scheme = fn(value) {
+    let marker = "://";
+    let parts = split(value, marker);
+
+    if (len(parts) < 2) {
+        return "";
+    }
+
+    return first(parts);
+};
+
+let withoutScheme = fn(value) {
+    let marker = "://";
+    let parts = split(value, marker);
+
+    if (len(parts) < 2) {
+        return value;
+    }
+
+    return substr(value, len(parts[0]) + len(marker));
+};
+
+let host = fn(value) {
+    let restText = withoutScheme(value);
+    let parts = split(restText, "/");
+
+    if (len(parts) == 0) {
+        return "";
+    }
+
+    return first(parts);
+};

@@ -1,0 +1,13 @@
+// Nilang Standard Library
+// Module: std/net/http
+//
+// HTTP is intentionally a host-backed module.
+// No fake implementation is exposed.
+
+let get = fn(url) {
+    return null;
+};
+
+let post = fn(url, body) {
+    return null;
+};

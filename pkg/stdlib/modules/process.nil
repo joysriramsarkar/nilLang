@@ -1,0 +1,37 @@
+// Nilang Standard Library
+// Module: std/process
+//
+// Process facade over the current `exec` builtin.
+// `exec` returns the process exit code.
+
+let run = fn(command) {
+    return exec(command);
+};
+
+let runWith = fn(command, args) {
+    if (len(args) == 0) {
+        return exec(command);
+    }
+
+    if (len(args) == 1) {
+        return exec(command, args[0]);
+    }
+
+    if (len(args) == 2) {
+        return exec(command, args[0], args[1]);
+    }
+
+    if (len(args) == 3) {
+        return exec(command, args[0], args[1], args[2]);
+    }
+
+    if (len(args) == 4) {
+        return exec(command, args[0], args[1], args[2], args[3]);
+    }
+
+    return null;
+};
+
+let exitCode = fn(code) {
+    return code;
+};

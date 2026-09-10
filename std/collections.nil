@@ -1,0 +1,245 @@
+// Nilang Standard Library
+// Module: std/collections
+
+let empty = fn() {
+    return [];
+};
+
+let singleton = fn(value) {
+    return [value];
+};
+
+let contains = fn(values, target) {
+    let i = 0;
+
+    while (i < len(values)) {
+        if (values[i] == target) {
+            return true;
+        }
+
+        i = i + 1;
+    }
+
+    return false;
+};
+
+let indexOf = fn(values, target) {
+    let i = 0;
+
+    while (i < len(values)) {
+        if (values[i] == target) {
+            return i;
+        }
+
+        i = i + 1;
+    }
+
+    return -1;
+};
+
+let reverse = fn(values) {
+    let result = [];
+    let i = len(values) - 1;
+
+    while (i >= 0) {
+        result = push(result, values[i]);
+        i = i - 1;
+    }
+
+    return result;
+};
+
+let map = fn(values, mapper) {
+    let result = [];
+    let i = 0;
+
+    while (i < len(values)) {
+        result = push(result, mapper(values[i]));
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let filter = fn(values, predicate) {
+    let result = [];
+    let i = 0;
+
+    while (i < len(values)) {
+        if (predicate(values[i])) {
+            result = push(result, values[i]);
+        }
+
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let find = fn(values, predicate) {
+    let i = 0;
+
+    while (i < len(values)) {
+        if (predicate(values[i])) {
+            return values[i];
+        }
+
+        i = i + 1;
+    }
+
+    return null;
+};
+
+let any = fn(values, predicate) {
+    let i = 0;
+
+    while (i < len(values)) {
+        if (predicate(values[i])) {
+            return true;
+        }
+
+        i = i + 1;
+    }
+
+    return false;
+};
+
+let all = fn(values, predicate) {
+    let i = 0;
+
+    while (i < len(values)) {
+        if (!predicate(values[i])) {
+            return false;
+        }
+
+        i = i + 1;
+    }
+
+    return true;
+};
+
+let count = fn(values, predicate) {
+    let total = 0;
+    let i = 0;
+
+    while (i < len(values)) {
+        if (predicate(values[i])) {
+            total = total + 1;
+        }
+
+        i = i + 1;
+    }
+
+    return total;
+};
+
+let reduce = fn(values, initial, reducer) {
+    let result = initial;
+    let i = 0;
+
+    while (i < len(values)) {
+        result = reducer(result, values[i]);
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let sum = fn(values) {
+    let result = 0;
+    let i = 0;
+
+    while (i < len(values)) {
+        result = result + values[i];
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let product = fn(values) {
+    let result = 1;
+    let i = 0;
+
+    while (i < len(values)) {
+        result = result * values[i];
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let take = fn(values, countValue) {
+    let result = [];
+    let limit = countValue;
+
+    if (limit < 0) {
+        limit = 0;
+    }
+
+    if (limit > len(values)) {
+        limit = len(values);
+    }
+
+    let i = 0;
+
+    while (i < limit) {
+        result = push(result, values[i]);
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let drop = fn(values, countValue) {
+    let result = [];
+    let start = countValue;
+
+    if (start < 0) {
+        start = 0;
+    }
+
+    if (start > len(values)) {
+        start = len(values);
+    }
+
+    let i = start;
+
+    while (i < len(values)) {
+        result = push(result, values[i]);
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let range = fn(start, end) {
+    let result = [];
+    let i = start;
+
+    while (i < end) {
+        result = push(result, i);
+        i = i + 1;
+    }
+
+    return result;
+};
+
+let enumerate = fn(values) {
+    let result = [];
+    let i = 0;
+
+    while (i < len(values)) {
+        result = push(
+            result,
+            {
+                "index": i,
+                "value": values[i]
+            }
+        );
+
+        i = i + 1;
+    }
+
+    return result;
+};

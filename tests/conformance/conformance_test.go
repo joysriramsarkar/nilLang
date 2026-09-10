@@ -816,6 +816,705 @@ func TestDualEngineConformance(t *testing.T) {
 			`,
 			Expected: int64(6),
 		},
+
+		// ── CONFORMANCE EXPANSION (94 → 150+ CASES) ──────────────────────────
+
+		// Algorithms & Recursion
+		{
+			Name: "GCD Euclidean Algorithm",
+			Source: `
+			let gcd = fn(a, b) {
+				if (b == 0) { return a; }
+				return gcd(b, a % b);
+			};
+			gcd(48, 18);
+			`,
+			Expected: int64(6),
+		},
+		{
+			Name: "Sum of Digits Recursive",
+			Source: `
+			let sumDigits = fn(n) {
+				if (n < 10) { return n; }
+				return (n % 10) + sumDigits(n / 10);
+			};
+			sumDigits(12345);
+			`,
+			Expected: int64(15),
+		},
+		{
+			Name: "Collatz Sequence Step Count",
+			Source: `
+			let collatz = fn(n, steps) {
+				if (n == 1) { return steps; }
+				if (n % 2 == 0) {
+					return collatz(n / 2, steps + 1);
+				} else {
+					return collatz(3 * n + 1, steps + 1);
+				}
+			};
+			collatz(6, 0);
+			`,
+			Expected: int64(8),
+		},
+		{
+			Name: "Binary Search Iterative In Array",
+			Source: `
+			let arr = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91];
+			let target = 23;
+			let low = 0;
+			let high = len(arr) - 1;
+			let found = -1;
+			while (low <= high) {
+				let mid = (low + high) / 2;
+				if (arr[mid] == target) {
+					found = mid;
+					low = high + 1;
+				} else {
+					if (arr[mid] < target) {
+						low = mid + 1;
+					} else {
+						high = mid - 1;
+					}
+				}
+			}
+			found;
+			`,
+			Expected: int64(5),
+		},
+		{
+			Name: "Matrix 2x2 Determinant",
+			Source: `
+			let det2x2 = fn(m) {
+				return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+			};
+			det2x2([[4, 6], [3, 8]]);
+			`,
+			Expected: int64(14),
+		},
+		{
+			Name: "Iterative Factorial While Loop",
+			Source: `
+			let fact = fn(n) {
+				let res = 1;
+				let i = 1;
+				while (i <= n) {
+					res = res * i;
+					i += 1;
+				}
+				return res;
+			};
+			fact(6);
+			`,
+			Expected: int64(720),
+		},
+		{
+			Name: "Max Of Array Recursive",
+			Source: `
+			let findMax = fn(arr, idx, currentMax) {
+				if (idx >= len(arr)) { return currentMax; }
+				let nextMax = currentMax;
+				if (arr[idx] > currentMax) {
+					nextMax = arr[idx];
+				}
+				return findMax(arr, idx + 1, nextMax);
+			};
+			let numbers = [14, 82, 3, 99, 45, 61];
+			findMax(numbers, 1, numbers[0]);
+			`,
+			Expected: int64(99),
+		},
+		{
+			Name: "Min Of Array Recursive",
+			Source: `
+			let findMin = fn(arr, idx, currentMin) {
+				if (idx >= len(arr)) { return currentMin; }
+				let nextMin = currentMin;
+				if (arr[idx] < currentMin) {
+					nextMin = arr[idx];
+				}
+				return findMin(arr, idx + 1, nextMin);
+			};
+			let numbers = [14, 82, 3, 99, 45, 61];
+			findMin(numbers, 1, numbers[0]);
+			`,
+			Expected: int64(3),
+		},
+		{
+			Name: "Linear Search First Index",
+			Source: `
+			let search = fn(arr, target) {
+				let i = 0;
+				while (i < len(arr)) {
+					if (arr[i] == target) { return i; }
+					i += 1;
+				}
+				return -1;
+			};
+			search([10, 20, 30, 40, 50], 30);
+			`,
+			Expected: int64(2),
+		},
+		{
+			Name: "Linear Search Missing Returns Minus One",
+			Source: `
+			let search = fn(arr, target) {
+				let i = 0;
+				while (i < len(arr)) {
+					if (arr[i] == target) { return i; }
+					i += 1;
+				}
+				return -1;
+			};
+			search([10, 20, 30, 40, 50], 999);
+			`,
+			Expected: int64(-1),
+		},
+
+		// Advanced Closures & Shared State
+		{
+			Name: "Parameterized Closure Counter With Step",
+			Source: `
+			let makeCounter = fn(start, step) {
+				let count = start;
+				return fn() {
+					count += step;
+					return count;
+				};
+			};
+			let c = makeCounter(100, 25);
+			c();
+			c();
+			c();
+			`,
+			Expected: int64(175),
+		},
+		{
+			Name: "Closure Generator Returning Successive Powers Of Two",
+			Source: `
+			let makePowerGen = fn() {
+				let val = 1;
+				return fn() {
+					let current = val;
+					val = val * 2;
+					return current;
+				};
+			};
+			let gen = makePowerGen();
+			gen();
+			gen();
+			gen();
+			gen();
+			`,
+			Expected: int64(8),
+		},
+		{
+			Name: "Function Returning Function Invocations In Line",
+			Source: `
+			let adder = fn(x) {
+				return fn(y) {
+					return fn(z) {
+						return x + y + z;
+					};
+				};
+			};
+			adder(10)(20)(30);
+			`,
+			Expected: int64(60),
+		},
+		{
+			Name: "Closure In Loop Array Accumulator",
+			Source: `
+			let makeMultiplier = fn(factor) {
+				return fn(x) { return x * factor; };
+			};
+			let double = makeMultiplier(2);
+			let triple = makeMultiplier(3);
+			double(5) + triple(5);
+			`,
+			Expected: int64(25),
+		},
+		{
+			Name: "Three Level Scope Variable Visibility",
+			Source: `
+			let g = 100;
+			let f1 = fn() {
+				let m = 20;
+				let f2 = fn() {
+					let inner = 5;
+					return g + m + inner;
+				};
+				return f2();
+			};
+			f1();
+			`,
+			Expected: int64(125),
+		},
+		{
+			Name: "Shadowing Function Parameter In Nested Function Preserves Outer Arg",
+			Source: `
+			let outer = fn(x) {
+				let inner = fn(x) {
+					return x * 10;
+				};
+				return x + inner(5);
+			};
+			outer(7);
+			`,
+			Expected: int64(57),
+		},
+		{
+			Name: "Nested Loops With Independent Counters",
+			Source: `
+			let total = 0;
+			let i = 0;
+			while (i < 3) {
+				let j = 0;
+				while (j < 4) {
+					total += 1;
+					j += 1;
+				}
+				i += 1;
+			}
+			total;
+			`,
+			Expected: int64(12),
+		},
+
+		// Hash Methods & Operations
+		{
+			Name: "Hash Method Invocation Accessing Stored Field",
+			Source: `
+			let person = {
+				"firstName": "Nil",
+				"lastName": "Lang",
+				"fullName": fn(p) { return p["firstName"] + " " + p["lastName"]; }
+			};
+			person["fullName"](person);
+			`,
+			Expected: "Nil Lang",
+		},
+		{
+			Name: "Hash Function Returning Computed Fields",
+			Source: `
+			let makeEntry = fn(k, v) {
+				return {k: v * 2};
+			};
+			let h = makeEntry("points", 150);
+			h["points"];
+			`,
+			Expected: int64(300),
+		},
+		{
+			Name: "Hash With Integer Keys",
+			Source: `
+			let table = {1: "one", 2: "two", 3: "three"};
+			table[2];
+			`,
+			Expected: "two",
+		},
+		{
+			Name: "Hash Miss On Integer Key Returns Null",
+			Source: `
+			let table = {1: "one", 2: "two"};
+			table[99];
+			`,
+			Expected: nil,
+		},
+		{
+			Name: "Hash Contains Boolean Key",
+			Source: `
+			let boolMap = {true: "yes", false: "no"};
+			boolMap[true];
+			`,
+			Expected: "yes",
+		},
+
+		// Array Operations
+		{
+			Name: "Array Push Sequential Increases Length",
+			Source: `
+			let a = [];
+			a = push(a, 10);
+			a = push(a, 20);
+			a = push(a, 30);
+			len(a);
+			`,
+			Expected: int64(3),
+		},
+		{
+			Name: "Array First And Last Single Element",
+			Source: `
+			let single = [42];
+			first(single) == last(single);
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Array Rest On Two Element Array",
+			Source: `
+			let pair = [1, 2];
+			rest(pair)[0];
+			`,
+			Expected: int64(2),
+		},
+		{
+			Name: "Array Transform Via Loop And Push",
+			Source: `
+			let squareAll = fn(arr) {
+				let out = [];
+				let i = 0;
+				while (i < len(arr)) {
+					out = push(out, arr[i] * arr[i]);
+					i += 1;
+				}
+				return out;
+			};
+			let sq = squareAll([1, 2, 3, 4]);
+			sq[2];
+			`,
+			Expected: int64(9),
+		},
+		{
+			Name: "Array Index Expression Arithmetic",
+			Source: `
+			let arr = [100, 200, 300, 400];
+			let i = 1;
+			arr[i * 2 + 1];
+			`,
+			Expected: int64(400),
+		},
+		{
+			Name: "Array Concatenation Via Recursive Function",
+			Source: `
+			let concat = fn(a, b) {
+				let res = a;
+				let i = 0;
+				while (i < len(b)) {
+					res = push(res, b[i]);
+					i += 1;
+				}
+				return res;
+			};
+			let merged = concat([1, 2], [3, 4]);
+			len(merged);
+			`,
+			Expected: int64(4),
+		},
+
+		// Result & Optional Builtin Conformance
+		{
+			Name: "Result Ok Value Unwrap",
+			Source: `
+			let r = Ok(42);
+			unwrap(r);
+			`,
+			Expected: int64(42),
+		},
+		{
+			Name: "Result Ok isOk Check",
+			Source: `
+			let r = Ok("success");
+			isOk(r);
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Result Ok isErr False",
+			Source: `
+			let r = Ok(1);
+			isErr(r);
+			`,
+			Expected: false,
+		},
+		{
+			Name: "Result Err isErr True",
+			Source: `
+			let e = Err("not found");
+			isErr(e);
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Result Err isOk False",
+			Source: `
+			let e = Err("error");
+			isOk(e);
+			`,
+			Expected: false,
+		},
+		{
+			Name: "Result unwrapOr On Ok Returns Value",
+			Source: `
+			let r = Ok(55);
+			unwrapOr(r, 999);
+			`,
+			Expected: int64(55),
+		},
+		{
+			Name: "Result unwrapOr On Err Returns Fallback",
+			Source: `
+			let r = Err("fail");
+			unwrapOr(r, 999);
+			`,
+			Expected: int64(999),
+		},
+		{
+			Name: "Optional Some Unwrap",
+			Source: `
+			let opt = Some(777);
+			unwrap(opt);
+			`,
+			Expected: int64(777),
+		},
+		{
+			Name: "Optional Some isSome True",
+			Source: `
+			let opt = Some("val");
+			isSome(opt);
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Optional Some isNone False",
+			Source: `
+			let opt = Some("val");
+			isNone(opt);
+			`,
+			Expected: false,
+		},
+		{
+			Name: "Optional None isNone True",
+			Source: `
+			let opt = None();
+			isNone(opt);
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Optional None isSome False",
+			Source: `
+			let opt = None();
+			isSome(opt);
+			`,
+			Expected: false,
+		},
+		{
+			Name: "Optional unwrapOr On Some Returns Value",
+			Source: `
+			let opt = Some(88);
+			unwrapOr(opt, 12);
+			`,
+			Expected: int64(88),
+		},
+		{
+			Name: "Optional unwrapOr On None Returns Default",
+			Source: `
+			let opt = None();
+			unwrapOr(opt, 12);
+			`,
+			Expected: int64(12),
+		},
+
+		// Boolean & Logic Edge Cases
+		{
+			Name: "De Morgan Dual Check True",
+			Source: `
+			let a = true;
+			let b = false;
+			(!a || !b) == !(a && b);
+			`,
+			Expected: true,
+		},
+		{
+			Name: "De Morgan Dual Check False",
+			Source: `
+			let a = true;
+			let b = true;
+			(!a && !b) == !(a || b);
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Multiple Logical And Chain With Final False",
+			Source: `
+			true && true && true && false;
+			`,
+			Expected: false,
+		},
+		{
+			Name: "Multiple Logical Or Chain With Final True",
+			Source: `
+			false || false || false || true;
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Nested Ternary Style If Expression In RValue",
+			Source: `
+			let classify = fn(x) {
+				return if (x < 0) {
+					"negative";
+				} else {
+					if (x == 0) {
+						"zero";
+					} else {
+						"positive";
+					};
+				};
+			};
+			classify(0);
+			`,
+			Expected: "zero",
+		},
+		{
+			Name: "If Expression Returns Negative Class",
+			Source: `
+			let classify = fn(x) {
+				return if (x < 0) { "negative" } else { "non-negative" };
+			};
+			classify(-5);
+			`,
+			Expected: "negative",
+		},
+
+		// Numbers & Arithmetic Precedence
+		{
+			Name: "Integer Division Truncates Towards Zero",
+			Source: `
+			7 / 2;
+			`,
+			Expected: int64(3),
+		},
+		{
+			Name: "Mixed Multiplication Precedence Over Addition",
+			Source: `
+			2 + 3 * 4 + 5;
+			`,
+			Expected: int64(19),
+		},
+		{
+			Name: "Parenthesized Negated Expression",
+			Source: `
+			-(5 + 5) * 2;
+			`,
+			Expected: int64(-20),
+		},
+		{
+			Name: "Double Negation On Negative Integer",
+			Source: `
+			-(-42);
+			`,
+			Expected: int64(42),
+		},
+		{
+			Name: "Float Modulo Or Arithmetic Compound",
+			Source: `
+			(10.0 / 4.0) * 2.0;
+			`,
+			Expected: float64(5.0),
+		},
+		{
+			Name: "Float Less Than Check",
+			Source: `
+			3.14 < 3.15;
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Float Greater Equal Check",
+			Source: `
+			2.5 >= 2.5;
+			`,
+			Expected: true,
+		},
+		{
+			Name: "Float Not Equal Check",
+			Source: `
+			1.1 != 1.2;
+			`,
+			Expected: true,
+		},
+
+		// Strings & String Conversion
+		{
+			Name: "Builtin Str Function On Integer",
+			Source: `
+			str(12345);
+			`,
+			Expected: "12345",
+		},
+		{
+			Name: "Builtin Str Function On Boolean",
+			Source: `
+			str(true);
+			`,
+			Expected: "true",
+		},
+		{
+			Name: "Empty String Length Is Zero",
+			Source: `
+			len("");
+			`,
+			Expected: int64(0),
+		},
+		{
+			Name: "String Comparison In If Condition",
+			Source: `
+			let status = "active";
+			if (status == "active") { 1 } else { 0 };
+			`,
+			Expected: int64(1),
+		},
+		{
+			Name: "String Four Part Concatenation",
+			Source: `
+			"Nil" + " " + "Programming" + " " + "Language";
+			`,
+			Expected: "Nil Programming Language",
+		},
+		{
+			Name: "String Index Access",
+			Source: `
+			let s = "Nilang";
+			s[0];
+			`,
+			Expected: "N",
+		},
+		{
+			Name: "String Index Out Of Bounds Returns Null",
+			Source: `
+			let s = "abc";
+			s[10];
+			`,
+			Expected: nil,
+		},
+
+		// Loop Bounds & Decrements
+		{
+			Name: "Countdown While Loop With Minus Assign",
+			Source: `
+			let countdown = 10;
+			while (countdown > 0) {
+				countdown -= 1;
+			}
+			countdown;
+			`,
+			Expected: int64(0),
+		},
+		{
+			Name: "Skip Step While Loop Accumulator",
+			Source: `
+			let sum = 0;
+			let i = 0;
+			while (i < 10) {
+				sum += i;
+				i += 2;
+			}
+			sum;
+			`,
+			Expected: int64(20),
+		},
 	}
 
 	for _, tc := range testCases {

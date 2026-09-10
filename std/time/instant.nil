@@ -1,0 +1,18 @@
+// Nilang Standard Library
+// Module: std/time/instant
+
+let nowUnix = fn() {
+    return time();
+};
+
+let isBefore = fn(a, b) {
+    return a < b;
+};
+
+let isAfter = fn(a, b) {
+    return a > b;
+};
+
+let equals = fn(a, b) {
+    return a == b;
+};

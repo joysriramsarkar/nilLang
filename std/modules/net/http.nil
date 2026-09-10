@@ -1,0 +1,3 @@
+// std/net/http — host-backed, capability: std.net
+let get = fn(url) { return native("std.http.get", url); };
+let post = fn(url, body) { return native("std.http.post", url, body); };

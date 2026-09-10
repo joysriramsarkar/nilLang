@@ -1,0 +1,16 @@
+// Nilang Standard Library
+// Module: std/text/encoding
+//
+// UTF-8 is the canonical source/string representation in Nilang.
+
+let utf8 = fn(value) {
+    return value;
+};
+
+let text = fn(value) {
+    return str(value);
+};
+
+let byteLength = fn(value) {
+    return len(value);
+};

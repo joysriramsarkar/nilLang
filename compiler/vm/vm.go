@@ -770,11 +770,25 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 	switch {
 	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
 		return vm.executeArrayIndex(left, index)
+	case left.Type() == object.STRING_OBJ && index.Type() == object.INTEGER_OBJ:
+		return vm.executeStringIndex(left, index)
 	case left.Type() == object.HASH_OBJ:
 		return vm.executeHashIndex(left, index)
 	default:
 		return fmt.Errorf("index operator not supported: %s", left.Type())
 	}
+}
+
+func (vm *VM) executeStringIndex(str, index object.Object) error {
+	strVal := str.(*object.String).Value
+	i := index.(*object.Integer).Value
+	max := int64(len(strVal) - 1)
+
+	if i < 0 || i > max {
+		return vm.push(Null)
+	}
+
+	return vm.push(&object.String{Value: string(strVal[i])})
 }
 
 func (vm *VM) executeArrayIndex(array, index object.Object) error {

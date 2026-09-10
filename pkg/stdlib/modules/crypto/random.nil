@@ -1,0 +1,12 @@
+// Nilang Standard Library
+// Module: std/crypto/random
+//
+// Cryptographically secure randomness requires a host capability.
+
+let bytes = fn(count) {
+    return null;
+};
+
+let integer = fn(maximum) {
+    return null;
+};

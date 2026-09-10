@@ -1,0 +1,9 @@
+// Nilang Standard Library
+// Module: std/concurrency/sync
+//
+// Mutex/atomic primitives require a dedicated host/runtime API.
+// Kept as an explicit contract surface for the future standard library.
+
+let unsupported = fn() {
+    return null;
+};

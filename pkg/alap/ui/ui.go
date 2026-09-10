@@ -185,7 +185,7 @@ func (p *Page) RenderSSR(theme Theme, state map[string]interface{}) string {
 		}
 	}
 
-	sb.WriteString(`</div><script src="/alap-runtime.js"></script></body></html>`)
+	sb.WriteString(fmt.Sprintf("</div><script src=\"/alap-runtime.js\"></script><script>%s</script></body></html>", AlapRuntimeJS))
 	return sb.String()
 }
 

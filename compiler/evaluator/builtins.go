@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/compiler/object"
+	"github.com/joysriramsarkar/nilLang/pkg/stdlib"
 )
 
 var stdinReader = bufio.NewReader(os.Stdin)
@@ -584,6 +585,141 @@ var Builtins = map[string]*object.Builtin{
 			}
 			os.Exit(code)
 			return NULL
+		},
+	},
+	"Ok": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `Ok`. got=%d, want=1", len(args))
+			}
+			return &object.Result{IsOk: true, Value: args[0]}
+		},
+	},
+	"Err": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `Err`. got=%d, want=1", len(args))
+			}
+			return &object.Result{IsOk: false, Error: args[0]}
+		},
+	},
+	"Some": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `Some`. got=%d, want=1", len(args))
+			}
+			return &object.Optional{HasValue: true, Value: args[0]}
+		},
+	},
+	"None": {
+		Fn: func(args ...object.Object) object.Object {
+			return &object.Optional{HasValue: false}
+		},
+	},
+	"unwrap": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `unwrap`. got=%d, want=1", len(args))
+			}
+			switch o := args[0].(type) {
+			case *object.Result:
+				if o.IsOk {
+					return o.Value
+				}
+				errStr := "unknown"
+				if o.Error != nil {
+					errStr = o.Error.Inspect()
+				}
+				return newError("unwrap failed on Err: %s", errStr)
+			case *object.Optional:
+				if o.HasValue {
+					return o.Value
+				}
+				return newError("unwrap failed on None")
+			default:
+				return newError("argument to `unwrap` must be RESULT or OPTIONAL, got %s", args[0].Type())
+			}
+		},
+	},
+	"unwrapOr": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 2 {
+				return newError("wrong number of arguments to `unwrapOr`. got=%d, want=2", len(args))
+			}
+			switch o := args[0].(type) {
+			case *object.Result:
+				if o.IsOk {
+					return o.Value
+				}
+				return args[1]
+			case *object.Optional:
+				if o.HasValue {
+					return o.Value
+				}
+				return args[1]
+			default:
+				return newError("first argument to `unwrapOr` must be RESULT or OPTIONAL, got %s", args[0].Type())
+			}
+		},
+	},
+	"isOk": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `isOk`. got=%d, want=1", len(args))
+			}
+			if r, ok := args[0].(*object.Result); ok && r.IsOk {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+	"isErr": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `isErr`. got=%d, want=1", len(args))
+			}
+			if r, ok := args[0].(*object.Result); ok && !r.IsOk {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+	"isSome": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `isSome`. got=%d, want=1", len(args))
+			}
+			if o, ok := args[0].(*object.Optional); ok && o.HasValue {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+	"isNone": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `isNone`. got=%d, want=1", len(args))
+			}
+			if o, ok := args[0].(*object.Optional); ok && !o.HasValue {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+	"native": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) < 1 {
+				return newError("wrong number of arguments to `native`. got=%d, want at least 1", len(args))
+			}
+			sym, ok := args[0].(*object.String)
+			if !ok {
+				return newError("first argument to `native` must be STRING symbol name, got %s", args[0].Type())
+			}
+			res, err := stdlib.CallHost(sym.Value, args[1:])
+			if err != nil {
+				return newError("native '%s' error: %s", sym.Value, err)
+			}
+			return res
 		},
 	},
 }

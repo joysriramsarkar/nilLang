@@ -1,0 +1,40 @@
+// Nilang Standard Library
+// Module: std/fs
+//
+// Filesystem facade. Capability enforcement is a future runtime boundary.
+
+let exists = fn(path) {
+    return fileExists(path);
+};
+
+let isDirectory = fn(path) {
+    return isDir(path);
+};
+
+let readText = fn(path) {
+    return readFile(path);
+};
+
+let writeText = fn(path, content) {
+    return writeFile(path, content);
+};
+
+let list = fn(path) {
+    return listDir(path);
+};
+
+let createDirectory = fn(path) {
+    return makeDir(path);
+};
+
+let remove = fn(path) {
+    return removeFile(path);
+};
+
+let workingDirectory = fn() {
+    return cwd();
+};
+
+let changeDirectory = fn(path) {
+    return chdir(path);
+};
