@@ -591,6 +591,10 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 		return vm.executeBinaryFloatOperation(op, left, right)
 	case leftType == object.STRING_OBJ && rightType == object.STRING_OBJ:
 		return vm.executeBinaryStringOperation(op, left, right)
+	case op == code.OpAdd && (leftType == object.STRING_OBJ || rightType == object.STRING_OBJ):
+		// Mirrors the tree-walking evaluator: "+" with exactly one string
+		// operand concatenates, coercing the other side with Inspect().
+		return vm.push(&object.String{Value: left.Inspect() + right.Inspect()})
 	default:
 		return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
 	}
@@ -696,6 +700,20 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 			return vm.push(nativeBoolToBooleanObject(leftVal <= rightVal))
 		default:
 			return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+		}
+	}
+
+	if left.Type() == object.STRING_OBJ || right.Type() == object.STRING_OBJ {
+		// Mirrors the tree-walking evaluator: equality with exactly one string
+		// operand compares the printed form of both sides. Relational
+		// operators are still rejected below.
+		leftVal := left.Inspect()
+		rightVal := right.Inspect()
+		switch op {
+		case code.OpEqual:
+			return vm.push(nativeBoolToBooleanObject(leftVal == rightVal))
+		case code.OpNotEqual:
+			return vm.push(nativeBoolToBooleanObject(leftVal != rightVal))
 		}
 	}
 

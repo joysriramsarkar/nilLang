@@ -5,6 +5,30 @@
 
 ---
 
+## 0. Implementation Boundary
+
+Implemented today: `nil.json` capability declaration, parsing and validation of
+those declarations (`ProjectConfig.ValidateCapabilities`), and the profile
+reporting in `nil profile` (`capability.CapabilityMatrix`).
+
+Not implemented, and therefore **not** a Nilang 0.1 guarantee:
+
+- The `requires` clause in §4.1 and diagnostic `E0201` do not exist in the
+  grammar or the type checker.
+- The runtime gate in §4.2 is inert: the compiler never emits `OpNativeCall`,
+  and `vm.CapabilityChecker` is only ever assigned in tests. A `native("...")`
+  call is dispatched through the ordinary `native` built-in, so host operations
+  such as `std.db.exec`, `std.http.get`, `exec`, `writeFile`, and `removeFile`
+  currently run without any grant check.
+- Effect checking in pure contexts is inert as well: the checker's pure-context
+  flag is never enabled, so `E0202` cannot fire.
+
+Everything in §4 is a draft design target. Per `CORE_FREEZE.md` it must not be
+presented as an enforced guarantee until it is wired into both engines with
+conformance coverage.
+
+---
+
 ## 1. Overview & Threat Model
 
 Capabilities form the security boundary between NilLang application code and host operating system resources (especially within Onuron OS and Alap mobile/web runtime).

@@ -12,6 +12,10 @@ import (
 	"github.com/joysriramsarkar/nilLang/pkg/nilpkg"
 )
 
+// maxDownloadBytes caps how much a registry may push at the client when it
+// does not declare a package size.
+const maxDownloadBytes = 1 << 30 // 1 GiB
+
 func cmdInstall(cfg *nilpkg.Config) {
 	if len(os.Args) < 3 {
 		fmt.Println("ব্যবহার: nilpkg install <file.nilax | package-name>")
@@ -87,7 +91,11 @@ func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nil
 	fmt.Printf("   লেখক: %s\n", pkg.Author)
 	fmt.Println()
 
-	tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%s.nilax", pkg.Name, pkg.Version))
+	// Registry-controlled fields must never steer the download outside the
+	// temporary directory, so reduce both to their base names.
+	safeName := filepath.Base(pkg.Name)
+	safeVersion := filepath.Base(pkg.Version)
+	tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%s.nilax", safeName, safeVersion))
 
 	if strings.HasPrefix(pkg.DownloadURL, "http://") || strings.HasPrefix(pkg.DownloadURL, "https://") {
 		fmt.Printf("⬇️  ডাউনলোড হচ্ছে: %s\n", pkg.DownloadURL)
@@ -110,8 +118,19 @@ func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nil
 		}
 		defer out.Close()
 
-		if _, err := io.Copy(out, resp.Body); err != nil {
+		// Never let a remote registry fill the disk: stop after the declared
+		// size (with slack) or the hard cap, whichever is smaller.
+		limit := int64(maxDownloadBytes)
+		if pkg.Size > 0 && pkg.Size < limit {
+			limit = pkg.Size
+		}
+		written, err := io.Copy(out, io.LimitReader(resp.Body, limit+1))
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "❌ ফাইল সেভ করতে ব্যর্থ: %s\n", err)
+			os.Exit(1)
+		}
+		if written > limit {
+			fmt.Fprintf(os.Stderr, "❌ ডাউনলোড আকার সীমা অতিক্রম করেছে (সর্বোচ্চ %d বাইট)\n", limit)
 			os.Exit(1)
 		}
 		out.Close()
@@ -129,6 +148,28 @@ func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nil
 	} else {
 		fmt.Fprintf(os.Stderr, "❌ প্যাকেজে কোনো ডাউনলোড ইউআরএল নেই\n")
 		os.Exit(1)
+	}
+
+	// The registry index publishes a checksum for every package. Compare it
+	// against what actually arrived before anything is unpacked, otherwise a
+	// tampered mirror can substitute arbitrary bundle contents.
+	if strings.TrimSpace(pkg.Checksum) != "" {
+		verifier := nilpkg.NewVerifier(cfg)
+		actual, err := verifier.CalculateChecksum(tempFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ চেকসাম হিসাব করা যায়নি: %s\n", err)
+			_ = os.Remove(tempFile)
+			os.Exit(1)
+		}
+		expected := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(pkg.Checksum), "sha256:"))
+		if !strings.EqualFold(actual, expected) {
+			fmt.Fprintf(os.Stderr, "❌ চেকসাম মেলেনি: রেজিস্ট্রি %s, ডাউনলোড %s\n", expected, actual)
+			_ = os.Remove(tempFile)
+			os.Exit(1)
+		}
+		fmt.Println("🔐 চেকসাম যাচাই সফল")
+	} else {
+		fmt.Fprintln(os.Stderr, "⚠️  রেজিস্ট্রিতে এই প্যাকেজের কোনো চেকসাম নেই; সত্যতা যাচাই করা যায়নি")
 	}
 
 	installFromFile(installer, tempFile)
