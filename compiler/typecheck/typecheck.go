@@ -312,7 +312,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 
 	case *ast.ComponentLiteral:
 		if s.Name == nil {
-			c.report("E0301", "Component declaration must have a name", s.Token.Line, s.Token.Column)
+			c.report("E0406", "Component declaration must have a name", s.Token.Line, s.Token.Column)
 			return
 		}
 		c.currentScope.SetVar(s.Name.Value, types.Any)
@@ -422,13 +422,13 @@ func (c *Checker) checkEntityStatement(s *ast.EntityStatement) {
 		return
 	}
 	if s.Name == nil || s.Name.Value == "" {
-		c.report("E0201", "Entity declaration must have a valid identifier name", s.Token.Line, s.Token.Column)
+		c.report("E0401", "Entity declaration must have a valid identifier name", s.Token.Line, s.Token.Column)
 		return
 	}
 
 	entName := s.Name.Value
 	if _, exists := c.currentScope.GetEntity(entName); exists {
-		c.report("E0202", fmt.Sprintf("Duplicate entity declaration: %q already exists in scope", entName), s.Token.Line, s.Token.Column)
+		c.report("E0402", fmt.Sprintf("Duplicate entity declaration: %q already exists in scope", entName), s.Token.Line, s.Token.Column)
 		return
 	}
 
@@ -438,7 +438,7 @@ func (c *Checker) checkEntityStatement(s *ast.EntityStatement) {
 
 	for _, f := range s.Fields {
 		if fieldNames[f.Name] {
-			c.report("E0203", fmt.Sprintf("Duplicate field %q in entity %q", f.Name, entName), s.Token.Line, s.Token.Column)
+			c.report("E0403", fmt.Sprintf("Duplicate field %q in entity %q", f.Name, entName), s.Token.Line, s.Token.Column)
 			continue
 		}
 		fieldNames[f.Name] = true
@@ -449,7 +449,7 @@ func (c *Checker) checkEntityStatement(s *ast.EntityStatement) {
 
 		ft, err := types.Parse(f.Type)
 		if err != nil {
-			c.report("E0204", fmt.Sprintf("Invalid type %q for field %q in entity %q: %v", f.Type, f.Name, entName, err), s.Token.Line, s.Token.Column)
+			c.report("E0404", fmt.Sprintf("Invalid type %q for field %q in entity %q: %v", f.Type, f.Name, entName, err), s.Token.Line, s.Token.Column)
 			ft = types.Any
 		}
 
@@ -464,7 +464,7 @@ func (c *Checker) checkEntityStatement(s *ast.EntityStatement) {
 	}
 
 	if primaryKeys > 1 {
-		c.report("E0205", fmt.Sprintf("Entity %q has %d primary keys; at most one primary key allowed", entName, primaryKeys), s.Token.Line, s.Token.Column)
+		c.report("E0405", fmt.Sprintf("Entity %q has %d primary keys; at most one primary key allowed", entName, primaryKeys), s.Token.Line, s.Token.Column)
 	}
 
 	entType := &types.EntityType{

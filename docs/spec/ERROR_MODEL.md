@@ -58,6 +58,14 @@ Diagnostic
 - `E0302`: Module not found at specified path.
 - `E0303`: Symbol not exported by module.
 
+#### Entities & Components (`E0401` - `E0499`)
+- `E0401`: Entity declaration without a valid identifier name.
+- `E0402`: Duplicate entity declaration in the same scope.
+- `E0403`: Duplicate field name inside one entity.
+- `E0404`: Entity field type could not be resolved.
+- `E0405`: More than one primary key declared on an entity.
+- `E0406`: Component declaration without a name.
+
 ---
 
 ## 3. Formatting Standard (Rustc-Style)

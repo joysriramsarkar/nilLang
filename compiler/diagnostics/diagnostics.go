@@ -124,7 +124,15 @@ var DiagnosticCatalog = map[string]string{
 	"E0108": "Incompatible Binary Op: Binary operator applied to incompatible operand types.",
 	"E0201": "Capability Violation: Operation requires a system capability not declared in the project manifest.",
 	"E0202": "Effect Disallowed: Function performs side-effects (IO, mutation, async) within a declared pure context.",
-	"E0301": "AI Hallucination Detected: Referenced component member does not exist in standard truth tables.",
+	"E0301": "Circular Dependency: Module import graph contains a cycle.",
+	"E0302": "Module Not Found: No module exists at the requested import path.",
+	"E0303": "Symbol Not Exported: The imported module does not export the requested symbol.",
+	"E0401": "Invalid Entity Name: Entity declaration must carry a valid identifier name.",
+	"E0402": "Duplicate Entity: An entity with this name is already declared in scope.",
+	"E0403": "Duplicate Entity Field: The entity declares the same field name twice.",
+	"E0404": "Invalid Entity Field Type: The declared field type could not be resolved.",
+	"E0405": "Multiple Primary Keys: An entity may declare at most one primary key.",
+	"E0406": "Invalid Component Name: Component declaration must have a name.",
 }
 
 // ExplainCode returns human and AI explanation for a given code

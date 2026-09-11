@@ -159,10 +159,14 @@ func (r *Reader) ExtractTo(outputDir string) error {
 	}
 
 	for path, content := range r.files {
-		fullPath := fmt.Sprintf("%s/%s", outputDir, path)
-		dir := fullPath[:len(fullPath)-len(filepath.Base(fullPath))]
+		// Bundle entry names are attacker controlled, so refuse anything that
+		// would land outside the output directory (zip slip).
+		fullPath := filepath.Join(outputDir, path)
+		if !isWithinDir(outputDir, fullPath) {
+			return fmt.Errorf("unsafe path in bundle: %s", path)
+		}
 
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 			return err
 		}
 
@@ -172,4 +176,22 @@ func (r *Reader) ExtractTo(outputDir string) error {
 	}
 
 	return nil
+}
+
+// isWithinDir reports whether target resolves to base itself or something
+// underneath it.
+func isWithinDir(base, target string) bool {
+	absBase, err := filepath.Abs(base)
+	if err != nil {
+		return false
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absBase, absTarget)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

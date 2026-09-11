@@ -7,7 +7,11 @@
 
 ## 0. Implementation Boundary
 
-The repository contains a tracing mark-and-sweep collector with cycle tests.
+The repository contains a tracing mark-and-sweep collector with cycle tests
+(`runtime/gc`). It is a standalone package today: neither the tree-walking
+evaluator nor the stack VM routes its allocations through `Track`, so no
+execution path is currently collected by it and the live root sets below are
+not scanned at runtime.
 Integration of every VM value, closure, task, component, and native handle into
 one managed heap is not yet a Nilang 0.1 guarantee. Root kinds below are the
 required integration checklist; a root is conforming only when backed by a GC

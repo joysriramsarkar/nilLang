@@ -301,7 +301,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		afterBodyPos := len(c.currentInstructions())
 		c.changeOperand(jumpNotTruthyPos, afterBodyPos)
-		c.emit(code.OpNull)
+		// A while statement is a statement, never an expression, so it must not
+		// leave a value behind: pushing one here leaks a stack slot for every
+		// loop and unbalances blocks whose last statement is a loop.
 
 	case *ast.BlockStatement:
 		for _, s := range node.Statements {

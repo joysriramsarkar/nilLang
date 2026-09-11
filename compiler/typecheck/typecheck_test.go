@@ -291,7 +291,7 @@ func TestTypecheckCompoundAssignment(t *testing.T) {
 }
 
 func TestTypecheckEntityValidation(t *testing.T) {
-	// 1. Duplicate entity field should emit E0203
+	// 1. Duplicate entity field should emit E0403
 	p := parseProgram(t, `
 	entity Product {
 		id: UUID primary;
@@ -304,18 +304,18 @@ func TestTypecheckEntityValidation(t *testing.T) {
 	if checker.CheckProgram(prog) {
 		t.Fatal("expected duplicate field to fail typecheck")
 	}
-	foundE0203 := false
+	foundE0403 := false
 	for _, d := range checker.Diagnostics {
-		if d.Code == "E0203" {
-			foundE0203 = true
+		if d.Code == "E0403" {
+			foundE0403 = true
 			break
 		}
 	}
-	if !foundE0203 {
-		t.Fatalf("expected E0203 for duplicate field, got: %v", checker.Diagnostics)
+	if !foundE0403 {
+		t.Fatalf("expected E0403 for duplicate field, got: %v", checker.Diagnostics)
 	}
 
-	// 2. Multiple primary keys should emit E0205
+	// 2. Multiple primary keys should emit E0405
 	p2 := parseProgram(t, `
 	entity Account {
 		id: UUID primary;
@@ -327,15 +327,15 @@ func TestTypecheckEntityValidation(t *testing.T) {
 	if checker2.CheckProgram(prog2) {
 		t.Fatal("expected multiple primary keys to fail typecheck")
 	}
-	foundE0205 := false
+	foundE0405 := false
 	for _, d := range checker2.Diagnostics {
-		if d.Code == "E0205" {
-			foundE0205 = true
+		if d.Code == "E0405" {
+			foundE0405 = true
 			break
 		}
 	}
-	if !foundE0205 {
-		t.Fatalf("expected E0205 for multiple primary keys, got: %v", checker2.Diagnostics)
+	if !foundE0405 {
+		t.Fatalf("expected E0405 for multiple primary keys, got: %v", checker2.Diagnostics)
 	}
 }
 

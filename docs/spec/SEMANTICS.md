@@ -22,6 +22,12 @@ NilLang evaluation is strictly deterministic and left-to-right:
    - `A && B`: If `A` evaluates to `false`, `B` is not evaluated.
    - `A || B`: If `A` evaluates to `true`, `B` is not evaluated.
 
+**Known gap (open):** hash literal entries are stored in an unordered map in the
+AST, so the tree-walking evaluator evaluates `{ ... }` keys and values in an
+unspecified order and duplicate literal keys resolve non-deterministically.
+Printing a hash is deterministic (entries are sorted for display), but the
+evaluation-order rule above is not yet satisfied for hash literals.
+
 ---
 
 ## 2. Binding, Mutation & Assignment Semantics
@@ -113,11 +119,14 @@ counter(); // 2
 
 ### 4.2 Loops (`while` and `for`)
 - `while (cond) { body }`: Evaluates `cond`. If truthy, executes `body` and repeats.
-- `for (item in collection) { body }`:
-  - Iterates over arrays in 0-indexed sequential order.
-  - Iterates over hash entries deterministically.
-- `break` exits the innermost enclosing loop immediately.
-- `continue` jumps to the next iteration of the innermost enclosing loop.
+  This is the only loop construct implemented in Nilang 0.1.
+- The following rules are **draft design targets, not implemented** in either
+  engine; there is no `for` statement, and `break` / `continue` are not keywords:
+  - `for (item in collection) { body }`:
+    - Iterates over arrays in 0-indexed sequential order.
+    - Iterates over hash entries deterministically.
+  - `break` exits the innermost enclosing loop immediately.
+  - `continue` jumps to the next iteration of the innermost enclosing loop.
 
 ---
 

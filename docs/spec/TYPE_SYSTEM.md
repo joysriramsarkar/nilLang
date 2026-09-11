@@ -116,6 +116,12 @@ let username: ?String = null;
 - Safe navigation operator `?.` short-circuits to `null` if the receiver is `null`.
 - Null coalescing `??` unwraps an optional with a fallback value.
 
+**Implementation status:** the `?T` annotation parses and type-checks, and the
+conditional expression `cond ? a : b` is implemented in both engines. The `?.`
+and `??` operators above are **draft design targets and are not implemented** —
+the lexer produces `?` followed by `.`/`?`, and the parser has no rule for
+either, so both currently fail to parse.
+
 ### 4.6 Result Types (`Result<T, E>`)
 Container representing either success (`Ok(T)`) or failure (`Err(E)`).
 

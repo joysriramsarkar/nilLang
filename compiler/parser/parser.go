@@ -795,7 +795,7 @@ func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 
 func (p *Parser) parseTernaryExpression(condition ast.Expression) ast.Expression {
 	tok := p.curToken // ?
-	p.nextToken()      // past ?
+	p.nextToken()     // past ?
 
 	consequence := p.parseExpression(LOWEST)
 	if consequence == nil {

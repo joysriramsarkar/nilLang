@@ -166,6 +166,41 @@ func TestDualEngineConformance(t *testing.T) {
 			Expected: "Hello, Nilang!",
 		},
 		{
+			Name:     "String Plus Integer Concatenates",
+			Source:   `"total: " + 42;`,
+			Expected: "total: 42",
+		},
+		{
+			Name:     "Integer Plus String Concatenates",
+			Source:   `7 + " items";`,
+			Expected: "7 items",
+		},
+		{
+			Name:     "String Equals Numeric Lookalike",
+			Source:   `"1" == 1;`,
+			Expected: true,
+		},
+		{
+			Name:     "Numeric Equals String Lookalike",
+			Source:   `1 == "1";`,
+			Expected: true,
+		},
+		{
+			Name:     "String Not Equal Numeric Lookalike",
+			Source:   `"1" != 1;`,
+			Expected: false,
+		},
+		{
+			Name:     "Substring With Non Positive Length Is Empty",
+			Source:   `substr("hello", 1, -1) == "";`,
+			Expected: true,
+		},
+		{
+			Name:     "Substring Start Beyond End Is Empty",
+			Source:   `substr("hello", 10) == "";`,
+			Expected: true,
+		},
+		{
 			Name:        "Integer Division By Zero Exception",
 			Source:      "10 / 0;",
 			ExpectError: "division by zero",
@@ -674,6 +709,29 @@ func TestDualEngineConformance(t *testing.T) {
 			Name:     "Array Index Out Of Bounds Returns Null",
 			Source:   `let a = [1, 2, 3]; a[10] == null;`,
 			Expected: true,
+		},
+		{
+			Name: "Array Index Assignment Mutates In Place",
+			Source: `
+			let a = [1, 2, 3];
+			a[1] = 9;
+			a[1];
+			`,
+			Expected: int64(9),
+		},
+		{
+			Name: "Hash Index Assignment Mutates In Place",
+			Source: `
+			let h = {"name": "nil"};
+			h["name"] = "nilang";
+			h["name"];
+			`,
+			Expected: "nilang",
+		},
+		{
+			Name:        "Array Index Assignment Out Of Bounds Errors",
+			Source:      `let a = [1, 2, 3]; a[5] = 9;`,
+			ExpectError: "index out of bounds",
 		},
 
 		// ── CONST ENFORCEMENT ─────────────────────────────────────────────────
