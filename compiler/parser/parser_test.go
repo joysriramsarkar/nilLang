@@ -230,3 +230,91 @@ import { Button, Text } from "alap/web";
 		t.Fatalf("statement 2 not expected destructured import. got=%+v", program.Statements[2])
 	}
 }
+
+func TestTernaryOperator(t *testing.T) {
+	input := `let result = 5 > 3 ? 100 : 200;`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(program.Statements))
+	}
+	letStmt, ok := program.Statements[0].(*ast.LetStatement)
+	if !ok {
+		t.Fatalf("expected LetStatement, got %T", program.Statements[0])
+	}
+	ifExpr, ok := letStmt.Value.(*ast.IfExpression)
+	if !ok {
+		t.Fatalf("expected IfExpression for ternary, got %T", letStmt.Value)
+	}
+	if ifExpr.Condition == nil || ifExpr.Consequence == nil || ifExpr.Alternative == nil {
+		t.Fatalf("ternary expression has nil parts: %+v", ifExpr)
+	}
+}
+
+func TestRejectTrailingCommaInFunctionParameters(t *testing.T) {
+	input := `let f = fn(a, b,) { return a + b; };`
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parser error for trailing comma in function parameters, got none")
+	}
+}
+
+func TestRejectDuplicateEntityFields(t *testing.T) {
+	input := `
+entity User {
+    id: Int;
+    name: String;
+    id: Int;
+}
+`
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parser error for duplicate entity field, got none")
+	}
+}
+
+func TestRejectEmptyGenericParameter(t *testing.T) {
+	input := `
+entity Product {
+    items: List<>;
+}
+`
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parser error for empty generic type parameter, got none")
+	}
+}
+
+func TestEnforceNamedImportBraces(t *testing.T) {
+	input := `import Button from "alap/web";`
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parser error for unbraced named import, got none")
+	}
+}
+
+func TestRejectInvalidAssignmentTarget(t *testing.T) {
+	input := `1 + 2 = 3;`
+	l := lexer.New(input)
+	p := New(l)
+	p.ParseProgram()
+
+	if len(p.Errors()) == 0 {
+		t.Fatal("expected parser error for invalid assignment target, got none")
+	}
+}

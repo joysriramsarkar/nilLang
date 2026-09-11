@@ -90,3 +90,19 @@ func TestFormatterIfElseAndHash(t *testing.T) {
 		t.Fatalf("hash mismatch:\nGot:\n%s\nExpected:\n%s", fHash, expectedHash)
 	}
 }
+
+func TestFormatterIndexAssignAndAppStatement(t *testing.T) {
+	src := `let a = [1, 2];
+a[0] = 42;
+`
+	formatted, err := Format(src)
+	if err != nil {
+		t.Fatalf("failed to format index assignment: %v", err)
+	}
+	expected := `let a = [1, 2];
+a[0] = 42;
+`
+	if formatted != expected {
+		t.Fatalf("index assignment was altered or deleted!\nGot:\n%s\nExpected:\n%s", formatted, expected)
+	}
+}

@@ -1,3 +1,0 @@
-// std/crypto/hash — host-backed, capability: std.crypto
-let sha256 = fn(value) { return native("std.crypto.sha256", value); };
-let sha512 = fn(value) { return native("std.crypto.sha512", value); };

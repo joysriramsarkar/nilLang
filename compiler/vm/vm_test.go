@@ -274,13 +274,23 @@ func TestBooleanExpressions(t *testing.T) {
 		{"true", true},
 		{"false", false},
 		{"1 < 2", true},
+		{"2 < 1", false},
+		{"1 <= 2", true},
+		{"2 <= 2", true},
+		{"3 <= 2", false},
 		{"1 > 2", false},
 		{"1 < 1", false},
 		{"1 > 1", false},
+		{"2 >= 1", true},
+		{"2 >= 2", true},
+		{"1 >= 2", false},
 		{"1 == 1", true},
 		{"1 != 1", false},
 		{"1 == 2", false},
 		{"1 != 2", true},
+		{"\"apple\" < \"banana\"", true},
+		{"\"banana\" <= \"banana\"", true},
+		{"\"cherry\" < \"banana\"", false},
 		{"true == true", true},
 		{"false == false", true},
 		{"true == false", false},
@@ -427,5 +437,125 @@ func TestCapabilitySecurityRejection(t *testing.T) {
 	err := machine.Run()
 	if err == nil || !strings.Contains(err.Error(), "capability denied") {
 		t.Fatalf("expected capability denied error, got: %v", err)
+	}
+}
+
+func TestTernaryOperatorVM(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"5 > 3 ? 10 : 20", 10},
+		{"2 > 3 ? 10 : 20", 20},
+		{"true ? 42 : 99", 42},
+		{"false ? 42 : 99", 99},
+	}
+
+	for _, tt := range tests {
+		stackElem, err := runVm(tt.input)
+		if err != nil {
+			t.Fatalf("runVm failed on %q: %s", tt.input, err)
+		}
+
+		result, ok := stackElem.(*object.Integer)
+		if !ok {
+			t.Fatalf("object is not Integer. got=%T (%+v)", stackElem, stackElem)
+		}
+
+		if result.Value != tt.expected {
+			t.Errorf("wrong integer value on %q. got=%d, want=%d",
+				tt.input, result.Value, tt.expected)
+		}
+	}
+}
+
+func TestIndexAssignmentVM(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{
+			input: `
+let a = [10, 20, 30];
+a[1] = 99;
+a[1];
+`,
+			expected: 99,
+		},
+		{
+			input: `
+let h = {"key": 1};
+h["key"] = 42;
+h["key"];
+`,
+			expected: 42,
+		},
+		{
+			input: `
+let h = {"key": 1};
+h.key = 88;
+h.key;
+`,
+			expected: 88,
+		},
+	}
+
+	for _, tt := range tests {
+		stackElem, err := runVm(tt.input)
+		if err != nil {
+			t.Fatalf("runVm failed on %q: %s", tt.input, err)
+		}
+		result, ok := stackElem.(*object.Integer)
+		if !ok {
+			t.Fatalf("expected Integer, got %T (%+v)", stackElem, stackElem)
+		}
+		if result.Value != tt.expected {
+			t.Errorf("expected %d, got %d", tt.expected, result.Value)
+		}
+	}
+}
+
+func TestShortCircuitVM(t *testing.T) {
+	stackElem, err := runVm(`false && (1 / 0 == 0);`)
+	if err != nil {
+		t.Fatalf("runVm failed for && short circuit: %s", err)
+	}
+	bAnd, ok := stackElem.(*object.Boolean)
+	if !ok || bAnd.Value != false {
+		t.Fatalf("expected false, got %T (%+v)", stackElem, stackElem)
+	}
+
+	stackElem, err = runVm(`true || (1 / 0 == 0);`)
+	if err != nil {
+		t.Fatalf("runVm failed for || short circuit: %s", err)
+	}
+	bOr, ok := stackElem.(*object.Boolean)
+	if !ok || bOr.Value != true {
+		t.Fatalf("expected true, got %T (%+v)", stackElem, stackElem)
+	}
+}
+
+func TestStringIndexingUnicodeVM(t *testing.T) {
+	stackElem, err := runVm(`"হ্যালো"[0];`)
+	if err != nil {
+		t.Fatalf("runVm failed: %s", err)
+	}
+	str, ok := stackElem.(*object.String)
+	if !ok || str.Value != "হ" {
+		t.Fatalf("expected 'হ', got %T (%+v)", stackElem, stackElem)
+	}
+}
+
+func TestFloatDivisionByZeroVM(t *testing.T) {
+	stackElem, err := runVm(`1.0 / 0.0;`)
+	if err != nil {
+		t.Fatalf("runVm failed: %s", err)
+	}
+	flt, ok := stackElem.(*object.Float)
+	if !ok {
+		t.Fatalf("expected Float, got %T (%+v)", stackElem, stackElem)
+	}
+	if flt.Value <= 0 || flt.Value != flt.Value*2 {
+		t.Fatalf("expected positive infinity, got %v", flt.Value)
 	}
 }

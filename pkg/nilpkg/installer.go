@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -250,9 +251,19 @@ func (inst *Installer) Update(name string, newBundlePath string) (*InstallResult
 
 // isSafePath checks if a path is safe (no directory traversal)
 func isSafePath(base, path string) bool {
-	absBase, _ := filepath.Abs(base)
-	absPath, _ := filepath.Abs(path)
-	return len(absPath) >= len(absBase) && absPath[:len(absBase)] == absBase
+	absBase, err := filepath.Abs(base)
+	if err != nil {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absBase, absPath)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // FormatSize formats bytes to human-readable size

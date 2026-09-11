@@ -1,2 +1,0 @@
-// std/crypto/random — host-backed, capability: std.crypto
-let bytes = fn(count) { return native("std.crypto.random_bytes", count); };

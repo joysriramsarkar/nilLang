@@ -397,10 +397,30 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 
 	case *ast.EntityStatement:
 		c.checkEntityStatement(s)
+
+	case *ast.IndexAssignStatement:
+		if s.Left != nil {
+			_ = c.inferExpression(s.Left)
+		}
+		if s.Index != nil {
+			_ = c.inferExpression(s.Index)
+		}
+		if s.Value != nil {
+			_ = c.inferExpression(s.Value)
+		}
+
+	case *ast.StyleStatement:
+		// Style statements are declarative blocks; no inner expressions
+
+	default:
+		// Unchecked or decorative statement
 	}
 }
 
 func (c *Checker) checkEntityStatement(s *ast.EntityStatement) {
+	if s == nil {
+		return
+	}
 	if s.Name == nil || s.Name.Value == "" {
 		c.report("E0201", "Entity declaration must have a valid identifier name", s.Token.Line, s.Token.Column)
 		return

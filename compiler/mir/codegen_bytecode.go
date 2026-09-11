@@ -228,10 +228,9 @@ func (e *BytecodeEmitter) emitInstruction(inst Instruction) error {
 		case ">=":
 			e.emitOp(code.OpGreaterThanEqual)
 		case "<":
-			// < is reversed >
-			e.emitOp(code.OpGreaterThan)
+			e.emitOp(code.OpLessThan)
 		case "<=":
-			e.emitOp(code.OpGreaterThanEqual)
+			e.emitOp(code.OpLessThanEqual)
 		case "&&":
 			e.emitOp(code.OpAnd)
 		case "||":

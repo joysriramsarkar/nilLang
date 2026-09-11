@@ -2,15 +2,17 @@ package lexer
 
 import (
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/joysriramsarkar/nilLang/compiler/token"
 )
 
 type Lexer struct {
 	input        string
-	position     int  // current position in input (points to current char)
-	readPosition int  // current reading position in input (after current char)
-	ch           byte // current char under examination
+	position     int  // current position in input (points to current rune start)
+	readPosition int  // current reading position in input (after current rune)
+	ch           rune // current rune under examination
 	line         int
 	col          int
 }
@@ -25,19 +27,22 @@ func New(input string) *Lexer {
 func (l *Lexer) readChar() {
 	if l.readPosition >= len(l.input) {
 		l.ch = 0
+		l.position = l.readPosition
 	} else {
-		l.ch = l.input[l.readPosition]
+		r, size := utf8.DecodeRuneInString(l.input[l.readPosition:])
+		l.ch = r
+		l.position = l.readPosition
+		l.readPosition += size
 	}
-	l.position = l.readPosition
-	l.readPosition++
 	l.col++
 }
 
-func (l *Lexer) peekChar() byte {
+func (l *Lexer) peekChar() rune {
 	if l.readPosition >= len(l.input) {
 		return 0
 	}
-	return l.input[l.readPosition]
+	r, _ := utf8.DecodeRuneInString(l.input[l.readPosition:])
+	return r
 }
 
 func (l *Lexer) NextToken() token.Token {
@@ -142,7 +147,11 @@ func (l *Lexer) NextToken() token.Token {
 	case ']':
 		tok = newToken(token.RBRACKET, l.ch, curLine, curCol)
 	case '"':
-		strVal := l.readString()
+		strVal, ok := l.readString()
+		if !ok {
+			tok = token.Token{Type: token.ILLEGAL, Literal: "unterminated string literal", Line: curLine, Column: curCol}
+			return tok
+		}
 		tok = token.Token{Type: token.STRING, Literal: strVal, Line: curLine, Column: curCol}
 		l.readChar()
 		return tok
@@ -152,7 +161,7 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Line = curLine
 		tok.Column = curCol
 	default:
-		if isLetter(l.ch) {
+		if isIdentStart(l.ch) {
 			tok.Literal = l.readIdentifier()
 			tok.Type = token.LookupIdent(tok.Literal)
 			tok.Line = curLine
@@ -180,8 +189,8 @@ func (l *Lexer) NextToken() token.Token {
 
 func (l *Lexer) skipWhitespaceAndComments() {
 	for {
-		// skip whitespace
-		for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+		// skip whitespace including BOM (\uFEFF)
+		for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' || l.ch == '\uFEFF' {
 			if l.ch == '\n' {
 				l.line++
 				l.col = 0
@@ -197,22 +206,27 @@ func (l *Lexer) skipWhitespaceAndComments() {
 			continue
 		}
 
-		// check multi-line comment
+		// check multi-line comment (supports nesting)
 		if l.ch == '/' && l.peekChar() == '*' {
 			l.readChar() // eat /
 			l.readChar() // eat *
-			for {
-				if l.ch == 0 {
-					break
-				}
+			depth := 1
+			for depth > 0 && l.ch != 0 {
 				if l.ch == '\n' {
 					l.line++
 					l.col = 0
 				}
+				if l.ch == '/' && l.peekChar() == '*' {
+					l.readChar() // eat /
+					l.readChar() // eat *
+					depth++
+					continue
+				}
 				if l.ch == '*' && l.peekChar() == '/' {
 					l.readChar() // eat *
 					l.readChar() // eat /
-					break
+					depth--
+					continue
 				}
 				l.readChar()
 			}
@@ -223,46 +237,66 @@ func (l *Lexer) skipWhitespaceAndComments() {
 	}
 }
 
-func (l *Lexer) readString() string {
+func (l *Lexer) readString() (string, bool) {
 	var sb strings.Builder
 
 	for {
 		l.readChar()
-		if l.ch == 0 || l.ch == '"' {
+		if l.ch == 0 {
+			return sb.String(), false
+		}
+		if l.ch == '\n' {
+			l.line++
+			l.col = 0
+		}
+		if l.ch == '"' {
 			break
 		}
 
 		if l.ch == '\\' {
 			l.readChar()
+			if l.ch == 0 {
+				return sb.String(), false
+			}
 			switch l.ch {
 			case 'n':
-				sb.WriteByte('\n')
+				sb.WriteRune('\n')
 			case 't':
-				sb.WriteByte('\t')
+				sb.WriteRune('\t')
 			case 'r':
-				sb.WriteByte('\r')
+				sb.WriteRune('\r')
+			case '0':
+				sb.WriteRune(0)
+			case 'a':
+				sb.WriteRune('\a')
+			case 'b':
+				sb.WriteRune('\b')
+			case 'f':
+				sb.WriteRune('\f')
+			case 'v':
+				sb.WriteRune('\v')
 			case '\\':
-				sb.WriteByte('\\')
+				sb.WriteRune('\\')
 			case '"':
-				sb.WriteByte('"')
+				sb.WriteRune('"')
 			case '(':
 				sb.WriteString("\\(")
 			default:
-				sb.WriteByte('\\')
-				sb.WriteByte(l.ch)
+				sb.WriteRune('\\')
+				sb.WriteRune(l.ch)
 			}
 			continue
 		}
 
-		sb.WriteByte(l.ch)
+		sb.WriteRune(l.ch)
 	}
 
-	return sb.String()
+	return sb.String(), true
 }
 
 func (l *Lexer) readIdentifier() string {
 	position := l.position
-	for isLetter(l.ch) || isDigit(l.ch) {
+	for isIdentPart(l.ch) {
 		l.readChar()
 	}
 	return l.input[position:l.position]
@@ -280,14 +314,22 @@ func (l *Lexer) readNumber() (string, bool) {
 	return l.input[position:l.position], isFloat
 }
 
-func isLetter(ch byte) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' || ch >= 0x80
+func isIdentStart(ch rune) bool {
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' || unicode.IsLetter(ch)
 }
 
-func isDigit(ch byte) bool {
-	return '0' <= ch && ch <= '9'
+func isIdentPart(ch rune) bool {
+	return isIdentStart(ch) || isDigit(ch) || unicode.Is(unicode.M, ch)
 }
 
-func newToken(tokenType token.TokenType, ch byte, line, col int) token.Token {
+func isLetter(ch rune) bool {
+	return isIdentStart(ch)
+}
+
+func isDigit(ch rune) bool {
+	return '0' <= ch && ch <= '9' || unicode.IsDigit(ch)
+}
+
+func newToken(tokenType token.TokenType, ch rune, line, col int) token.Token {
 	return token.Token{Type: tokenType, Literal: string(ch), Line: line, Column: col}
 }

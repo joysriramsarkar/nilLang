@@ -13,6 +13,7 @@ import (
 const (
 	_ int = iota
 	LOWEST
+	TERNARY     // ? :
 	OR          // ||
 	AND         // &&
 	EQUALS      // == or !=
@@ -25,6 +26,7 @@ const (
 )
 
 var precedences = map[token.TokenType]int{
+	token.QUESTION: TERNARY,
 	token.OR:       OR,
 	token.AND:      AND,
 	token.EQ:       EQUALS,
@@ -99,6 +101,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.GTE, p.parseInfixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
+	p.registerInfix(token.QUESTION, p.parseTernaryExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
 	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
 	p.registerInfix(token.DOT, p.parseDotExpression)
@@ -143,15 +146,15 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 }
 
 func (p *Parser) peekPrecedence() int {
-	if p, ok := precedences[p.peekToken.Type]; ok {
-		return p
+	if prec, ok := precedences[p.peekToken.Type]; ok {
+		return prec
 	}
 	return LOWEST
 }
 
 func (p *Parser) curPrecedence() int {
-	if p, ok := precedences[p.curToken.Type]; ok {
-		return p
+	if prec, ok := precedences[p.curToken.Type]; ok {
+		return prec
 	}
 	return LOWEST
 }
@@ -273,6 +276,8 @@ func (p *Parser) parseEntityStatement() *ast.EntityStatement {
 		return nil
 	}
 
+	seenFields := make(map[string]bool)
+
 	p.nextToken() // move inside {
 
 	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
@@ -283,6 +288,13 @@ func (p *Parser) parseEntityStatement() *ast.EntityStatement {
 
 		if p.curTokenIs(token.IDENT) {
 			fieldName := p.curToken.Literal
+			if seenFields[fieldName] {
+				msg := fmt.Sprintf("line %d:%d: duplicate field %q in entity %q",
+					p.curToken.Line, p.curToken.Column, fieldName, stmt.Name.Value)
+				p.errors = append(p.errors, msg)
+			}
+			seenFields[fieldName] = true
+
 			field := ast.EntityField{Name: fieldName}
 
 			if p.peekTokenIs(token.COLON) {
@@ -292,11 +304,21 @@ func (p *Parser) parseEntityStatement() *ast.EntityStatement {
 					field.Type = p.curToken.Literal
 					if p.peekTokenIs(token.LT) {
 						p.nextToken()
-						field.Type += "<"
-						for !p.curTokenIs(token.GT) && !p.curTokenIs(token.EOF) {
+						genericInner := ""
+						for !p.peekTokenIs(token.GT) && !p.peekTokenIs(token.EOF) {
 							p.nextToken()
-							field.Type += p.curToken.Literal
+							genericInner += p.curToken.Literal
 						}
+						if genericInner == "" {
+							msg := fmt.Sprintf("line %d:%d: empty generic type parameter for %q",
+								p.curToken.Line, p.curToken.Column, field.Type)
+							p.errors = append(p.errors, msg)
+							return nil
+						}
+						if !p.expectPeek(token.GT) {
+							return nil
+						}
+						field.Type += "<" + genericInner + ">"
 					}
 				}
 			}
@@ -377,7 +399,14 @@ func (p *Parser) parseTypeAnnotation() string {
 			}
 		}
 	}
-	return strings.Join(parts, "")
+	res := strings.Join(parts, "")
+	if strings.Contains(res, "<>") {
+		msg := fmt.Sprintf("line %d:%d: invalid empty generic type parameter in %q",
+			p.curToken.Line, p.curToken.Column, res)
+		p.errors = append(p.errors, msg)
+		return ""
+	}
+	return res
 }
 
 func (p *Parser) parseImportStatement() *ast.ImportStatement {
@@ -407,9 +436,9 @@ func (p *Parser) parseImportStatement() *ast.ImportStatement {
 	} else if p.peekTokenIs(token.STRING) {
 		p.nextToken()
 		stmt.Path = &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
-	} else if p.peekTokenIs(token.IDENT) {
-		p.nextToken()
-		stmt.Path = &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	} else {
+		p.peekError(token.STRING)
+		return nil
 	}
 
 	// Optional: as <alias>
@@ -545,6 +574,17 @@ func (p *Parser) parseExpressionStatement() ast.Statement {
 				Value: val,
 			}
 		}
+		if dotExpr, ok := expr.(*ast.DotExpression); ok {
+			return &ast.IndexAssignStatement{
+				Token: p.curToken,
+				Left:  dotExpr.Left,
+				Index: &ast.StringLiteral{
+					Token: dotExpr.Member.Token,
+					Value: dotExpr.Member.Value,
+				},
+				Value: val,
+			}
+		}
 		if idExpr, ok := expr.(*ast.Identifier); ok {
 			return &ast.AssignStatement{
 				Token: idExpr.Token,
@@ -552,6 +592,10 @@ func (p *Parser) parseExpressionStatement() ast.Statement {
 				Value: val,
 			}
 		}
+		msg := fmt.Sprintf("line %d:%d: invalid assignment target",
+			p.curToken.Line, p.curToken.Column)
+		p.errors = append(p.errors, msg)
+		return nil
 	}
 
 	stmt.Expression = expr
@@ -749,6 +793,50 @@ func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 	return expression
 }
 
+func (p *Parser) parseTernaryExpression(condition ast.Expression) ast.Expression {
+	tok := p.curToken // ?
+	p.nextToken()      // past ?
+
+	consequence := p.parseExpression(LOWEST)
+	if consequence == nil {
+		return nil
+	}
+
+	if !p.expectPeek(token.COLON) {
+		return nil
+	}
+
+	p.nextToken() // past :
+
+	alternative := p.parseExpression(TERNARY - 1)
+	if alternative == nil {
+		return nil
+	}
+
+	return &ast.IfExpression{
+		Token:     tok,
+		Condition: condition,
+		Consequence: &ast.BlockStatement{
+			Token: token.Token{Type: token.LBRACE, Literal: "{"},
+			Statements: []ast.Statement{
+				&ast.ExpressionStatement{
+					Token:      tok,
+					Expression: consequence,
+				},
+			},
+		},
+		Alternative: &ast.BlockStatement{
+			Token: token.Token{Type: token.LBRACE, Literal: "{"},
+			Statements: []ast.Statement{
+				&ast.ExpressionStatement{
+					Token:      tok,
+					Expression: alternative,
+				},
+			},
+		},
+	}
+}
+
 func (p *Parser) parseBoolean() ast.Expression {
 	return &ast.Boolean{Token: p.curToken, Value: p.curTokenIs(token.TRUE)}
 }
@@ -870,6 +958,10 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 
 	for p.peekTokenIs(token.COMMA) {
 		p.nextToken()
+		if p.peekTokenIs(token.RPAREN) {
+			p.peekError(token.IDENT)
+			return nil
+		}
 		p.nextToken()
 		ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 		identifiers = append(identifiers, ident)

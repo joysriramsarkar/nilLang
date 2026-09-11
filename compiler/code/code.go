@@ -65,6 +65,8 @@ const (
 	OpNotEqual
 	OpGreaterThan
 	OpGreaterThanEqual
+	OpLessThan
+	OpLessThanEqual
 	OpMinus
 	OpBang
 	OpJumpNotTruthy
@@ -93,6 +95,7 @@ const (
 	OpOr
 	OpTask
 	OpAwait
+	OpSetIndex
 )
 
 type Definition struct {
@@ -114,6 +117,8 @@ var definitions = map[Opcode]*Definition{
 	OpNotEqual:         {"OpNotEqual", []int{}},
 	OpGreaterThan:      {"OpGreaterThan", []int{}},
 	OpGreaterThanEqual: {"OpGreaterThanEqual", []int{}},
+	OpLessThan:         {"OpLessThan", []int{}},
+	OpLessThanEqual:    {"OpLessThanEqual", []int{}},
 	OpMinus:            {"OpMinus", []int{}},
 	OpBang:             {"OpBang", []int{}},
 	OpJumpNotTruthy:    {"OpJumpNotTruthy", []int{2}},
@@ -142,6 +147,7 @@ var definitions = map[Opcode]*Definition{
 	OpOr:               {"OpOr", []int{}},
 	OpTask:             {"OpTask", []int{}},
 	OpAwait:            {"OpAwait", []int{}},
+	OpSetIndex:         {"OpSetIndex", []int{}},
 }
 
 func Lookup(op byte) (*Definition, error) {

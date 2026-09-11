@@ -1,2 +1,0 @@
-// std/crypto/hmac — host-backed, capability: std.crypto
-let sha256 = fn(key, message) { return native("std.crypto.hmac_sha256", key, message); };

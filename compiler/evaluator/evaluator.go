@@ -131,6 +131,34 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 		return evalPrefixExpression(node.Operator, right)
 	case *ast.InfixExpression:
+		if node.Operator == "&&" {
+			left := Eval(node.Left, env)
+			if isError(left) {
+				return left
+			}
+			if !isTruthy(left) {
+				return FALSE
+			}
+			right := Eval(node.Right, env)
+			if isError(right) {
+				return right
+			}
+			return nativeBoolToBooleanObject(isTruthy(right))
+		}
+		if node.Operator == "||" {
+			left := Eval(node.Left, env)
+			if isError(left) {
+				return left
+			}
+			if isTruthy(left) {
+				return TRUE
+			}
+			right := Eval(node.Right, env)
+			if isError(right) {
+				return right
+			}
+			return nativeBoolToBooleanObject(isTruthy(right))
+		}
 		left := Eval(node.Left, env)
 		if isError(left) {
 			return left
@@ -442,9 +470,6 @@ func evalFloatInfixExpression(operator string, left, right object.Object) object
 	case "*":
 		return &object.Float{Value: leftVal * rightVal}
 	case "/":
-		if rightVal == 0 {
-			return newError("division by zero")
-		}
 		return &object.Float{Value: leftVal / rightVal}
 	case "<":
 		return nativeBoolToBooleanObject(leftVal < rightVal)

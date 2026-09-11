@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/code"
@@ -55,13 +56,21 @@ func New() *Compiler {
 	}
 }
 
+var (
+	sortedBuiltinNamesOnce sync.Once
+	sortedBuiltinNames     []string
+)
+
 func getBuiltinNames() []string {
-	names := make([]string, 0, len(evaluator.Builtins))
-	for k := range evaluator.Builtins {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
+	sortedBuiltinNamesOnce.Do(func() {
+		names := make([]string, 0, len(evaluator.Builtins))
+		for k := range evaluator.Builtins {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		sortedBuiltinNames = names
+	})
+	return sortedBuiltinNames
 }
 
 func GetBuiltinNamesSorted() []string {
@@ -96,20 +105,44 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpPop)
 
 	case *ast.InfixExpression:
-		if node.Operator == "<" || node.Operator == "<=" {
-			err := c.Compile(node.Right)
-			if err != nil {
+		if node.Operator == "&&" {
+			if err := c.Compile(node.Left); err != nil {
 				return err
 			}
-			err = c.Compile(node.Left)
-			if err != nil {
+			jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+			if err := c.Compile(node.Right); err != nil {
 				return err
 			}
-			if node.Operator == "<" {
-				c.emit(code.OpGreaterThan)
-			} else {
-				c.emit(code.OpGreaterThanEqual)
+			c.emit(code.OpBang)
+			c.emit(code.OpBang)
+			jumpEnd := c.emit(code.OpJump, 9999)
+
+			afterRightPos := len(c.currentInstructions())
+			c.changeOperand(jumpNotTruthyPos, afterRightPos)
+			c.emit(code.OpFalse)
+
+			endPos := len(c.currentInstructions())
+			c.changeOperand(jumpEnd, endPos)
+			return nil
+		}
+		if node.Operator == "||" {
+			if err := c.Compile(node.Left); err != nil {
+				return err
 			}
+			jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
+			c.emit(code.OpTrue)
+			jumpEnd := c.emit(code.OpJump, 9999)
+
+			afterLeftPos := len(c.currentInstructions())
+			c.changeOperand(jumpNotTruthyPos, afterLeftPos)
+			if err := c.Compile(node.Right); err != nil {
+				return err
+			}
+			c.emit(code.OpBang)
+			c.emit(code.OpBang)
+
+			endPos := len(c.currentInstructions())
+			c.changeOperand(jumpEnd, endPos)
 			return nil
 		}
 
@@ -134,6 +167,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpDiv)
 		case "%":
 			c.emit(code.OpMod)
+		case "<":
+			c.emit(code.OpLessThan)
+		case "<=":
+			c.emit(code.OpLessThanEqual)
 		case ">":
 			c.emit(code.OpGreaterThan)
 		case ">=":
@@ -142,10 +179,6 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpEqual)
 		case "!=":
 			c.emit(code.OpNotEqual)
-		case "&&":
-			c.emit(code.OpAnd)
-		case "||":
-			c.emit(code.OpOr)
 		default:
 			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
@@ -401,6 +434,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 		case FreeScope:
 			c.emit(code.OpSetFree, symbol.Index)
 		}
+
+	case *ast.IndexAssignStatement:
+		if err := c.Compile(node.Left); err != nil {
+			return err
+		}
+		if err := c.Compile(node.Index); err != nil {
+			return err
+		}
+		if err := c.Compile(node.Value); err != nil {
+			return err
+		}
+		c.emit(code.OpSetIndex)
 
 	case *ast.Identifier:
 		symbol, ok := c.symbolTable.Resolve(node.Value)

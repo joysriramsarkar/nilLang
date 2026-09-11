@@ -192,6 +192,47 @@ func (f *ASTFormatter) formatStatement(stmt ast.Statement) {
 		f.indent--
 		f.writeIndent()
 		f.buf.WriteString("}")
+
+	case *ast.IndexAssignStatement:
+		f.writeIndent()
+		f.buf.WriteString(fmt.Sprintf("%s[%s] = %s;",
+			f.formatExpression(s.Left),
+			f.formatExpression(s.Index),
+			f.formatExpression(s.Value)))
+
+	case *ast.AppStatement:
+		f.writeIndent()
+		f.buf.WriteString("app")
+		if s.Name != nil {
+			f.buf.WriteString(" " + s.Name.Value)
+		}
+		f.buf.WriteString(" ")
+		f.formatBlock(s.Body)
+
+	case *ast.StyleStatement:
+		f.writeIndent()
+		name := ""
+		if s.Name != nil {
+			name = " " + s.Name.Value
+		}
+		f.buf.WriteString(fmt.Sprintf("style%s {\n", name))
+		f.indent++
+		var propKeys []string
+		for k := range s.Properties {
+			propKeys = append(propKeys, k)
+		}
+		sort.Strings(propKeys)
+		for _, k := range propKeys {
+			f.writeIndent()
+			f.buf.WriteString(fmt.Sprintf("%s: %s;\n", k, s.Properties[k]))
+		}
+		f.indent--
+		f.writeIndent()
+		f.buf.WriteString("}")
+
+	default:
+		f.writeIndent()
+		f.buf.WriteString(stmt.String())
 	}
 }
 

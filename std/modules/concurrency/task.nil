@@ -1,5 +1,0 @@
-// std/concurrency/task
-let spawn = fn(work) {
-    return task { return work(); };
-};
-let wait = fn(future) { return await future; };

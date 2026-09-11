@@ -174,7 +174,7 @@ func (vm *VM) Run() error {
 				return err
 			}
 
-		case code.OpEqual, code.OpNotEqual, code.OpGreaterThan, code.OpGreaterThanEqual:
+		case code.OpEqual, code.OpNotEqual, code.OpGreaterThan, code.OpGreaterThanEqual, code.OpLessThan, code.OpLessThanEqual:
 			err := vm.executeComparison(op)
 			if err != nil {
 				return err
@@ -305,6 +305,24 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpSetIndex:
+			val, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			index, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			target, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			err = vm.executeSetIndex(target, index, val)
+			if err != nil {
+				return err
+			}
+
 		case code.OpCall:
 			numArgs := code.ReadUint8(ins[ip+1:])
 			vm.currentFrame().ip += 1
@@ -358,14 +376,22 @@ func (vm *VM) Run() error {
 				return err
 			}
 			frame := vm.currentFrame()
-			vm.stack[frame.basePointer+int(localIndex)] = val
+			addr := frame.basePointer + int(localIndex)
+			if addr >= StackSize {
+				return fmt.Errorf("stack overflow: local index out of bounds")
+			}
+			vm.stack[addr] = val
 
 		case code.OpGetLocal:
 			localIndex := code.ReadUint8(ins[ip+1:])
 			vm.currentFrame().ip += 1
 
 			frame := vm.currentFrame()
-			err := vm.push(vm.stack[frame.basePointer+int(localIndex)])
+			addr := frame.basePointer + int(localIndex)
+			if addr >= StackSize {
+				return fmt.Errorf("stack overflow: local index out of bounds")
+			}
+			err := vm.push(vm.stack[addr])
 			if err != nil {
 				return err
 			}
@@ -583,9 +609,6 @@ func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Obj
 	case code.OpMul:
 		result = leftValue * rightValue
 	case code.OpDiv:
-		if rightValue == 0 {
-			return fmt.Errorf("division by zero")
-		}
 		result = leftValue / rightValue
 	case code.OpMod:
 		if rightValue == 0 {
@@ -667,6 +690,10 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 			return vm.push(nativeBoolToBooleanObject(leftVal > rightVal))
 		case code.OpGreaterThanEqual:
 			return vm.push(nativeBoolToBooleanObject(leftVal >= rightVal))
+		case code.OpLessThan:
+			return vm.push(nativeBoolToBooleanObject(leftVal < rightVal))
+		case code.OpLessThanEqual:
+			return vm.push(nativeBoolToBooleanObject(leftVal <= rightVal))
 		default:
 			return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
 		}
@@ -694,6 +721,10 @@ func (vm *VM) executeFloatComparison(op code.Opcode, left, right object.Object) 
 		return vm.push(nativeBoolToBooleanObject(leftValue > rightValue))
 	case code.OpGreaterThanEqual:
 		return vm.push(nativeBoolToBooleanObject(leftValue >= rightValue))
+	case code.OpLessThan:
+		return vm.push(nativeBoolToBooleanObject(leftValue < rightValue))
+	case code.OpLessThanEqual:
+		return vm.push(nativeBoolToBooleanObject(leftValue <= rightValue))
 	default:
 		return fmt.Errorf("unknown operator: %d", op)
 	}
@@ -712,6 +743,10 @@ func (vm *VM) executeIntegerComparison(op code.Opcode, left, right object.Object
 		return vm.push(nativeBoolToBooleanObject(leftValue > rightValue))
 	case code.OpGreaterThanEqual:
 		return vm.push(nativeBoolToBooleanObject(leftValue >= rightValue))
+	case code.OpLessThan:
+		return vm.push(nativeBoolToBooleanObject(leftValue < rightValue))
+	case code.OpLessThanEqual:
+		return vm.push(nativeBoolToBooleanObject(leftValue <= rightValue))
 	default:
 		return fmt.Errorf("unknown operator: %d", op)
 	}
@@ -782,13 +817,39 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 func (vm *VM) executeStringIndex(str, index object.Object) error {
 	strVal := str.(*object.String).Value
 	i := index.(*object.Integer).Value
-	max := int64(len(strVal) - 1)
+	runes := []rune(strVal)
+	max := int64(len(runes) - 1)
 
 	if i < 0 || i > max {
 		return vm.push(Null)
 	}
 
-	return vm.push(&object.String{Value: string(strVal[i])})
+	return vm.push(&object.String{Value: string(runes[i])})
+}
+
+func (vm *VM) executeSetIndex(target, index, val object.Object) error {
+	switch t := target.(type) {
+	case *object.Array:
+		idxObj, ok := index.(*object.Integer)
+		if !ok {
+			return fmt.Errorf("array index must be an integer, got %s", index.Type())
+		}
+		idx := idxObj.Value
+		if idx < 0 || idx >= int64(len(t.Elements)) {
+			return fmt.Errorf("index out of bounds: %d", idx)
+		}
+		t.Elements[idx] = val
+		return nil
+	case *object.Hash:
+		hashable, ok := index.(object.Hashable)
+		if !ok {
+			return fmt.Errorf("unusable as hash key: %s", index.Type())
+		}
+		t.Pairs[hashable.HashKey()] = object.HashPair{Key: index, Value: val}
+		return nil
+	default:
+		return fmt.Errorf("index-assignment not supported on: %s", target.Type())
+	}
 }
 
 func (vm *VM) executeArrayIndex(array, index object.Object) error {
@@ -868,9 +929,15 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 	}
 
 	frame := NewFrame(cl, vm.sp-numArgs)
-	vm.pushFrame(frame)
+	if err := vm.pushFrame(frame); err != nil {
+		return err
+	}
 
-	vm.sp = frame.basePointer + cl.Fn.NumLocals
+	newSp := frame.basePointer + cl.Fn.NumLocals
+	if newSp > StackSize {
+		return fmt.Errorf("stack overflow: call frame exceeded stack size")
+	}
+	vm.sp = newSp
 
 	return nil
 }

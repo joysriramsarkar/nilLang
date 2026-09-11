@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strings"
 	"sync"
 
@@ -178,6 +179,7 @@ func (h *Hash) Inspect() string {
 	for _, pair := range h.Pairs {
 		pairs = append(pairs, fmt.Sprintf("%s: %s", pair.Key.Inspect(), pair.Value.Inspect()))
 	}
+	sort.Strings(pairs)
 	out.WriteString("{")
 	out.WriteString(strings.Join(pairs, ", "))
 	out.WriteString("}")
@@ -218,9 +220,10 @@ type futureResult struct {
 }
 
 type Future struct {
-	done   chan futureResult
-	once   sync.Once
-	result futureResult
+	done         chan futureResult
+	completeOnce sync.Once
+	awaitOnce    sync.Once
+	result       futureResult
 }
 
 func NewFuture() *Future {
@@ -230,10 +233,12 @@ func NewFuture() *Future {
 func (f *Future) Type() ObjectType { return FUTURE_OBJ }
 func (f *Future) Inspect() string  { return "future" }
 func (f *Future) Complete(value Object, err error) {
-	f.done <- futureResult{Value: value, Err: err}
+	f.completeOnce.Do(func() {
+		f.done <- futureResult{Value: value, Err: err}
+	})
 }
 func (f *Future) Await() (Object, error) {
-	f.once.Do(func() { f.result = <-f.done })
+	f.awaitOnce.Do(func() { f.result = <-f.done })
 	return f.result.Value, f.result.Err
 }
 
@@ -317,12 +322,19 @@ func (e *Environment) Store() map[string]Object {
 func (e *Environment) Snapshot() *Environment {
 	snapshot := NewEnvironment()
 	if e.outer != nil {
-		for name, value := range e.outer.Snapshot().store {
+		outerSnap := e.outer.Snapshot()
+		for name, value := range outerSnap.store {
 			snapshot.store[name] = value
+		}
+		for name := range outerSnap.constants {
+			snapshot.constants[name] = true
 		}
 	}
 	for name, value := range e.store {
 		snapshot.store[name] = value
+	}
+	for name := range e.constants {
+		snapshot.constants[name] = true
 	}
 	return snapshot
 }

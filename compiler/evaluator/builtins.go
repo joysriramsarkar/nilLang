@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/joysriramsarkar/nilLang/compiler/object"
 	"github.com/joysriramsarkar/nilLang/pkg/stdlib"
@@ -72,7 +73,7 @@ var Builtins = map[string]*object.Builtin{
 			}
 			switch arg := args[0].(type) {
 			case *object.String:
-				return &object.Integer{Value: int64(len(arg.Value))}
+				return &object.Integer{Value: int64(utf8.RuneCountInString(arg.Value))}
 			case *object.Array:
 				return &object.Integer{Value: int64(len(arg.Elements))}
 			default:
@@ -394,6 +395,9 @@ var Builtins = map[string]*object.Builtin{
 			if len(args) == 3 {
 				if lenObj, ok := args[2].(*object.Integer); ok {
 					length := int(lenObj.Value)
+					if length <= 0 {
+						return &object.String{Value: ""}
+					}
 					if start+length < end {
 						end = start + length
 					}
@@ -546,7 +550,7 @@ var Builtins = map[string]*object.Builtin{
 				return newError("wrong number of arguments to `removeFile`. got=%d, want=1", len(args))
 			}
 			path := args[0].Inspect()
-			err := os.RemoveAll(path)
+			err := os.Remove(path)
 			if err != nil {
 				return FALSE
 			}

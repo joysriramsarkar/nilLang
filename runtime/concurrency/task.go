@@ -69,7 +69,9 @@ func NewTaskScope(parent *Task) *Task {
 // Spawn executes a computation in a goroutine managed by this task scope
 func (t *Task) Spawn(action func(ctx context.Context) (object.Object, error)) *Task {
 	child := NewTaskScope(t)
+	child.mu.Lock()
 	child.status = StatusRunning
+	child.mu.Unlock()
 
 	go func() {
 		defer func() {

@@ -256,11 +256,32 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 
 func evalStdlibImport(node *ast.ImportStatement, importPath string, env *object.Environment) object.Object {
 	moduleCacheMu.Lock()
+	for idx, visiting := range moduleImportStack {
+		if visiting == importPath {
+			cycle := append(moduleImportStack[idx:], importPath)
+			moduleCacheMu.Unlock()
+			return newError("E0301: circular dependency detected: %s", strings.Join(cycle, " -> "))
+		}
+	}
+
 	if cachedMod, ok := moduleCache[importPath]; ok {
 		moduleCacheMu.Unlock()
 		return bindModuleToEnv(node, cachedMod, importPath, env)
 	}
+
+	moduleImportStack = append(moduleImportStack, importPath)
 	moduleCacheMu.Unlock()
+
+	defer func() {
+		moduleCacheMu.Lock()
+		for i := len(moduleImportStack) - 1; i >= 0; i-- {
+			if moduleImportStack[i] == importPath {
+				moduleImportStack = append(moduleImportStack[:i], moduleImportStack[i+1:]...)
+				break
+			}
+		}
+		moduleCacheMu.Unlock()
+	}()
 
 	content, err := stdlib.Read(importPath)
 	if err != nil {

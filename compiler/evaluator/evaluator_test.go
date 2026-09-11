@@ -286,3 +286,69 @@ Optional.state["missing"];
 		t.Fatalf("expected omitted payload to bind null, got %T (%+v)", result, result)
 	}
 }
+
+func TestTernaryOperatorEvaluation(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"5 > 3 ? 10 : 20", 10},
+		{"2 > 3 ? 10 : 20", 20},
+		{"true ? 42 : 99", 42},
+		{"false ? 42 : 99", 99},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testIntegerObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestSubstrNegativeLength(t *testing.T) {
+	evaluated := testEval(`substr("hello", 1, -1)`)
+	str, ok := evaluated.(*object.String)
+	if !ok || str.Value != "" {
+		t.Fatalf("expected empty string for negative length, got %T (%+v)", evaluated, evaluated)
+	}
+}
+
+func TestFieldAssignmentOnHash(t *testing.T) {
+	evaluated := testEval(`
+let h = {"x": 1};
+h.x = 42;
+h.x;
+`)
+	testIntegerObject(t, evaluated, 42)
+}
+
+func TestShortCircuitEvaluation(t *testing.T) {
+	// If short circuiting works, division by zero in RHS will never execute
+	evaluatedAnd := testEval(`false && (1 / 0 == 0);`)
+	bAnd, ok := evaluatedAnd.(*object.Boolean)
+	if !ok || bAnd.Value != false {
+		t.Fatalf("expected false, got %T (%+v)", evaluatedAnd, evaluatedAnd)
+	}
+
+	evaluatedOr := testEval(`true || (1 / 0 == 0);`)
+	bOr, ok := evaluatedOr.(*object.Boolean)
+	if !ok || bOr.Value != true {
+		t.Fatalf("expected true, got %T (%+v)", evaluatedOr, evaluatedOr)
+	}
+}
+
+func TestLenUnicodeString(t *testing.T) {
+	evaluated := testEval(`len("হ্যালো");`)
+	testIntegerObject(t, evaluated, 6)
+}
+
+func TestFloatDivisionByZero(t *testing.T) {
+	evaluated := testEval(`1.0 / 0.0;`)
+	flt, ok := evaluated.(*object.Float)
+	if !ok {
+		t.Fatalf("expected Float object, got %T (%+v)", evaluated, evaluated)
+	}
+	if flt.Value <= 0 || flt.Value != flt.Value*2 {
+		// IEEE-754 positive infinity satisfies Inf == Inf*2 and > 0
+		t.Fatalf("expected positive infinity, got %v", flt.Value)
+	}
+}

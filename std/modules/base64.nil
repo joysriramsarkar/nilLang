@@ -1,3 +1,0 @@
-// std/base64 — host-backed, capability: std.json
-let encode = fn(value) { return native("std.base64.encode", value); };
-let decode = fn(value) { return native("std.base64.decode", value); };
