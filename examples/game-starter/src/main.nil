@@ -1,0 +1,24 @@
+// game-starter - Nilang portable game logic
+// Build direct Android APKs with: nil build android
+// Build engine bundles for Godot, Unity, and Unreal with: nil build
+
+let gameName = "game-starter";
+let targetFPS = 60;
+let frame = 0;
+let playerX = 0;
+let playerY = 0;
+let velocityX = 2;
+let velocityY = 1;
+
+puts("Nilang game boot: \(gameName)");
+puts("Target FPS: \(targetFPS)");
+puts("Adapters: Android APK, Godot, Unity, Unreal");
+
+while (frame < 8) {
+    let playerX = playerX + velocityX;
+    let playerY = playerY + velocityY;
+    puts("frame=\(frame) player=(\(playerX), \(playerY))");
+    let frame = frame + 1;
+}
+
+puts("Game loop smoke test complete.");

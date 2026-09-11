@@ -1,0 +1,14 @@
+# Nilang build output
+build/
+*.nilax
+
+# Engine build caches
+Library/
+Temp/
+Binaries/
+Intermediate/
+.godot/
+
+# OS
+.DS_Store
+Thumbs.db

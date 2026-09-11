@@ -214,6 +214,30 @@ nil build
 
 ---
 
+## 🎮 Game / Android / Engine Ready
+
+Nilang এখন Android APK, Godot, Unity, এবং Unreal workflow-এর জন্য game scaffold তৈরি করতে পারে:
+
+```bash
+nil game init my-game --engine all
+cd my-game
+nil game doctor
+nil build android
+```
+
+রেডি reference project দেখুন: `examples/game-starter/`।
+
+Engine workflow-তে `.nilax` bundle-টাই portable game-logic artifact:
+
+- **Android**: `nil build android` সরাসরি APK তৈরি করে।
+- **Godot**: `engine/godot/` GDExtension seed ও `nilang_bridge.gd` দেয়।
+- **Unity**: `engine/unity/` package seed, `NilangBehaviour.cs`, এবং bridge boundary দেয়।
+- **Unreal**: `engine/unreal/` plugin descriptor, module, এবং bridge header/source দেয়।
+
+আরো বিস্তারিত: `docs/GAME_ENGINE_READY.md`।
+
+---
+
 ## 🔐 প্যাকেজ সাইনিং (`nilkey`)
 
 Ed25519 ক্রিপ্টোগ্রাফিক কী জেনারেট এবং বান্ডিল সাইন করুন:

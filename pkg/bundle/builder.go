@@ -24,6 +24,8 @@ func NewBuilder(cfg *config.ProjectConfig, projectDir string) *Builder {
 	manifest.Targets = cfg.Targets
 	manifest.Description = cfg.Description
 	manifest.Dependencies = cfg.Dependencies
+	manifest.Permissions = cfg.Capabilities
+	manifest.Metadata = cfg.Metadata
 
 	return &Builder{
 		config:     cfg,

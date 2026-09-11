@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -43,5 +44,27 @@ func TestProjectConfig(t *testing.T) {
 	}
 	if resInvalid.Valid {
 		t.Errorf("expected Process to be invalid on web profile")
+	}
+}
+
+func TestValidateAcceptsGameBuildTargets(t *testing.T) {
+	tempDir := t.TempDir()
+	srcDir := filepath.Join(tempDir, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "main.nil"), []byte("puts(\"game\");"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &ProjectConfig{
+		Name:    "game-targets",
+		Version: "0.1.0",
+		Entry:   "src/main.nil",
+		Targets: []string{"android", "windows", "linux", "macos", "darwin-arm64", "wasm"},
+	}
+
+	if err := cfg.Validate(tempDir); err != nil {
+		t.Fatalf("expected game build targets to validate: %v", err)
 	}
 }

@@ -41,6 +41,17 @@ The example performs batched point transforms, entity selection and scaling, a d
 
 Projects can select `"profile": "game"`. The profile permits GPU, audio, asset filesystem, network, process, sensor, AI, and cryptographic capabilities. Camera, location, Bluetooth, and database access remain restricted.
 
+Create a ready Android/Godot/Unity/Unreal starter:
+
+```powershell
+go run ./cmd/nil game init my-game --engine all
+cd my-game
+nil game doctor
+nil build android
+```
+
+See [GAME_ENGINE_READY.md](GAME_ENGINE_READY.md) for the engine adapter layout and export workflow.
+
 ## Current boundary
 
 This foundation makes numerical game systems, simulation logic, data transformations, and small CPU inference workloads practical in NilLang. It does not by itself constitute a complete AAA engine or production ML framework.

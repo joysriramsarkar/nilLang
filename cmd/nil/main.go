@@ -54,6 +54,8 @@ func main() {
 		cmdAdd()
 	case "profile":
 		cmdProfile()
+	case "game":
+		cmdGame()
 	case "check", "ai":
 		cmdCheck()
 	case "verify":
@@ -104,6 +106,7 @@ func printUsage() {
 	fmt.Println("  update                     Nilang কম্পাইলার ও টুলচেইন সর্বশেষ ভার্সনে আপডেট করুন")
 	fmt.Println("  add <package>              Alap ইকোসিস্টেম প্যাকেজ যোগ করুন (যেমন: alap/web)")
 	fmt.Println("  profile [list|inspect]     NilLang রানটাইম প্রোফাইল ও ক্যাপাবিলিটি দেখুন")
+	fmt.Println("  game [init|doctor|engines] Android, Godot, Unity, Unreal গেম scaffolding ও readiness check")
 	fmt.Println("  check [path]               ক্যাপাবিলিটি ও AI ওরাকল ভ্যালিডেশন চেক করুন")
 	fmt.Println("  verify [component]         Verified Novelty পাইপলাইন চালান")
 	fmt.Println("  oracle [subcommand]        AI কম্পাইলার ওরাকল ও গ্রাউন্ড-ট্রুথ (list-types, list-functions, inspect, check)")
@@ -124,6 +127,8 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("উদাহরণ:")
 	fmt.Println("  nil init my-web-app --profile web")
+	fmt.Println("  nil game init my-game --engine all")
+	fmt.Println("  nil game doctor")
 	fmt.Println("  nil build linux            # Linux 64-bit এক্সেকিউটেবল তৈরি করুন")
 	fmt.Println("  nil build windows          # Windows .exe এক্সেকিউটেবল তৈরি করুন")
 	fmt.Println("  nil build macos            # macOS (Apple Silicon + Intel) এক্সেকিউটেবল তৈরি করুন")

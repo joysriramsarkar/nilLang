@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/pkg/config"
+	"github.com/joysriramsarkar/nilLang/pkg/game"
 )
 
 func cmdInit() {
@@ -28,6 +29,30 @@ func cmdInit() {
 		fmt.Fprintf(os.Stderr, "❌ অবৈধ প্রজেক্ট নাম: %s\n", projectName)
 		fmt.Println("নামে শুধু অক্ষর, সংখ্যা, এবং হাইফেন ব্যবহার করুন")
 		os.Exit(1)
+	}
+	selectedProfile = strings.ToLower(strings.TrimSpace(selectedProfile))
+
+	if selectedProfile == "game" {
+		options := game.DefaultOptions(projectName)
+		written, err := game.WriteScaffold(projectName, options)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ গেম প্রজেক্ট তৈরি করতে সমস্যা: %s\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("✅ নীলাং গেম প্রজেক্ট তৈরি হয়েছে!")
+		fmt.Println()
+		fmt.Printf("📁 %s/ (%d files)\n", projectName, len(written))
+		fmt.Println("├── nil.json")
+		fmt.Println("├── src/main.nil")
+		fmt.Println("├── resources/nilang.game.json")
+		fmt.Println("└── engine/        # Android, Godot, Unity, Unreal adapters")
+		fmt.Println()
+		fmt.Println("🚀 শুরু করতে রান করুন:")
+		fmt.Printf("   cd %s\n", projectName)
+		fmt.Println("   nil game doctor")
+		fmt.Println("   nil build android")
+		return
 	}
 
 	// Create project directory
@@ -60,8 +85,16 @@ func cmdInit() {
 		cfg.Capabilities = []string{"Filesystem", "Database", "GPU", "AI"}
 		cfg.Targets = []string{"data", "linux"}
 	case "mobile":
-		cfg.Capabilities = []string{"Network", "Camera", "GPS", "Sensors", "Storage"}
-		cfg.Targets = []string{"android", "ios"}
+		cfg.Capabilities = []string{"Network", "Camera", "GPS", "Sensors", "Filesystem", "GPU", "Audio", "Crypto"}
+		cfg.Targets = []string{"android"}
+	case "game":
+		cfg.Capabilities = []string{"GPU", "Audio", "Filesystem", "Network", "Process", "Sensors", "AI", "Crypto"}
+		cfg.Targets = []string{"android", "windows", "linux"}
+		cfg.Description = "Nilang real-time game logic project"
+		cfg.Metadata = map[string]string{
+			"engine_adapters": "android,godot,unity,unreal",
+			"runtime_bundle":  "nilax",
+		}
 	default:
 		cfg.Capabilities = []string{"Network", "Filesystem"}
 		cfg.Targets = []string{"onuron", "linux"}
@@ -292,6 +325,30 @@ puts("📥 Ingesting \(sampleCount) dataset observations...");
 puts("⚙️  Applying normalization & feature engineering transforms...");
 puts("🧠 Model training complete: Linear Regression [MSE: 0.038, R²: 0.985]");
 puts("✅ Data Pipeline evaluation complete!");
+`, title, projectName)
+
+	case "game":
+		return fmt.Sprintf(`// %s - NilLang Game Logic
+// Profile: game
+
+let gameName = "%s";
+let targetFPS = 60;
+let frame = 0;
+let playerX = 0;
+let playerY = 0;
+
+puts("Starting Nilang game logic: \(gameName)");
+puts("Target frame rate: \(targetFPS) FPS");
+puts("Subsystems: input, simulation, assets, audio, GPU render handoff");
+
+while (frame < 5) {
+    let playerX = playerX + 2;
+    let playerY = playerY + 1;
+    puts("frame=\(frame) player=(\(playerX), \(playerY))");
+    let frame = frame + 1;
+}
+
+puts("Game loop smoke test complete.");
 `, title, projectName)
 
 	default:

@@ -1,0 +1,10 @@
+{
+  "name": "org.nilang.final-demo",
+  "version": "0.1.0",
+  "displayName": "Nilang Game Runtime",
+  "description": "Unity bridge files for loading a Nilang .nilax game bundle.",
+  "unity": "2021.3",
+  "author": {
+    "name": "Nilang"
+  }
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/joysriramsarkar/nilLang/pkg/capability"
 	"github.com/joysriramsarkar/nilLang/pkg/profile"
@@ -136,18 +137,25 @@ func (c *ProjectConfig) Validate(projectDir string) error {
 
 	// Check targets are valid
 	validTargets := map[string]bool{
-		"onuron":  true,
-		"android": true,
-		"ios":     true,
-		"linux":   true,
-		"wasm":    true,
-		"web":     true,
-		"server":  true,
-		"data":    true,
+		"onuron":       true,
+		"android":      true,
+		"linux":        true,
+		"windows":      true,
+		"win":          true,
+		"win64":        true,
+		"macos":        true,
+		"darwin":       true,
+		"darwin-arm64": true,
+		"darwin-amd64": true,
+		"wasm":         true,
+		"web":          true,
+		"server":       true,
+		"data":         true,
 	}
 	for _, target := range c.Targets {
-		if !validTargets[target] {
-			return fmt.Errorf("invalid target: %s (valid: onuron, android, ios, linux, wasm, web, server, data)", target)
+		normalizedTarget := strings.ToLower(strings.TrimSpace(target))
+		if !validTargets[normalizedTarget] {
+			return fmt.Errorf("invalid target: %s (valid: onuron, android, linux, windows, macos, darwin, wasm, web, server, data)", target)
 		}
 	}
 

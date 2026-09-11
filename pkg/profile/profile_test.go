@@ -5,7 +5,7 @@ import (
 )
 
 func TestProfileRegistry(t *testing.T) {
-	profiles := []string{"web", "mobile", "server", "data", "os", "embedded", "core"}
+	profiles := []string{"web", "mobile", "server", "data", "game", "os", "embedded", "core"}
 
 	for _, id := range profiles {
 		p, err := Get(id)

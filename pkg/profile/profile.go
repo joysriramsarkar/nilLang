@@ -157,7 +157,7 @@ func Get(id string) (*Profile, error) {
 	if p, ok := Registry[norm]; ok {
 		return &p, nil
 	}
-	return nil, fmt.Errorf("unknown profile %q (available: web, mobile, server, data, os, embedded, core)", id)
+	return nil, fmt.Errorf("unknown profile %q (available: web, mobile, server, data, game, os, embedded, core)", id)
 }
 
 // ListAll returns all profiles

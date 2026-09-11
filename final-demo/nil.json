@@ -1,0 +1,42 @@
+{
+  "name": "final-demo",
+  "version": "0.1.0",
+  "author": "Joysriram Sarkar",
+  "description": "Nilang real-time game logic package",
+  "entry": "src/main.nil",
+  "profile": "game",
+  "capabilities": [
+    "GPU",
+    "Audio",
+    "Filesystem",
+    "Network",
+    "Process",
+    "Sensors",
+    "AI",
+    "Crypto"
+  ],
+  "targets": [
+    "android",
+    "windows",
+    "linux"
+  ],
+  "resources": [
+    "resources/*"
+  ],
+  "build": {
+    "output_dir": "build",
+    "optimize": true,
+    "debug": true
+  },
+  "metadata": {
+    "engine_adapters": "android,godot,unity,unreal",
+    "runtime_bundle": "nilax"
+  },
+  "scripts": {
+    "build": "nil build android",
+    "bundle": "nil build",
+    "dev": "nil run src/main.nil",
+    "game:android": "nil build android",
+    "game:doctor": "nil game doctor"
+  }
+}

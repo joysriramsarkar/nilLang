@@ -6,10 +6,10 @@ puts("📡 SoftBus Network Node Initializing...");
 let localDevice = "onuron-pad-01";
 let remoteDevice = "onuron-phone-02";
 
-let createMessage = fn(from, to, text) {
+let createMessage = fn(sender, receiver, text) {
     return {
-        "source": from,
-        "dest": to,
+        "source": sender,
+        "dest": receiver,
         "payload": text,
         "timestamp": 1725280000
     };

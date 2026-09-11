@@ -29,6 +29,8 @@ Welcome to the technical documentation repository for **NilLang**, the **Alap Fr
 | `nil init <name> --profile <p>` | Initialize a new NilLang project with specified profile |
 | `nil build [target]` | Compile standalone executable or `.nilax` package |
 | `nil build wasm` | Generate WebAssembly binary (`.wasm`) and browser harness |
+| `nil game init [name]` | Create an Android/Godot/Unity/Unreal-ready game scaffold |
+| `nil game doctor` | Check game profile, targets, capabilities, and engine adapter readiness |
 | `nil run [file.nil]` | Execute file via AST interpreter or `-vm` bytecode engine |
 | `nil hir [file.nil]` | Inspect High-Level Intermediate Representation & constant folding |
 | `nil mir [file.nil]` | Inspect Mid-Level Intermediate Representation & Control-Flow Graph |

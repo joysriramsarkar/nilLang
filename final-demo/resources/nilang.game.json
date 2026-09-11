@@ -1,0 +1,18 @@
+{
+  "android_apk_target": "build/final-demo.apk",
+  "bundle": "build/final-demo-0.1.0.nilax",
+  "engines": [
+    "android",
+    "godot",
+    "unity",
+    "unreal"
+  ],
+  "entry_points": [
+    "game_start",
+    "game_update",
+    "game_event"
+  ],
+  "name": "final-demo",
+  "profile": "game",
+  "tick_rate": 60
+}

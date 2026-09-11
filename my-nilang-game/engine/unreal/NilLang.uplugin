@@ -1,0 +1,15 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Nilang Runtime",
+  "Description": "Loads Nilang .nilax game logic bundles.",
+  "Category": "Scripting",
+  "Modules": [
+    {
+      "Name": "NilLang",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ]
+}

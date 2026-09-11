@@ -1,0 +1,18 @@
+{
+  "android_apk_target": "build/game-starter.apk",
+  "bundle": "build/game-starter-0.1.0.nilax",
+  "engines": [
+    "android",
+    "godot",
+    "unity",
+    "unreal"
+  ],
+  "entry_points": [
+    "game_start",
+    "game_update",
+    "game_event"
+  ],
+  "name": "game-starter",
+  "profile": "game",
+  "tick_rate": 60
+}

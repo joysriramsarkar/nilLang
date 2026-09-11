@@ -188,7 +188,7 @@ func (c *Checker) initBuiltins() {
 	c.registerBuiltin("writeFile", []types.Type{types.String, types.String}, 2, 2, types.Bool, "io")
 	c.registerBuiltin("send", []types.Type{types.Any, types.Any}, 2, 2, types.Void, "concurrency")
 	c.registerBuiltin("unwrapOr", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
-	c.registerBuiltin("tensor", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
+	c.registerBuiltin("tensor", []types.Type{types.Any, types.Any}, 2, 3, types.Any, "pure")
 	c.registerBuiltin("tensorGet", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
 	c.registerBuiltin("tensorAdd", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
 	c.registerBuiltin("tensorMul", []types.Type{types.Any, types.Any}, 2, 2, types.Any, "pure")
