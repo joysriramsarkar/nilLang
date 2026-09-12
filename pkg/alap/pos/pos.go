@@ -1,6 +1,8 @@
 package pos
 
 import (
+	"time"
+
 	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/sync"
 )
@@ -280,7 +282,7 @@ func (pe *POSEngine) SeedDefaultEnterpriseData() {
 // Seeds categories → products → customers in FK-safe order.
 // Uses INSERT OR IGNORE for full idempotency.
 func (pe *POSEngine) seedProductsToDB() {
-	now := "2026-01-01T00:00:00Z"
+	now := time.Now().UTC().Format(time.RFC3339)
 
 	// 1. Seed categories first (products.category_id FK)
 	for _, c := range pe.Catalog.AllCategories() {

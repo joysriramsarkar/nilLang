@@ -12,6 +12,26 @@ dist/
 *.nilax
 *.sig
 
+# IDE
+.idea/
+*.iml
+.vscode/
+
 # OS files
 .DS_Store
 Thumbs.db
+
+# Temp files
+*.swp
+*.swo
+*~
+
+# Build logs
+*.log
+
+# Test coverage
+coverage/
+*.out
+
+# Dependency cache
+**/vendor/

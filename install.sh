@@ -81,6 +81,9 @@ if command -v go >/dev/null 2>&1; then
         cd "${SCRIPT_DIR}"
         go build -o "${BIN_DIR}/nil" ./cmd/nil
         go build -o "${BIN_DIR}/nilc" ./cmd/nilc
+        go build -o "${BIN_DIR}/nil-bootstrap" ./cmd/nil-bootstrap
+        go build -o "${BIN_DIR}/nil-lsp" ./cmd/nil-lsp
+        go build -o "${BIN_DIR}/nil-runner" ./cmd/nil-runner
         go build -o "${BIN_DIR}/nilpkg" ./cmd/nilpkg
         go build -o "${BIN_DIR}/nilpkg-server" ./cmd/nilpkg-server
         go build -o "${BIN_DIR}/nilkey" ./cmd/nilkey
@@ -104,6 +107,9 @@ if [ "$INSTALLED" -eq 0 ]; then
             cd "${TEMP_DIR}/nilang-src"
             go build -o "${BIN_DIR}/nil" ./cmd/nil
             go build -o "${BIN_DIR}/nilc" ./cmd/nilc
+            go build -o "${BIN_DIR}/nil-bootstrap" ./cmd/nil-bootstrap
+            go build -o "${BIN_DIR}/nil-lsp" ./cmd/nil-lsp
+            go build -o "${BIN_DIR}/nil-runner" ./cmd/nil-runner
             go build -o "${BIN_DIR}/nilpkg" ./cmd/nilpkg
             go build -o "${BIN_DIR}/nilpkg-server" ./cmd/nilpkg-server
             go build -o "${BIN_DIR}/nilkey" ./cmd/nilkey
@@ -155,6 +161,9 @@ echo -e "📂 Location: ${BIN_DIR}"
 echo -e "🛠️  Binaries installed:"
 echo -e "   - ${BOLD}nil${RESET}            (Main compiler, runner, REPL & UI renderer)"
 echo -e "   - ${BOLD}nilc${RESET}           (Dedicated bytecode compiler & disassembler)"
+echo -e "   - ${BOLD}nil-bootstrap${RESET}  (Self-hosted bootstrap seed builder & verifier)"
+echo -e "   - ${BOLD}nil-lsp${RESET}        (Language Server Protocol for VS Code & editors)"
+echo -e "   - ${BOLD}nil-runner${RESET}     (Windows explorer runner & execution supervisor)"
 echo -e "   - ${BOLD}nilpkg${RESET}         (Package & dependency manager)"
 echo -e "   - ${BOLD}nilpkg-server${RESET}  (Package registry & dashboard server)"
 echo -e "   - ${BOLD}nilkey${RESET}         (Ed25519 cryptographic key & signing tool)"

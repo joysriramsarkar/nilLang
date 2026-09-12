@@ -23,6 +23,9 @@ func main() {
 		err = rebuild(argsOrDefault(2, filepath.Join("build", "nil-compiler.json")), argsOrDefault(3, filepath.Join("build", "nil-compiler.next.json")))
 	case "verify":
 		err = verify(argsOrDefault(2, "bootstrap"))
+	case "help", "-h", "--help":
+		printUsage()
+		return
 	default:
 		usage()
 		os.Exit(2)
@@ -38,6 +41,13 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  nil-bootstrap build [source-dir] [output]")
 	fmt.Fprintln(os.Stderr, "  nil-bootstrap rebuild [input] [output]")
 	fmt.Fprintln(os.Stderr, "  nil-bootstrap verify [source-dir]")
+}
+
+func printUsage() {
+	fmt.Println("usage:")
+	fmt.Println("  nil-bootstrap build [source-dir] [output]")
+	fmt.Println("  nil-bootstrap rebuild [input] [output]")
+	fmt.Println("  nil-bootstrap verify [source-dir]")
 }
 
 func argsOrDefault(index int, fallback string) string {

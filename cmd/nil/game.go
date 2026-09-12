@@ -105,6 +105,12 @@ func cmdGameDoctor(args []string) {
 
 	cfg, err := config.LoadConfig(absDir)
 	if err != nil {
+		if len(args) == 0 {
+			fmt.Println("ℹ️  বর্তমান ডিরেক্টরিতে কোনো nil.json পাওয়া যায়নি।")
+			fmt.Println("ব্যবহার: nil game doctor [game-project-dir]")
+			fmt.Println("উদাহরণ: nil game doctor my-nilang-game")
+			return
+		}
 		fmt.Fprintf(os.Stderr, "cannot load nil.json: %v\n", err)
 		os.Exit(1)
 	}

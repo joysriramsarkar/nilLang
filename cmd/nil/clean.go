@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/joysriramsarkar/nilLang/pkg/config"
 )
@@ -13,6 +14,15 @@ func cmdClean() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ কারেন্ট ডিরেক্টরি পেতে সমস্যা: %s\n", err)
 		os.Exit(1)
+	}
+
+	for _, arg := range os.Args[2:] {
+		if !strings.HasPrefix(arg, "-") {
+			if fi, statErr := os.Stat(arg); statErr == nil && fi.IsDir() {
+				projectDir = arg
+				break
+			}
+		}
 	}
 
 	cfg, err := config.LoadConfig(projectDir)

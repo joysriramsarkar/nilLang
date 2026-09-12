@@ -581,6 +581,10 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 		return err
 	}
 
+	if left == nil || right == nil {
+		return fmt.Errorf("runtime error: uninitialized variable or nil operand in binary operation")
+	}
+
 	leftType := left.Type()
 	rightType := right.Type()
 
@@ -674,6 +678,10 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	left, err := vm.pop()
 	if err != nil {
 		return err
+	}
+
+	if left == nil || right == nil {
+		return fmt.Errorf("runtime error: uninitialized variable or nil operand in comparison")
 	}
 
 	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {

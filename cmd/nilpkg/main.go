@@ -41,10 +41,10 @@ func main() {
 		cmdVerify(cfg)
 	case "repo":
 		cmdRepo(cfg)
-	case "version":
+	case "version", "-v", "--version":
 		fmt.Printf("nilpkg v%s\n", VERSION)
 		fmt.Println("Nilang Package Manager • Onuron OS")
-	case "help":
+	case "help", "-h", "--help":
 		printUsage()
 	default:
 		fmt.Fprintf(os.Stderr, "❌ অজানা কমান্ড: %s\n\n", command)

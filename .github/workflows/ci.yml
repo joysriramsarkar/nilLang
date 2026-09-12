@@ -60,6 +60,9 @@ jobs:
           mkdir -p bin
           go build -o bin/nil ./cmd/nil
           go build -o bin/nilc ./cmd/nilc
+          go build -o bin/nil-bootstrap ./cmd/nil-bootstrap
+          go build -o bin/nil-lsp ./cmd/nil-lsp
+          go build -o bin/nil-runner ./cmd/nil-runner
           go build -o bin/nilpkg ./cmd/nilpkg
           go build -o bin/nilpkg-server ./cmd/nilpkg-server
           go build -o bin/nilkey ./cmd/nilkey
@@ -71,6 +74,9 @@ jobs:
           mkdir bin -ErrorAction SilentlyContinue
           go build -o bin/nil.exe ./cmd/nil
           go build -o bin/nilc.exe ./cmd/nilc
+          go build -o bin/nil-bootstrap.exe ./cmd/nil-bootstrap
+          go build -o bin/nil-lsp.exe ./cmd/nil-lsp
+          go build -o bin/nil-runner.exe ./cmd/nil-runner
           go build -o bin/nilpkg.exe ./cmd/nilpkg
           go build -o bin/nilpkg-server.exe ./cmd/nilpkg-server
           go build -o bin/nilkey.exe ./cmd/nilkey

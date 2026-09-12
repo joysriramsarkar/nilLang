@@ -14,6 +14,9 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "`n[SUCCESS] All binaries compiled successfully into bin/:" -ForegroundColor Green
     Write-Host "  - bin/nil.exe" -ForegroundColor Gray
     Write-Host "  - bin/nilc.exe" -ForegroundColor Gray
+    Write-Host "  - bin/nil-bootstrap.exe" -ForegroundColor Gray
+    Write-Host "  - bin/nil-lsp.exe" -ForegroundColor Gray
+    Write-Host "  - bin/nil-runner.exe" -ForegroundColor Gray
     Write-Host "  - bin/nilpkg.exe" -ForegroundColor Gray
     Write-Host "  - bin/nilpkg-server.exe" -ForegroundColor Gray
     Write-Host "  - bin/nilkey.exe" -ForegroundColor Gray

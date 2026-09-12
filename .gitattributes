@@ -14,3 +14,11 @@ examples/**/*.nil linguist-documentation=false
 build/** linguist-generated=true
 dist/** linguist-generated=true
 bin/** linguist-generated=true
+
+# Line ending normalization
+* text=auto eol=lf
+*.go text eol=lf
+*.nil text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

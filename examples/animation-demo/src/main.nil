@@ -15,8 +15,9 @@ let easeOutBounce = fn(t) {
 
 puts("Simulating 60FPS timeline updates:");
 while (i <= frames) {
-    let t = i / 5;
-    puts("  Frame \(i): progress = \(t)");
+    let t = (i * 1.0) / 5.0;
+    let progress = easeOutBounce(t);
+    puts("  Frame \(i): t = \(t), progress = \(progress)");
     let i = i + 1;
 }
 

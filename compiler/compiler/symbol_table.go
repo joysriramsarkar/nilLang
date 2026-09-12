@@ -39,6 +39,9 @@ func NewEnclosedSymbolTable(outer *SymbolTable) *SymbolTable {
 }
 
 func (s *SymbolTable) Define(name string) Symbol {
+	if existing, ok := s.store[name]; ok {
+		return existing
+	}
 	symbol := Symbol{Name: name, Index: s.numDefinitions}
 	if s.Outer == nil {
 		symbol.Scope = GlobalScope
@@ -52,6 +55,11 @@ func (s *SymbolTable) Define(name string) Symbol {
 }
 
 func (s *SymbolTable) DefineConst(name string) Symbol {
+	if existing, ok := s.store[name]; ok {
+		existing.Constant = true
+		s.store[name] = existing
+		return existing
+	}
 	symbol := s.Define(name)
 	symbol.Constant = true
 	s.store[name] = symbol

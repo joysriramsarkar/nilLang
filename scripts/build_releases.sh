@@ -10,7 +10,7 @@ mkdir -p "${DIST_DIR}"
 cd "${REPO_ROOT}"
 
 PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
-COMMANDS=("nil" "nilc" "nilpkg" "nilpkg-server" "nilkey" "softbusd")
+COMMANDS=("nil" "nilc" "nil-bootstrap" "nil-lsp" "nil-runner" "nilpkg" "nilpkg-server" "nilkey" "softbusd")
 
 echo "🚀 Building Nilang v${VERSION} release archives..."
 

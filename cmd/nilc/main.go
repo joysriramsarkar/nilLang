@@ -14,12 +14,21 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("ব্যবহার: nilc <file.nil>")
-		fmt.Println("উদাহরণ: nilc examples/hello.nil")
+		printUsage()
 		os.Exit(1)
 	}
 
-	filename := os.Args[1]
+	arg := os.Args[1]
+	switch arg {
+	case "-h", "--help", "help":
+		printUsage()
+		return
+	case "-v", "--version", "version":
+		fmt.Println("nilc v0.1.0 - Dedicated Nilang Bytecode Compiler & Disassembler")
+		return
+	}
+
+	filename := arg
 
 	// Read source file
 	source, err := os.ReadFile(filename)
@@ -76,4 +85,10 @@ func compileSource(source string) (*compiler.Bytecode, error) {
 	}
 
 	return comp.Bytecode(), nil
+}
+
+func printUsage() {
+	fmt.Println("nilc v0.1.0 - Dedicated Nilang Bytecode Compiler & Disassembler")
+	fmt.Println("ব্যবহার: nilc <file.nil>")
+	fmt.Println("উদাহরণ: nilc examples/hello-onuron/src/main.nil")
 }

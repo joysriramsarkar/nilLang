@@ -3,6 +3,18 @@ echo ===================================================
 echo   Building Nilang Toolchain
 echo ===================================================
 
+where go >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Go is not installed or not in PATH. Please install Go 1.22+ first.
+    exit /b 1
+)
+
+go version >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Go command failed. Check your Go installation.
+    exit /b 1
+)
+
 if not exist "bin" mkdir "bin"
 
 echo Compiling all binaries into bin/...
@@ -14,6 +26,8 @@ if %ERRORLEVEL% EQU 0 (
     echo   - bin/nil.exe
     echo   - bin/nilc.exe
     echo   - bin/nil-bootstrap.exe
+    echo   - bin/nil-lsp.exe
+    echo   - bin/nil-runner.exe
     echo   - bin/nilpkg.exe
     echo   - bin/nilpkg-server.exe
     echo   - bin/nilkey.exe

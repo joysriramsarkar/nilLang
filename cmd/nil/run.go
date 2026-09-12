@@ -79,6 +79,16 @@ func cmdRun() {
 		os.Exit(1)
 	}
 
+	if scriptName != "" {
+		if fi, statErr := os.Stat(scriptName); statErr == nil && fi.IsDir() {
+			candidate := filepath.Join(scriptName, "nil.json")
+			if _, jsonErr := os.Stat(candidate); jsonErr == nil {
+				projectDir = scriptName
+				scriptName = ""
+			}
+		}
+	}
+
 	cfg, err := config.LoadConfig(projectDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %s\n", err)

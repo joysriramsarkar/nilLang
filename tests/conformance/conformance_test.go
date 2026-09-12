@@ -1573,6 +1573,19 @@ func TestDualEngineConformance(t *testing.T) {
 			`,
 			Expected: int64(20),
 		},
+		{
+			Name: "While Loop Increment With Let Rebinding",
+			Source: `
+			let i = 0;
+			let total = 0;
+			while (i < 5) {
+				let total = total + i;
+				let i = i + 1;
+			}
+			total;
+			`,
+			Expected: int64(10),
+		},
 	}
 
 	for _, tc := range testCases {

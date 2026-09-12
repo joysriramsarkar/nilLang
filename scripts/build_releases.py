@@ -18,7 +18,7 @@ PLATFORMS = [
     {"os": "windows", "arch": "amd64", "ext": ".exe", "archive": "zip"},
 ]
 
-COMMANDS = ["nil", "nilc", "nilpkg", "nilpkg-server", "nilkey", "softbusd"]
+COMMANDS = ["nil", "nilc", "nil-bootstrap", "nil-lsp", "nil-runner", "nilpkg", "nilpkg-server", "nilkey", "softbusd"]
 
 def build_all():
     os.makedirs(DIST_DIR, exist_ok=True)

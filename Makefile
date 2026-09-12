@@ -9,7 +9,7 @@ PREFIX ?= /usr/local
 GO ?= go
 CGO_ENABLED ?= 0
 
-TARGETS = nil nilc nil-bootstrap nilpkg nilpkg-server nilkey softbusd
+TARGETS = nil nilc nil-bootstrap nil-lsp nil-runner nilpkg nilpkg-server nilkey softbusd
 
 .PHONY: all build bootstrap bootstrap-verify test clean install uninstall release
 
@@ -38,7 +38,7 @@ install: build
 	@mkdir -p $(PREFIX)/bin
 	@for target in $(TARGETS); do \
 		cp $(BIN_DIR)/$$target $(PREFIX)/bin/$$target; \
-		chmod 755 $(PREFIX)/bin/$$target; \
+		chmod 755 $(PREFIX)/bin/$$target 2>/dev/null || true; \
 	done
 	@echo "✅ Nilang installed successfully to $(PREFIX)/bin"
 

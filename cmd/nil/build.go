@@ -97,10 +97,23 @@ func cmdBuild() {
 	var requestedTargets []string
 	allOS := false
 
+	// Find project directory (current directory by default, or overridden by arg)
+	projectDir, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ কারেন্ট ডিরেক্টরি পেতে সমস্যা: %s\n", err)
+		os.Exit(1)
+	}
+
 	for i := 2; i < len(os.Args); i++ {
-		arg := strings.ToLower(os.Args[i])
+		rawArg := os.Args[i]
+		arg := strings.ToLower(rawArg)
 		if arg == "-allos" || arg == "--all" || arg == "-all" || arg == "all" || arg == "--allos" {
 			allOS = true
+		} else if strings.HasPrefix(arg, "--dir=") {
+			projectDir = strings.TrimPrefix(rawArg, "--dir=")
+		} else if (arg == "--dir" || arg == "-dir") && i+1 < len(os.Args) {
+			projectDir = os.Args[i+1]
+			i++
 		} else if strings.HasPrefix(arg, "--target=") {
 			requestedTargets = append(requestedTargets, strings.TrimPrefix(arg, "--target="))
 		} else if strings.HasPrefix(arg, "-target=") {
@@ -109,15 +122,15 @@ func cmdBuild() {
 			requestedTargets = append(requestedTargets, os.Args[i+1])
 			i++
 		} else if !strings.HasPrefix(arg, "-") {
+			if fi, statErr := os.Stat(rawArg); statErr == nil && fi.IsDir() {
+				candidate := filepath.Join(rawArg, "nil.json")
+				if _, jsonErr := os.Stat(candidate); jsonErr == nil {
+					projectDir = rawArg
+					continue
+				}
+			}
 			requestedTargets = append(requestedTargets, arg)
 		}
-	}
-
-	// Find project directory (current directory)
-	projectDir, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ কারেন্ট ডিরেক্টরি পেতে সমস্যা: %s\n", err)
-		os.Exit(1)
 	}
 
 	// Load configuration

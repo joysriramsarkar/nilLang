@@ -314,18 +314,34 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.LetStatement:
-		var symbol Symbol
-		if node.Constant {
-			symbol = c.symbolTable.DefineConst(node.Name.Value)
-		} else {
-			symbol = c.symbolTable.Define(node.Name.Value)
-		}
 		if node.Value == nil {
 			return fmt.Errorf("variable %s requires an initializer", node.Name.Value)
 		}
+
+		isFunc := false
+		if _, ok := node.Value.(*ast.FunctionLiteral); ok {
+			isFunc = true
+			if node.Constant {
+				c.symbolTable.DefineConst(node.Name.Value)
+			} else {
+				c.symbolTable.Define(node.Name.Value)
+			}
+		}
+
 		err := c.Compile(node.Value)
 		if err != nil {
 			return err
+		}
+
+		var symbol Symbol
+		if !isFunc {
+			if node.Constant {
+				symbol = c.symbolTable.DefineConst(node.Name.Value)
+			} else {
+				symbol = c.symbolTable.Define(node.Name.Value)
+			}
+		} else {
+			symbol, _ = c.symbolTable.Resolve(node.Name.Value)
 		}
 
 		if symbol.Scope == GlobalScope {

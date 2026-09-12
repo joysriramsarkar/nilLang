@@ -140,10 +140,10 @@ func GetNativeBuiltins() map[string]*object.Builtin {
 					return newError("native_device expects 0 arguments, got %d", len(args))
 				}
 				cstr := C.nilang_onuron_device_model()
-				defer C.nilang_string_free(cstr)
 				if cstr == nil {
 					return &object.String{Value: "Unknown"}
 				}
+				defer C.nilang_string_free(cstr)
 				goStr := C.GoString(cstr)
 				return &object.String{Value: goStr}
 			},
@@ -155,10 +155,10 @@ func GetNativeBuiltins() map[string]*object.Builtin {
 					return newError("native_os_version expects 0 arguments, got %d", len(args))
 				}
 				cstr := C.nilang_onuron_os_version()
-				defer C.nilang_string_free(cstr)
 				if cstr == nil {
 					return &object.String{Value: "Unknown"}
 				}
+				defer C.nilang_string_free(cstr)
 				goStr := C.GoString(cstr)
 				return &object.String{Value: goStr}
 			},
@@ -201,10 +201,10 @@ func GetNativeBuiltins() map[string]*object.Builtin {
 		"native_version": {
 			Fn: func(args ...object.Object) object.Object {
 				cstr := C.nilang_native_version()
-				defer C.nilang_string_free(cstr)
 				if cstr == nil {
 					return &object.String{Value: "unknown"}
 				}
+				defer C.nilang_string_free(cstr)
 				goStr := C.GoString(cstr)
 				return &object.String{Value: goStr}
 			},

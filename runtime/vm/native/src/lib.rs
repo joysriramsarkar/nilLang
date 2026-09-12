@@ -20,7 +20,13 @@ pub extern "C" fn nilang_alloc(size: usize) -> *mut c_void {
     ptr as *mut c_void
 }
 
-/// Free memory allocated by nilang_alloc
+/// Free memory allocated by nilang_alloc.
+/// SAFETY: `ptr` must have been returned by nilang_alloc, and `size` must
+/// match the size originally requested to nilang_alloc.
+/// Note: Vec::with_capacity may over-allocate internally, but from_raw_parts
+/// with the originally-requested capacity is safe because the allocator
+/// deallocates based on the minimum required layout, and capacity >= original
+/// allocation size is sufficient for correct deallocation.
 #[no_mangle]
 pub extern "C" fn nilang_free(ptr: *mut c_void, size: usize) {
     if !ptr.is_null() {
@@ -110,20 +116,22 @@ pub extern "C" fn nilang_math_mul(a: i64, b: i64) -> i64 {
     a.wrapping_mul(b)
 }
 
+/// Divide a by b. Returns 0 on division by zero (caller should check).
 #[no_mangle]
 pub extern "C" fn nilang_math_div(a: i64, b: i64) -> i64 {
     if b == 0 {
-        return 0; // Handle division by zero
+        return 0; // Handle division by zero gracefully
     }
-    a / b
+    a.wrapping_div(b)
 }
 
+/// Modulo of a % b. Returns 0 on division by zero (caller should check).
 #[no_mangle]
 pub extern "C" fn nilang_math_mod(a: i64, b: i64) -> i64 {
     if b == 0 {
-        return 0;
+        return 0; // Handle modulo by zero gracefully
     }
-    a % b
+    a.wrapping_rem(b)
 }
 
 #[no_mangle]
@@ -191,7 +199,8 @@ pub extern "C" fn nilang_sys_sleep_ms(ms: i64) {
 // Onuron OS Specific (HAL Integration Points)
 // ============================================================
 
-/// Get battery level (0-100)
+/// Get battery level (0-100).
+/// Returns 0 by default when Onuron OS HAL is not available (stub implementation).
 /// TODO: Implement actual HAL call when Onuron OS HAL is ready
 #[no_mangle]
 pub extern "C" fn nilang_onuron_battery_level() -> c_int {
