@@ -18,6 +18,26 @@ import (
 var stdinReader = bufio.NewReader(os.Stdin)
 
 var Builtins = map[string]*object.Builtin{
+	// __native_module__ resolves a registered native module (web, data,
+	// money, security, realtime, ...) by name at runtime. The bytecode
+	// compiler emits a call to this builtin for `import "mod" as alias`
+	// because native module hashes contain Go closures that cannot be
+	// serialized into a NABC bytecode image.
+	"__native_module__": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `__native_module__`. got=%d, want=1", len(args))
+			}
+			name, ok := args[0].(*object.String)
+			if !ok {
+				return newError("argument to `__native_module__` must be STRING, got %s", args[0].Type())
+			}
+			if mod, ok := GetNativeModule(name.Value); ok {
+				return mod
+			}
+			return newError("unknown native module %q", name.Value)
+		},
+	},
 	"emit": {
 		Fn: func(args ...object.Object) object.Object {
 			if len(args) < 1 || len(args) > 2 {

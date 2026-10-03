@@ -21,6 +21,8 @@ const (
 	CapAI         Type = "AI"
 	CapSensors    Type = "Sensors"
 	CapAudio      Type = "Audio"
+	CapPrinter    Type = "Printer"
+	CapScanner    Type = "Scanner"
 )
 
 // AllCapabilities lists all valid capability types
@@ -37,6 +39,8 @@ var AllCapabilities = []Type{
 	CapAI,
 	CapSensors,
 	CapAudio,
+	CapPrinter,
+	CapScanner,
 }
 
 // PermissionLevel defines access permission level for a capability
@@ -127,6 +131,8 @@ var CapabilityMatrix = map[string]map[Type]PermissionLevel{
 		CapFilesystem: PermRestricted, // App sandbox only
 		CapDatabase:   PermAllowed,    // SQLite
 		CapSensors:    PermAllowed,
+		CapScanner:    PermRestricted, // Camera-based barcode scanning
+		CapPrinter:    PermRestricted, // Bluetooth / thermal receipt printers
 		CapProcess:    PermDenied, // Spawning arbitrary child processes restricted
 	},
 	"server": {
@@ -185,6 +191,8 @@ var CapabilityMatrix = map[string]map[Type]PermissionLevel{
 		CapDatabase:   PermAllowed,
 		CapProcess:    PermAllowed,
 		CapSensors:    PermAllowed,
+		CapPrinter:    PermAllowed, // Receipt / label printers (POS hardware)
+		CapScanner:    PermAllowed, // Barcode / QR scanners (POS hardware)
 	},
 	"embedded": {
 		CapSensors:    PermAllowed,

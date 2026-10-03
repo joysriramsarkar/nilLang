@@ -2,7 +2,9 @@ package compiler
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
@@ -33,6 +35,21 @@ type Compiler struct {
 
 	scopes     []CompilationScope
 	scopeIndex int
+
+	// SourceDir is the directory of the file being compiled. Relative
+	// module imports ("./domain/cart.nil") resolve against it.
+	SourceDir string
+
+	// LoadModule resolves a file-based import path to its parsed AST.
+	// It returns the program and a canonical path used for caching and
+	// cycle detection. When nil, only native modules can be imported.
+	LoadModule func(importPath, sourceDir string) (*ast.Program, string, error)
+
+	// moduleCache remembers inlined file modules (canonical path -> globals).
+	moduleCache map[string][]Symbol
+
+	// importStack tracks the active import chain for cycle detection.
+	importStack []string
 }
 
 func New() *Compiler {
@@ -53,6 +70,7 @@ func New() *Compiler {
 		symbolTable: symbolTable,
 		scopes:      []CompilationScope{mainScope},
 		scopeIndex:  0,
+		moduleCache: make(map[string][]Symbol),
 	}
 }
 
@@ -96,6 +114,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.AppStatement:
 		return c.Compile(node.Body)
+
+	case *ast.ImportStatement:
+		return c.compileImport(node)
 
 	case *ast.ExpressionStatement:
 		err := c.Compile(node.Expression)
@@ -619,6 +640,183 @@ func (c *Compiler) Compile(node ast.Node) error {
 	}
 
 	return nil
+}
+
+// compileImport resolves an import statement during bytecode compilation,
+// giving the bytecode VM the same module semantics as the tree-walking
+// evaluator (evaluator.evalImportStatement):
+//
+//   - Native modules (web, data, money, security, realtime, ...) are bound
+//     as a constant Hash of builtins.
+//   - File modules ("./domain/cart.nil", "std/...") are inlined into the
+//     current compilation scope: their top-level symbols become globals of
+//     the main program (so the VM can call them as closures), and the
+//     import alias is bound to a runtime Hash built from those globals.
+func (c *Compiler) compileImport(node *ast.ImportStatement) error {
+	if node.Path == nil {
+		return fmt.Errorf("import path cannot be empty")
+	}
+	importPath := node.Path.Value
+
+	// Case 1: native module (registered via evaluator.RegisterNativeModule)
+	if mod, ok := evaluator.GetNativeModule(importPath); ok {
+		return c.bindNativeImport(node, importPath, mod)
+	}
+
+	// Case 2: file-based module
+	if c.LoadModule == nil {
+		return fmt.Errorf("E0302: module not found: %q (no module loader configured)", importPath)
+	}
+
+	prog, canonical, err := c.LoadModule(importPath, c.SourceDir)
+	if err != nil {
+		return fmt.Errorf("E0302: %s", err)
+	}
+
+	// Circular dependency detection (mirrors evaluator E0301)
+	for _, visiting := range c.importStack {
+		if visiting == canonical {
+			chain := append(append([]string{}, c.importStack...), canonical)
+			return fmt.Errorf("E0301: circular dependency detected: %s", strings.Join(chain, " -> "))
+		}
+	}
+
+	// Cached module: rebind without re-executing module init code
+	if syms, ok := c.moduleCache[canonical]; ok {
+		return c.bindInlinedImport(node, importPath, syms)
+	}
+
+	c.importStack = append(c.importStack, canonical)
+	prevDir := c.SourceDir
+	c.SourceDir = filepath.Dir(canonical)
+	defer func() {
+		c.importStack = c.importStack[:len(c.importStack)-1]
+		c.SourceDir = prevDir
+	}()
+
+	// Inline-compile the module into the current scope. Module top-level
+	// symbols become globals shared with the main program, so functions
+	// defined in the module can call each other (OpGetGlobal) at VM runtime.
+	before := c.symbolTable.NumDefinitions()
+	for _, stmt := range prog.Statements {
+		if err := c.Compile(stmt); err != nil {
+			return fmt.Errorf("module %s: %w", canonical, err)
+		}
+	}
+
+	// Collect the globals defined by the module
+	syms := make([]Symbol, 0, 8)
+	for _, sym := range c.symbolTable.store {
+		if sym.Scope == GlobalScope && sym.Index >= before {
+			syms = append(syms, sym)
+		}
+	}
+	sort.Slice(syms, func(i, j int) bool { return syms[i].Index < syms[j].Index })
+
+	c.moduleCache[canonical] = syms
+	return c.bindInlinedImport(node, importPath, syms)
+}
+
+// bindNativeImport binds an imported native module (web, data, money, ...).
+// Native module hashes contain Go closures that cannot be serialized into a
+// NABC bytecode image, so the module is fetched by name at runtime through
+// the __native_module__ builtin — the same registry the evaluator uses.
+func (c *Compiler) bindNativeImport(node *ast.ImportStatement, importPath string, mod *object.Hash) error {
+	bindName := ""
+	if node.Alias != nil {
+		bindName = node.Alias.Value
+	}
+	if bindName == "" {
+		bindName = moduleBaseName(importPath)
+	}
+
+	// <alias> = __native_module__("<path>")
+	if err := c.emitNativeModuleFetch(importPath); err != nil {
+		return err
+	}
+	moduleSymbol := c.symbolTable.Define(bindName)
+	c.emitSymbolStore(moduleSymbol)
+
+	// import {x, y} from "mod" -> <name> = <alias>["x"]
+	for _, ident := range node.Names {
+		c.emit(code.OpGetGlobal, moduleSymbol.Index)
+		c.emit(code.OpConstant, c.addConstant(&object.String{Value: ident.Value}))
+		c.emit(code.OpIndex)
+		nameSymbol := c.symbolTable.Define(ident.Value)
+		c.emitSymbolStore(nameSymbol)
+	}
+	return nil
+}
+
+func (c *Compiler) emitNativeModuleFetch(importPath string) error {
+	sym, ok := c.symbolTable.Resolve(nativeModuleBuiltinName)
+	if !ok || sym.Scope != BuiltinScope {
+		return fmt.Errorf("E0302: native module loader %q unavailable", nativeModuleBuiltinName)
+	}
+	// OpCall expects [callee, arg...]: push the builtin first,
+	// then the module name argument.
+	c.emit(code.OpGetBuiltin, sym.Index)
+	c.emit(code.OpConstant, c.addConstant(&object.String{Value: importPath}))
+	c.emit(code.OpCall, 1)
+	return nil
+}
+
+// nativeModuleBuiltinName is the runtime resolver for native modules.
+const nativeModuleBuiltinName = "__native_module__"
+
+// bindInlinedImport binds an inlined file module. For `import {x} from "m"`
+// the requested symbols are bound directly to their globals; otherwise the
+// alias is bound to a runtime Hash containing every module symbol.
+func (c *Compiler) bindInlinedImport(node *ast.ImportStatement, importPath string, syms []Symbol) error {
+	if len(node.Names) > 0 {
+		byName := make(map[string]Symbol, len(syms))
+		for _, s := range syms {
+			byName[s.Name] = s
+		}
+		for _, ident := range node.Names {
+			s, ok := byName[ident.Value]
+			if !ok {
+				return fmt.Errorf("E0303: module %q does not export %q", importPath, ident.Value)
+			}
+			c.emit(code.OpGetGlobal, s.Index)
+			symbol := c.symbolTable.Define(ident.Value)
+			c.emitSymbolStore(symbol)
+		}
+		return nil
+	}
+
+	// Build {name: value, ...} from the module globals at runtime
+	for _, s := range syms {
+		c.emit(code.OpConstant, c.addConstant(&object.String{Value: s.Name}))
+		c.emit(code.OpGetGlobal, s.Index)
+	}
+	c.emit(code.OpHash, len(syms)*2)
+
+	bindName := ""
+	if node.Alias != nil {
+		bindName = node.Alias.Value
+	}
+	if bindName == "" {
+		bindName = moduleBaseName(importPath)
+	}
+	symbol := c.symbolTable.Define(bindName)
+	c.emitSymbolStore(symbol)
+	return nil
+}
+
+func (c *Compiler) emitSymbolStore(symbol Symbol) {
+	if symbol.Scope == GlobalScope {
+		c.emit(code.OpSetGlobal, symbol.Index)
+	} else {
+		c.emit(code.OpSetLocal, symbol.Index)
+	}
+}
+
+// moduleBaseName derives the implicit binding name of an import path,
+// matching the evaluator: base name without extension ("./a/b.nil" -> "b").
+func moduleBaseName(importPath string) string {
+	base := filepath.Base(importPath)
+	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
 func (c *Compiler) loadSymbol(s Symbol) {

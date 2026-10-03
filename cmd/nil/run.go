@@ -114,8 +114,10 @@ func runDirectFile(filePath string, useVM bool) {
 	}
 
 	absPath, err := filepath.Abs(filePath)
+	sourceDir := ""
 	if err == nil {
-		evaluator.PushScriptDir(filepath.Dir(absPath))
+		sourceDir = filepath.Dir(absPath)
+		evaluator.PushScriptDir(sourceDir)
 		defer evaluator.PopScriptDir()
 	}
 
@@ -125,7 +127,7 @@ func runDirectFile(filePath string, useVM bool) {
 		os.Exit(1)
 	}
 
-	executeSource(string(source), useVM)
+	executeSource(string(source), sourceDir, useVM)
 }
 
 func runBundleFile(bundlePath string, useVM bool) {
@@ -139,13 +141,9 @@ func runBundleFile(bundlePath string, useVM bool) {
 	manifest := r.GetManifest()
 	fmt.Printf("📦 নির্বাহ হচ্ছে: %s v%s\n", manifest.AppName, manifest.AppVersion)
 
-	// If source is present in bundle, execute it
-	if srcBytes, err := r.GetFile("src/main.nil"); err == nil {
-		executeSource(string(srcBytes), useVM)
-		return
-	}
-
-	// Fallback to compiled bytecode if available
+	// Prefer the compiled NABC bytecode: it is fully self-contained
+	// (file-module imports are inlined at compile time), so the bundle
+	// runs on any host without the original source tree.
 	if bcBytes, err := r.GetBytecode(); err == nil && len(bcBytes) > 0 {
 		bytecode, err := pkgcompiler.DecodeBytecode(bcBytes)
 		if err != nil {
@@ -160,6 +158,17 @@ func runBundleFile(bundlePath string, useVM bool) {
 		return
 	}
 
+	// Fallback: execute embedded source (requires the source tree's
+	// relative imports to resolve from the bundle directory).
+	if srcBytes, err := r.GetFile("src/main.nil"); err == nil {
+		bundleDir := ""
+		if abs, err := filepath.Abs(bundlePath); err == nil {
+			bundleDir = filepath.Dir(abs)
+		}
+		executeSource(string(srcBytes), bundleDir, useVM)
+		return
+	}
+
 	fmt.Fprintf(os.Stderr, "❌ বান্ডিলে কোনো এক্সিকিউটেবল কোড পাওয়া যায়নি\n")
 	os.Exit(1)
 }
@@ -167,7 +176,7 @@ func runBundleFile(bundlePath string, useVM bool) {
 // executeSource parses, type-checks, and executes Nilang source.
 // ALL source execution paths MUST go through this function so that
 // the frontend.ParseAndCheck gate is the single enforcement point.
-func executeSource(source string, useVM bool) {
+func executeSource(source string, sourceDir string, useVM bool) {
 	// ── Frontend Gate: Parse + Typecheck ─────────────────────────────────────
 	result := frontend.ParseAndCheck(source)
 
@@ -192,6 +201,7 @@ func executeSource(source string, useVM bool) {
 	// ── Backend: VM or Tree-Walking Evaluator ────────────────────────────────
 	if useVM {
 		comp := compiler.New()
+		pkgcompiler.ConfigureCompiler(comp, sourceDir)
 		err := comp.Compile(program)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "❌ কম্পাইলেশন ত্রুটি: %s\n", err)

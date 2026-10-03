@@ -3,12 +3,16 @@ package compiler
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
 	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
+	"github.com/joysriramsarkar/nilLang/pkg/stdlib"
 )
 
 // Pipeline represents the complete compilation pipeline
@@ -72,6 +76,8 @@ func (p *Pipeline) Compile() error {
 
 	// Phase 4: Bytecode compilation
 	comp := compiler.New()
+	comp.SourceDir = filepath.Dir(p.filename)
+	comp.LoadModule = loadModuleAST
 	if err := comp.Compile(program); err != nil {
 		return fmt.Errorf("bytecode compilation failed: %w", err)
 	}
@@ -115,4 +121,69 @@ func formatErrors(errors []string) string {
 		result += fmt.Sprintf("  %d. %s\n", i+1, err)
 	}
 	return result
+}
+
+// ConfigureCompiler equips a bytecode compiler with the module-resolution
+// hooks (source directory + file/stdlib module loader) required to compile
+// programs that use import statements. Call this before comp.Compile(program)
+// on every bytecode compilation entry point so the VM backend has the same
+// module semantics as the tree-walking evaluator.
+func ConfigureCompiler(comp *compiler.Compiler, sourceDir string) {
+	comp.SourceDir = sourceDir
+	comp.LoadModule = loadModuleAST
+}
+
+// loadModuleAST resolves a file-based import to its parsed AST. It supports
+// embedded standard library modules (std/...) and relative .nil source files,
+// so the bytecode pipeline can inline modules the same way the evaluator does.
+func loadModuleAST(importPath, sourceDir string) (*ast.Program, string, error) {
+	// Embedded standard library module
+	if strings.HasPrefix(importPath, "std/") && stdlib.Exists(importPath) {
+		content, err := stdlib.Read(importPath)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to read standard library module %q: %s", importPath, err)
+		}
+		prog, err := parseModuleSource(string(content), importPath)
+		return prog, importPath, err
+	}
+
+	// Relative or bare file path
+	filePath := importPath
+	if !strings.HasSuffix(filePath, ".nil") && !strings.Contains(filePath, ".") {
+		filePath += ".nil"
+	}
+
+	var candidates []string
+	if sourceDir != "" && !filepath.IsAbs(filePath) {
+		candidates = append(candidates, filepath.Join(sourceDir, filePath))
+	}
+	candidates = append(candidates, filePath)
+
+	for _, cand := range candidates {
+		if _, err := os.Stat(cand); err != nil {
+			continue
+		}
+		content, err := os.ReadFile(cand)
+		if err != nil {
+			return nil, "", fmt.Errorf("cannot read module file '%s': %s", cand, err)
+		}
+		abs, absErr := filepath.Abs(cand)
+		if absErr != nil {
+			abs = cand
+		}
+		prog, err := parseModuleSource(string(content), abs)
+		return prog, abs, err
+	}
+
+	return nil, "", fmt.Errorf("cannot find module or file '%s'", importPath)
+}
+
+func parseModuleSource(content, path string) (*ast.Program, error) {
+	l := lexer.New(content)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		return nil, fmt.Errorf("parse error in %s: %s", path, strings.Join(p.Errors(), "; "))
+	}
+	return prog, nil
 }
