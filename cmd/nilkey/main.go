@@ -63,7 +63,7 @@ func printUsage() {
 	fmt.Println("কমান্ড:")
 	fmt.Println("  generate              নতুন কী পেয়ার তৈরি করুন")
 	fmt.Println("  list                  সব কী তালিকা দেখুন")
-	fmt.Println("  sign <file.nilax>     প্যাকেজ সাইন করুন")
+	fmt.Println("  sign <file.nilax>   প্যাকেজ সাইন করুন (-key= দিয়ে কী নির্বাচন করুন)")
 	fmt.Println("  verify <file.nilax>   প্যাকেজ সিগনেচার ভেরিফাই করুন")
 	fmt.Println("  export <key-id>       পাবলিক কী এক্সপোর্ট করুন")
 	fmt.Println("  delete <key-id>       কী মুছে ফেলুন")
@@ -188,15 +188,18 @@ func cmdList() {
 
 func cmdSign() {
 	if len(os.Args) < 3 {
-		fmt.Println("ব্যবহার: nilkey sign <file.nilax> [-password=pass]")
+		fmt.Println("ব্যবহার: nilkey sign <file.nilax> [-key=<key-id>] [-password=pass]")
 		os.Exit(1)
 	}
 
 	filePath := os.Args[2]
-	var password string
+	var password, keyID string
 	for _, arg := range os.Args[3:] {
 		if strings.HasPrefix(arg, "-password=") {
 			password = strings.TrimPrefix(arg, "-password=")
+		}
+		if strings.HasPrefix(arg, "-key=") {
+			keyID = strings.TrimPrefix(arg, "-key=")
 		}
 	}
 	if password == "" {
@@ -216,7 +219,24 @@ func cmdSign() {
 		os.Exit(1)
 	}
 
-	keyPair, keyInfo, err := keyStore.GetKey(keys[0].KeyID)
+	// Select which key to sign with. ListKeys is deterministic (sorted),
+	// but with multiple keys we must not guess — the wrong key would either
+	// fail to decrypt or silently sign with the wrong identity.
+	selectedKeyID, err := chooseKeyID(keys, keyID)
+	if err != nil {
+		if len(keys) > 1 && keyID == "" {
+			fmt.Println("❌ কীস্টোরে একাধিক কী আছে। সাইন করতে কী নির্বাচন করুন:")
+			for _, k := range keys {
+				fmt.Printf("   %s  (owner: %s, purpose: %s)\n", k.KeyID, k.Owner, k.Purpose)
+			}
+			fmt.Println("\nব্যবহার: nilkey sign <file.nilax> -key=<key-id> -password=...")
+		} else {
+			fmt.Fprintf(os.Stderr, "❌ %s\n", err)
+		}
+		os.Exit(1)
+	}
+
+	keyPair, keyInfo, err := keyStore.GetKey(selectedKeyID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ কী লোড করতে সমস্যা: %s\n", err)
 		os.Exit(1)
@@ -247,29 +267,83 @@ func cmdSign() {
 
 func cmdVerify() {
 	if len(os.Args) < 3 {
-		fmt.Println("ব্যবহার: nilkey verify <file.nilax>")
+		fmt.Println("ব্যবহার: nilkey verify <file.nilax> [-key=<key-id>]")
 		os.Exit(1)
 	}
 
 	filePath := os.Args[2]
+	var keyID string
+	for _, arg := range os.Args[3:] {
+		if strings.HasPrefix(arg, "-key=") {
+			keyID = strings.TrimPrefix(arg, "-key=")
+		}
+	}
+
 	fmt.Printf("🔍 ভেরিফাই করা হচ্ছে: %s\n", filePath)
 
 	sigPath := filePath + ".sig"
 	sigBytes, err := os.ReadFile(sigPath)
 	if err != nil {
 		fmt.Printf("⚠️  সিগনেচার ফাইল (%s) পাওয়া যায়নি।\n", sigPath)
-		return
+		os.Exit(1)
 	}
 
 	sig, err := signing.SignatureFromJSON(sigBytes)
 	if err != nil {
 		fmt.Printf("❌ অবৈধ সিগনেচার ফাইল: %s\n", err)
-		return
+		os.Exit(1)
+	}
+
+	// 1. Checksum — has the file changed since it was signed?
+	if err := signing.VerifyFileChecksum(filePath, sig.Checksum); err != nil {
+		fmt.Println("❌ চেকসাম মিলছে না — ফাইলটি সাইনের পর পরিবর্তিত হয়েছে!")
+		fmt.Printf("   %s\n", err)
+		os.Exit(1)
+	}
+
+	// 2. Signature — the public key is stored in plaintext in the keystore,
+	// so no password is needed here.
+	keystorePath := getKeystorePath()
+	keyStore, err := signing.NewKeyStore(keystorePath, "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ কীস্টোর খুলতে সমস্যা: %s\n", err)
+		os.Exit(1)
+	}
+	if keyID == "" {
+		keyID = sig.SignerKeyID
+	}
+	pubKeyHex, err := keyStore.GetPublicKey(keyID)
+	if err != nil {
+		fmt.Printf("❌ পাবলিক কী পাওয়া যায়নি (Key ID: %s): %s\n", keyID, err)
+		os.Exit(1)
+	}
+
+	if err := signing.VerifySignature(pubKeyHex, sig); err != nil {
+		fmt.Println("❌ সিগনেচার ভ্যালিড নয়!")
+		fmt.Printf("   %s\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("✅ সিগনেচার ভ্যালিড!")
 	fmt.Printf("   সাইনার: %s (%s)\n", sig.SignerName, sig.SignerKeyID)
 	fmt.Printf("   চেকসাম: %s\n", sig.Checksum)
+}
+
+// chooseKeyID picks which keystore key to use: an explicit request wins,
+// a single key is used automatically, and multiple keys require a choice.
+func chooseKeyID(keys []*signing.KeyInfo, requested string) (string, error) {
+	if requested != "" {
+		for _, k := range keys {
+			if k.KeyID == requested {
+				return requested, nil
+			}
+		}
+		return "", fmt.Errorf("key not found: %s", requested)
+	}
+	if len(keys) == 1 {
+		return keys[0].KeyID, nil
+	}
+	return "", fmt.Errorf("multiple keys in keystore; specify one with -key=<key-id>")
 }
 
 func cmdExport() {

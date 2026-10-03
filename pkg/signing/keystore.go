@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // KeyStore manages encrypted key storage
@@ -166,7 +167,17 @@ func (ks *KeyStore) GetKey(keyID string) (*KeyPair, *KeyInfo, error) {
 	return keyPair, keyInfo, nil
 }
 
-// ListKeys returns all key IDs in the keystore
+// GetPublicKey returns the stored public key for a key ID.
+// The public key is stored in plaintext, so no password is required.
+func (ks *KeyStore) GetPublicKey(keyID string) (string, error) {
+	storedKey, exists := ks.keys[keyID]
+	if !exists {
+		return "", fmt.Errorf("key not found: %s", keyID)
+	}
+	return storedKey.PublicKey, nil
+}
+
+// ListKeys returns all key IDs in the keystore (sorted by Key ID)
 func (ks *KeyStore) ListKeys() []*KeyInfo {
 	result := make([]*KeyInfo, 0, len(ks.keys))
 	for _, storedKey := range ks.keys {
@@ -177,6 +188,7 @@ func (ks *KeyStore) ListKeys() []*KeyInfo {
 			Algorithm: storedKey.Algorithm,
 		})
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i].KeyID < result[j].KeyID })
 	return result
 }
 

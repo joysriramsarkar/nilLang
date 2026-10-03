@@ -14,6 +14,7 @@ type PackageSignature struct {
 	PackageName    string       `json:"package_name"`
 	PackageVersion string       `json:"package_version"`
 	Checksum       string       `json:"checksum"`  // SHA-256 of the package file
+	Timestamp      int64        `json:"timestamp"` // Unix time of the signed payload
 	Signature      string       `json:"signature"` // Ed25519 signature (hex)
 	SignerKeyID    string       `json:"signer_key_id"`
 	SignerName     string       `json:"signer_name"`
@@ -68,6 +69,7 @@ func (s *Signer) SignFile(filePath string) (*PackageSignature, error) {
 
 	return &PackageSignature{
 		Checksum:    checksumHex,
+		Timestamp:   payload.Timestamp,
 		Signature:   hex.EncodeToString(signature),
 		SignerKeyID: s.keyPair.KeyID,
 		SignerName:  s.keyInfo.Owner,
@@ -98,6 +100,7 @@ func (s *Signer) SignChecksum(checksum string, packageName, version string) (*Pa
 		PackageName:    packageName,
 		PackageVersion: version,
 		Checksum:       checksum,
+		Timestamp:      payload.Timestamp,
 		Signature:      hex.EncodeToString(signature),
 		SignerKeyID:    s.keyPair.KeyID,
 		SignerName:     s.keyInfo.Owner,
@@ -127,10 +130,17 @@ func VerifySignature(pubKeyHex string, sig *PackageSignature) error {
 		return fmt.Errorf("invalid signature: %w", err)
 	}
 
-	// Reconstruct payload
+	// Reconstruct payload — must match the exact bytes that were signed.
+	// Timestamp comes from the signature itself; SignedAt is wall-clock time
+	// of signing and may differ from the signed payload by up to a second.
+	timestamp := sig.Timestamp
+	if timestamp == 0 {
+		// Legacy signature files without a timestamp field
+		timestamp = sig.SignedAt.Unix()
+	}
 	payload := SigningPayload{
 		Checksum:  sig.Checksum,
-		Timestamp: sig.SignedAt.Unix(),
+		Timestamp: timestamp,
 		KeyID:     sig.SignerKeyID,
 	}
 
