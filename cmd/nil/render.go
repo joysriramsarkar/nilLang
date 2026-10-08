@@ -20,6 +20,9 @@ type declarativeUIApp struct {
 }
 
 func loadDeclarativeUI(source string) (*declarativeUIApp, error) {
+	// Imported modules are cached process-wide; drop them so a running dev
+	// server recompiles edited files instead of serving a stale copy.
+	evaluator.ClearModuleCache()
 	l := lexer.New(source)
 	p := parser.New(l)
 	program := p.ParseProgram()
@@ -436,6 +439,7 @@ func convertHashToComponent(hash *object.Hash) ui.Component {
 		}
 		button.Variant = getHashStr(hash, "variant")
 		button.Disabled = getHashBool(hash, "disabled")
+		button.Style = getHashStr(hash, "style")
 		return button
 
 	default:

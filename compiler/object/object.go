@@ -186,14 +186,57 @@ func (h *Hash) Inspect() string {
 	return out.String()
 }
 
+// SourcePos maps a bytecode offset to a source location. It is the debug
+// line table used by the VM debugger to translate an instruction pointer back
+// to a file/line/column.
+type SourcePos struct {
+	Offset int `json:"offset"`
+	Line   int `json:"line"`
+	Column int `json:"column"`
+}
+
 type CompiledFunction struct {
 	Instructions  code.Instructions
 	NumLocals     int
 	NumParameters int
+
+	// Name is the function name ("" for anonymous closures; "<main>" for the
+	// top-level script). Used by the debugger's call stack.
+	Name string
+	// SourceFile is the source file this function was compiled from.
+	SourceFile string
+	// Positions is a sorted offset->source line table.
+	Positions []SourcePos
+	// LocalNames holds the debug name of each local slot (index -> name).
+	LocalNames []string
 }
 
 func (cf *CompiledFunction) Type() ObjectType { return COMPILED_FUNCTION_OBJ }
 func (cf *CompiledFunction) Inspect() string  { return fmt.Sprintf("CompiledFunction[%p]", cf) }
+
+// LineAt returns the source line and column for a bytecode offset using the
+// position table (the greatest offset <= target). Returns (0,0) if unknown.
+func (cf *CompiledFunction) LineAt(offset int) (int, int) {
+	if len(cf.Positions) == 0 {
+		return 0, 0
+	}
+	line, col := cf.Positions[0].Line, cf.Positions[0].Column
+	for _, p := range cf.Positions {
+		if p.Offset > offset {
+			break
+		}
+		line, col = p.Line, p.Column
+	}
+	return line, col
+}
+
+// LocalName returns the debug name for a local slot.
+func (cf *CompiledFunction) LocalName(index int) string {
+	if index >= 0 && index < len(cf.LocalNames) && cf.LocalNames[index] != "" {
+		return cf.LocalNames[index]
+	}
+	return fmt.Sprintf("local[%d]", index)
+}
 
 // CaptureCell is a heap-allocated mutable cell shared between closures.
 // When a closure captures a variable that may be mutated, we wrap it in a

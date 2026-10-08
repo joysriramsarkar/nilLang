@@ -20,8 +20,15 @@ func main() {
 
 	exePath, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Error finding executable path: %v\n", err)
-		os.Exit(1)
+		if len(os.Args) > 0 && os.Args[0] != "" {
+			// PID 1 (initramfs): /proc is not mounted yet, so
+			// os.Executable() (readlink /proc/self/exe) fails.
+			// argv[0] holds the absolute path used to exec us.
+			exePath = os.Args[0]
+		} else {
+			fmt.Fprintf(os.Stderr, "❌ Error finding executable path: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	reader, err := bundle.OpenBundle(exePath)
@@ -31,13 +38,9 @@ func main() {
 	}
 	defer reader.Close()
 
-	// Check if source entry is present in bundle
-	if srcBytes, err := reader.GetFile("src/main.nil"); err == nil {
-		executeSource(string(srcBytes))
-		return
-	}
-
-	// Fallback to bytecode if available
+	// Prefer the compiled NABC bytecode: it is fully self-contained
+	// (file-module imports are inlined at compile time), so the packaged
+	// app runs from any directory without the original source tree.
 	if bcBytes, err := reader.GetBytecode(); err == nil && len(bcBytes) > 0 {
 		bytecode, err := pkgcompiler.DecodeBytecode(bcBytes)
 		if err != nil {
@@ -49,6 +52,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "❌ Runtime error: %v\n", err)
 			os.Exit(1)
 		}
+		return
+	}
+
+	// Fallback: execute embedded source (requires the source tree's
+	// relative imports to resolve from the current directory).
+	if srcBytes, err := reader.GetFile("src/main.nil"); err == nil {
+		executeSource(string(srcBytes))
 		return
 	}
 

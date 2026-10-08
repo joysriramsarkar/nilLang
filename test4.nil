@@ -1,0 +1,26 @@
+﻿import "../logic/Library.nil" as Library;
+
+component MusicApp {
+    state idx: i32 = 0;
+
+    render {
+        let lib = Library.createLibrary();
+        let songs = Library.getAllSongs(lib);
+        let rows = [];
+        let i = 0;
+        while (i < len(songs)) {
+            rows = append(rows, {"type": "Card", "title": songs[i]["title"], "body": songs[i]["artist"]});
+            i = i + 1;
+        }
+        return {
+            "type": "Page",
+            "title": "Music Test",
+            "content": rows,
+            "footer": "ok"
+        };
+    }
+
+    on play(payload) {
+        emit("played", 1);
+    }
+}

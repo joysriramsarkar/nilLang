@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -22,11 +23,20 @@ type CompilationScope struct {
 	instructions        code.Instructions
 	lastInstruction     EmittedInstruction
 	previousInstruction EmittedInstruction
+
+	// positions is the per-scope line table (offset -> source location).
+	positions []object.SourcePos
 }
 
 type Bytecode struct {
 	Instructions code.Instructions
 	Constants    []object.Object
+
+	// Positions is the top-level line table; SourceFile is the file it maps.
+	Positions  []object.SourcePos
+	SourceFile string
+	// GlobalNames maps global slot indices to their debug names.
+	GlobalNames []string
 }
 
 type Compiler struct {
@@ -36,6 +46,8 @@ type Compiler struct {
 	scopes     []CompilationScope
 	scopeIndex int
 
+	// SourceFile is recorded in the debug line tables.
+	SourceFile string
 	// SourceDir is the directory of the file being compiled. Relative
 	// module imports ("./domain/cart.nil") resolve against it.
 	SourceDir string
@@ -103,6 +115,10 @@ func NewWithState(s *SymbolTable, constants []object.Object) *Compiler {
 }
 
 func (c *Compiler) Compile(node ast.Node) error {
+	// Record a debug line-table entry for this node's source position before
+	// emitting its instructions. This powers VM source-level debugging.
+	c.recordNodePosition(node)
+
 	switch node := node.(type) {
 	case *ast.Program:
 		for _, s := range node.Statements {
@@ -571,7 +587,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		freeSymbols := c.symbolTable.FreeSymbols
 		numLocals := c.symbolTable.numDefinitions
-		instructions := c.leaveScope()
+		localNames := c.collectLocalNames(numLocals)
+		instructions, positions := c.leaveScope()
 
 		// When capturing free variables for a new closure, we must push the
 		// raw CaptureCell pointer (not the unwrapped value) so the VM can
@@ -582,10 +599,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.loadSymbolForCapture(s)
 		}
 
+		fnName := node.Name
+		if fnName == "" {
+			fnName = "<func>"
+		}
 		compiledFn := &object.CompiledFunction{
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(node.Parameters),
+			Name:          fnName,
+			SourceFile:    c.SourceFile,
+			Positions:     positions,
+			LocalNames:    localNames,
 		}
 
 		fnIndex := c.addConstant(compiledFn)
@@ -860,7 +885,98 @@ func (c *Compiler) Bytecode() *Bytecode {
 	return &Bytecode{
 		Instructions: c.currentInstructions(),
 		Constants:    c.constants,
+		Positions:    c.scopes[c.scopeIndex].positions,
+		SourceFile:   c.SourceFile,
+		GlobalNames:  c.collectGlobalNames(),
 	}
+}
+
+// collectGlobalNames maps global slot indices to their debug names.
+func (c *Compiler) collectGlobalNames() []string {
+	max := 0
+	for _, sym := range c.symbolTable.store {
+		if sym.Scope == GlobalScope && sym.Index+1 > max {
+			max = sym.Index + 1
+		}
+	}
+	if max == 0 {
+		return nil
+	}
+	names := make([]string, max)
+	for name, sym := range c.symbolTable.store {
+		if sym.Scope == GlobalScope && sym.Index >= 0 && sym.Index < max {
+			names[sym.Index] = name
+		}
+	}
+	return names
+}
+
+// SourceFileName returns the file recorded in the debug line table.
+func (c *Compiler) SourceFileName() string { return c.SourceFile }
+
+// collectLocalNames maps local slot indices to their debug names using the
+// current (innermost) symbol table.
+func (c *Compiler) collectLocalNames(numLocals int) []string {
+	names := make([]string, numLocals)
+	for name, sym := range c.symbolTable.store {
+		if sym.Scope == LocalScope && sym.Index >= 0 && sym.Index < numLocals {
+			names[sym.Index] = name
+		}
+	}
+	return names
+}
+
+// recordNodePosition appends a line-table entry for node's source position.
+func (c *Compiler) recordNodePosition(node ast.Node) {
+	line, col, ok := nodePosition(node)
+	if !ok {
+		return
+	}
+	c.recordPosition(line, col)
+}
+
+func (c *Compiler) recordPosition(line, col int) {
+	offset := len(c.currentInstructions())
+	sc := &c.scopes[c.scopeIndex]
+	if n := len(sc.positions); n > 0 && sc.positions[n-1].Offset == offset {
+		sc.positions[n-1].Line = line
+		sc.positions[n-1].Column = col
+		return
+	}
+	sc.positions = append(sc.positions, object.SourcePos{Offset: offset, Line: line, Column: col})
+}
+
+// nodePosition extracts the source position from an AST node that carries a
+// token. It uses reflection so every statement/expression type is supported
+// without a large type switch.
+func nodePosition(node ast.Node) (int, int, bool) {
+	if node == nil {
+		return 0, 0, false
+	}
+	v := reflect.ValueOf(node)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return 0, 0, false
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return 0, 0, false
+	}
+	tok := v.FieldByName("Token")
+	if !tok.IsValid() || tok.Kind() != reflect.Struct {
+		return 0, 0, false
+	}
+	lineF := tok.FieldByName("Line")
+	colF := tok.FieldByName("Column")
+	if !lineF.IsValid() || !colF.IsValid() {
+		return 0, 0, false
+	}
+	line := int(lineF.Int())
+	if line <= 0 {
+		return 0, 0, false
+	}
+	return line, int(colF.Int()), true
 }
 
 func (c *Compiler) addConstant(obj object.Object) int {
@@ -941,14 +1057,15 @@ func (c *Compiler) enterScope() {
 	c.symbolTable = NewEnclosedSymbolTable(c.symbolTable)
 }
 
-func (c *Compiler) leaveScope() code.Instructions {
+func (c *Compiler) leaveScope() (code.Instructions, []object.SourcePos) {
 	instructions := c.currentInstructions()
+	positions := c.scopes[c.scopeIndex].positions
 
 	c.scopes = c.scopes[:len(c.scopes)-1]
 	c.scopeIndex--
 	c.symbolTable = c.symbolTable.Outer
 
-	return instructions
+	return instructions, positions
 }
 
 func (c *Compiler) replaceLastPopWithReturn() {

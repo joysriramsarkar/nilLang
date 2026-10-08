@@ -1,6 +1,7 @@
 package lexer
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -281,6 +282,34 @@ func (l *Lexer) readString() (string, bool) {
 				sb.WriteRune('"')
 			case '(':
 				sb.WriteString("\\(")
+			case 'e':
+				// \e — ESC (0x1B), the ANSI control introducer.
+				sb.WriteRune('\x1b')
+			case 'x', 'u', 'U':
+				// \xHH, \uXXXX and \UXXXXXXXX code-point escapes. They make
+				// terminal colour and cursor control reachable from source.
+				width := 4
+				if l.ch == 'x' {
+					width = 2
+				} else if l.ch == 'U' {
+					width = 8
+				}
+				if text, ok := l.peekRunes(width); ok && allHex(text) {
+					value, parseErr := strconv.ParseUint(string(text), 16, 32)
+					if parseErr == nil && utf8.ValidRune(rune(value)) {
+						if l.ch == 'x' {
+							sb.WriteByte(byte(value))
+						} else {
+							sb.WriteRune(rune(value))
+						}
+						l.skipRunes(width)
+						continue
+					}
+				}
+				// Not a well-formed escape: keep it literal, exactly as an
+				// unknown escape such as \q already behaves.
+				sb.WriteRune('\\')
+				sb.WriteRune(l.ch)
 			default:
 				sb.WriteRune('\\')
 				sb.WriteRune(l.ch)
@@ -292,6 +321,46 @@ func (l *Lexer) readString() (string, bool) {
 	}
 
 	return sb.String(), true
+}
+
+// peekRunes returns the n runes that follow the current one without consuming
+// them. ok is false when the input ends first or a rune is truncated.
+func (l *Lexer) peekRunes(n int) ([]rune, bool) {
+	runes := make([]rune, 0, n)
+	offset := l.readPosition
+	for len(runes) < n {
+		if offset >= len(l.input) {
+			return runes, false
+		}
+		r, decoded := utf8.DecodeRuneInString(l.input[offset:])
+		if decoded == 0 || (r == utf8.RuneError && decoded == 1) {
+			return runes, false
+		}
+		runes = append(runes, r)
+		offset += decoded
+	}
+	return runes, true
+}
+
+// skipRunes advances the lexer over the n runes following the current one.
+func (l *Lexer) skipRunes(n int) {
+	for i := 0; i < n; i++ {
+		l.readChar()
+	}
+}
+
+// allHex reports whether every rune is a hexadecimal digit.
+func allHex(runes []rune) bool {
+	for _, r := range runes {
+		if !isHexDigit(r) {
+			return false
+		}
+	}
+	return len(runes) > 0
+}
+
+func isHexDigit(r rune) bool {
+	return (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
 }
 
 func (l *Lexer) readIdentifier() string {

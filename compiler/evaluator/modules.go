@@ -35,6 +35,16 @@ var (
 	moduleImportStack []string
 )
 
+// ClearModuleCache drops every cached module so the next import re-reads the
+// source file from disk. The dev server calls this before each recompile so
+// edits to imported files are picked up without a process restart.
+func ClearModuleCache() {
+	moduleCacheMu.Lock()
+	moduleCache = make(map[string]*object.Hash)
+	moduleImportStack = nil
+	moduleCacheMu.Unlock()
+}
+
 // PushScriptDir pushes a directory onto the script import resolution stack
 func PushScriptDir(dir string) {
 	scriptDirMu.Lock()

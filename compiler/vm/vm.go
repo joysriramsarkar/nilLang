@@ -30,6 +30,9 @@ type VM struct {
 
 	globals []object.Object
 
+	// globalNames maps global slot indices to debug names (may be empty).
+	globalNames []string
+
 	frames      []*Frame
 	framesIndex int
 
@@ -37,10 +40,23 @@ type VM struct {
 
 	NativeCallHandler func(name string, args []object.Object) (object.Object, error)
 	CapabilityChecker func(apiName string) error
+
+	// Debug, when non-nil, enables source-level debugging (breakpoints,
+	// stepping and inspection).
+	Debug *DebugState
+
+	// resumeSameIP is set when Run returns ErrPaused so the next Run resumes
+	// at the paused instruction instead of skipping it.
+	resumeSameIP bool
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
-	mainFn := &object.CompiledFunction{Instructions: bytecode.Instructions}
+	mainFn := &object.CompiledFunction{
+		Instructions: bytecode.Instructions,
+		Name:         "<main>",
+		SourceFile:   bytecode.SourceFile,
+		Positions:    bytecode.Positions,
+	}
 	mainClosure := &object.Closure{Fn: mainFn}
 	mainFrame := NewFrame(mainClosure, 0)
 
@@ -53,7 +69,8 @@ func New(bytecode *compiler.Bytecode) *VM {
 		stack: make([]object.Object, StackSize),
 		sp:    0,
 
-		globals: make([]object.Object, GlobalsSize),
+		globals:     make([]object.Object, GlobalsSize),
+		globalNames: bytecode.GlobalNames,
 
 		frames:      frames,
 		framesIndex: 1,
@@ -133,11 +150,22 @@ func (vm *VM) Run() error {
 	var op code.Opcode
 
 	for vm.framesIndex > 0 && vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
-		vm.currentFrame().ip++
+		if vm.resumeSameIP {
+			vm.resumeSameIP = false
+		} else {
+			vm.currentFrame().ip++
+		}
 
 		ip = vm.currentFrame().ip
 		ins = vm.currentFrame().Instructions()
 		op = code.Opcode(ins[ip])
+
+		if vm.Debug != nil {
+			if vm.Debug.check(vm) {
+				vm.resumeSameIP = true
+				return ErrPaused
+			}
+		}
 
 		switch op {
 		case code.OpConstant:

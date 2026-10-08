@@ -80,6 +80,8 @@ func main() {
 		cmdDB()
 	case "repl":
 		cmdRepl()
+	case "dap":
+		cmdDAP()
 	case "version", "-v", "--version":
 		fmt.Printf("Nilang Compiler v%s\n", VERSION)
 		fmt.Println("Alap Framework • Onuron OS")
@@ -120,6 +122,7 @@ func printUsage() {
 	fmt.Println("  db [migrate|rollback]      এন্টারপ্রাইজ ডেটাবেস মাইগ্রেশন চালান")
 	fmt.Println("  render [file.nil] [--event <name>] Alap UI render করুন; event dispatch করে reactive preview নিন")
 	fmt.Println("  repl                       ইন্টারঅ্যাক্টিভ REPL চালু করুন")
+	fmt.Println("  dap <file.nil>             ডিবাগ অ্যাডাপ্টার প্রোটোকল (DAP) সার্ভার চালু করুন")
 	fmt.Println("  fmt                        কোড ফরম্যাট করুন")
 	fmt.Println("  clean                      বিল্ড আর্টিফ্যাক্ট মুছে ফেলুন")
 	fmt.Println("  version                    ভার্সন তথ্য দেখুন")

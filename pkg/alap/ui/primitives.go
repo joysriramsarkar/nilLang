@@ -20,6 +20,7 @@ type Button struct {
 	OnClick  string // NilLang component event name
 	Payload  interface{}
 	Disabled bool
+	Style    string // optional inline CSS (e.g. width/height for keypad grids)
 }
 
 func NewButton(id, label string) *Button {
@@ -58,8 +59,12 @@ func (b *Button) RenderHTML(theme Theme) string {
 	if b.Icon != "" {
 		iconHtml = fmt.Sprintf(`<span class="btn-icon">%s</span> `, b.Icon)
 	}
-	return fmt.Sprintf(`<button id="%s" class="%s"%s%s%s>%s%s</button>`,
-		html.EscapeString(b.ID), cls, clickAttr, payloadAttr, dis, iconHtml, html.EscapeString(b.Label))
+	styleAttr := ""
+	if b.Style != "" {
+		styleAttr = fmt.Sprintf(` style="%s"`, html.EscapeString(b.Style))
+	}
+	return fmt.Sprintf(`<button id="%s" class="%s"%s%s%s%s>%s%s</button>`,
+		html.EscapeString(b.ID), cls, clickAttr, payloadAttr, dis, styleAttr, iconHtml, html.EscapeString(b.Label))
 }
 
 // Input represents an editable text/search/numeric input
