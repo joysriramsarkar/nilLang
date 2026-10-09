@@ -25,4 +25,5 @@ const (
 	NativeDBSQLQuery = "std.db.query"
 	NativeDBSQLExec  = "std.db.exec"
 	NativeTimeSleep  = "std.time.sleep"
+	NativeAudioPlay  = "std.audio.play"
 )

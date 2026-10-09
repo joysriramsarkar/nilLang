@@ -13,6 +13,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -154,9 +158,84 @@ func CallHost(name string, args []object.Object) (object.Object, error) {
 
 	case NativeHTTPGet, NativeHTTPPost:
 		return httpRequest(name, args)
+
+	case NativeAudioPlay:
+		return audioPlay(args)
+
 	default:
 		return nil, fmt.Errorf("unknown std host function: %s", name)
 	}
+}
+
+// audioPlay hands an audio source to the current OS's default media player.
+//
+// Nilang ships no MP3 decoder of its own and none would build for every Onuron
+// target, so this is the portable option: download http(s) sources to a temp
+// file, then ask the OS to open the file with its associated player. That is
+// what "open with" does on every desktop and mobile OS the toolchain targets,
+// so the app can play real audio everywhere instead of on Windows only.
+func audioPlay(args []object.Object) (object.Object, error) {
+	src, err := oneString(args, NativeAudioPlay)
+	if err != nil {
+		return nil, err
+	}
+	path := src
+	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
+		p, err := downloadTempAudio(src)
+		if err != nil {
+			return nil, err
+		}
+		path = p
+	}
+	if err := openWithDefault(path); err != nil {
+		return nil, err
+	}
+	return &object.String{Value: path}, nil
+}
+
+func downloadTempAudio(url string) (string, error) {
+	client := &http.Client{Timeout: 10 * time.Minute}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("audio download: %w", err)
+	}
+	req.Header.Set("User-Agent", "nilang/1.0 (nilLang native music player)")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("audio download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("audio download: HTTP %d", resp.StatusCode)
+	}
+	f, err := os.CreateTemp("", "nilaudio-*.mp3")
+	if err != nil {
+		return "", fmt.Errorf("audio temp: %w", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return "", fmt.Errorf("audio write: %w", err)
+	}
+	return f.Name(), nil
+}
+
+// openWithDefault launches the OS-associated opening for a local file. Every
+// target the nilLang toolchain builds for has an equivalent (rundll32 /
+// xdg-open / open), so the same code compiles and runs everywhere.
+func openWithDefault(path string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", path)
+	case "darwin":
+		cmd = exec.Command("open", path)
+	default: // linux and anything else
+		cmd = exec.Command("xdg-open", path)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("cannot open %q with the default player: %w", path, err)
+	}
+	return nil
 }
 
 func oneString(args []object.Object, name string) (string, error) {
