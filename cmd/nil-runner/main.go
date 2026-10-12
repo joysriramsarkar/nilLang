@@ -5,11 +5,10 @@ import (
 	"os"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
-	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
@@ -111,22 +110,19 @@ func executeSource(source string) {
 }
 
 func parseAndCheck(source string) (*ast.Program, []string, []string) {
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-
-	if len(p.Errors()) > 0 {
-		return program, p.Errors(), nil
+	res := frontend.Check(source, frontend.Options{})
+	if len(res.ParseErrors) > 0 {
+		return res.Program, res.ParseErrors, nil
+	}
+	if res.OK {
+		return res.Program, nil, nil
 	}
 
-	checker := typecheck.NewChecker()
-	if checker.CheckProgram(program) {
-		return program, nil, nil
+	typeErrors := make([]string, 0, len(res.Diagnostics))
+	for _, d := range res.Diagnostics {
+		if d.Severity == diagnostics.SeverityError {
+			typeErrors = append(typeErrors, d.String())
+		}
 	}
-
-	typeErrors := make([]string, 0, len(checker.Diagnostics))
-	for _, diagnostic := range checker.Diagnostics {
-		typeErrors = append(typeErrors, diagnostic.String())
-	}
-	return program, nil, typeErrors
+	return res.Program, nil, typeErrors
 }

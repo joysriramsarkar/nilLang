@@ -1,20 +1,82 @@
 // Nilang Standard Library
 // Module: std/text/unicode
 //
-// High-level Unicode helpers available with the current string runtime.
+// ইউনিকোড-সচেতন লেখা-সহায়ক (দৈর্ঘ্য = রুন-গণনা, বাংলা-নিরাপদ)।
 
+// lowercase — ছোট হাতের।
 let lowercase = fn(value) {
     return lower(value);
 };
 
+// uppercase — বড় হাতের।
 let uppercase = fn(value) {
     return upper(value);
 };
 
+// trimText — দুই পাশের ফাঁকা ছাঁটে।
 let trimText = fn(value) {
     return trim(value);
 };
 
+// length — অক্ষর-সংখ্যা (বাইট নয়)।
 let length = fn(value) {
     return len(value);
+};
+
+// startsWithText — উপসর্গ পরীক্ষা।
+let startsWithText = fn(value, prefix) {
+    return hasPrefix(value, prefix);
+};
+
+// endsWithText — প্রত্যয় পরীক্ষা।
+let endsWithText = fn(value, suffix) {
+    return hasSuffix(value, suffix);
+};
+
+// includesText — অন্তর্ভুক্তি পরীক্ষা।
+let includesText = fn(value, part) {
+    return contains(value, part);
+};
+
+// firstChar — প্রথম অক্ষর।
+let firstChar = fn(value) {
+    if (len(value) == 0) {
+        return "";
+    }
+    return substr(value, 0, 1);
+};
+
+// lastChar — শেষ অক্ষর।
+let lastChar = fn(value) {
+    if (len(value) == 0) {
+        return "";
+    }
+    return substr(value, len(value) - 1);
+};
+
+// withoutFirst — প্রথম অক্ষর বাদে।
+let withoutFirst = fn(value) {
+    if (len(value) <= 1) {
+        return "";
+    }
+    return substr(value, 1);
+};
+
+// withoutLast — শেষ অক্ষর বাদে।
+let withoutLast = fn(value) {
+    if (len(value) <= 1) {
+        return "";
+    }
+    return substr(value, 0, len(value) - 1);
+};
+
+// reverseText — অক্ষর-ক্রম উল্টায় (রুন-নিরাপদ)।
+let reverseText = fn(value) {
+    let out = "";
+    let i = len(value) - 1;
+    while (i >= 0) {
+        out = out + substr(value, i, 1);
+        i = i - 1;
+    }
+    return out;
 };

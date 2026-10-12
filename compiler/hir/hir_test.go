@@ -121,8 +121,11 @@ func TestHIRLowersNamedAppState(t *testing.T) {
 	if len(hirProgram.Statements) != 1 {
 		t.Fatalf("expected one lowered state, got %d", len(hirProgram.Statements))
 	}
+	// `i32` is a width of its own, not a spelling of `Int`. The type used to
+	// arrive here as `Int` because the two were the same type; that aliasing is
+	// what let `state idx: i32 = 0` accept 300, so it had to go.
 	state, ok := hirProgram.Statements[0].(*LetStmt)
-	if !ok || state.Name != "count" || state.VarType.String() != "Int" {
+	if !ok || state.Name != "count" || state.VarType.String() != "Int32" {
 		t.Fatalf("unexpected lowered state: %T (%+v)", hirProgram.Statements[0], hirProgram.Statements[0])
 	}
 }

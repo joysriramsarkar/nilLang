@@ -44,9 +44,70 @@ pure fn add(a: Int, b: Int) -> Int {
 3. Cannot initiate network requests, file system operations, or hardware access.
 4. Calling an impure function from a `pure` function triggers diagnostic `E0202: PurityViolation`.
 
+**What is actually enforced.** Constraint 1 is implemented: a call inside a
+`pure fn` to a function that is not itself `pure` reports `E0202` at the call.
+Constraints 2 and 3 are not, and this document does not claim them. A `pure fn`
+is a claim the developer makes and the checker verifies as far as it can — it
+cannot prove the claim, which is why the modifier is written rather than inferred.
+
 ---
 
-## 4. Effect Composition & Polymorphism
+## 4. Capability Clauses: `requires`
+
+A function that cannot do its job without a system capability declares it:
+
+```nil
+fn readConfig(path: String) -> String requires "filesystem" {
+    return readFile(path);
+}
+
+fn fetch(url: String) -> String requires "network", "timeout" { ... }
+```
+
+1. **The clause is checked statically, at every call site.** A function whose
+   capability is missing fails the moment it is called, and that is knowable
+   before the program starts. The diagnostic is `E0201`, the same code the run-time
+   capability denial uses: both say the same thing — an operation needs a
+   capability the project does not have — at two different times.
+2. **The declaration is checked as well as each call.** A function nobody calls
+   still declares an intention, and a typo in a capability name would otherwise sit
+   unnoticed until the day something called it.
+3. **Capability names are normalised on both sides.** Nilang has two vocabularies
+   for the same capability: a lowercase operation-oriented `filesystem` and a
+   capitalised resource-oriented `Filesystem` from the host side. A project that
+   granted one satisfies a clause naming the other. Normalising only on the way in
+   would leave the two failing to match, which is a bug that looks like a missing
+   grant.
+4. **`pure` and `requires` are contradictory.** A function that requires a
+   capability is performing a side effect, so declaring both is reported rather
+   than silently resolved.
+
+A project with no `nil.json` has no capabilities, so any `requires` clause in one
+fails. That is the intended reading: the capability genuinely is not granted, and
+adding it to the manifest is how you say it is.
+
+---
+
+## 5. `unsafe fn`
+
+```nil
+unsafe fn readRaw(ptr: Int, len: Int) -> Array<Byte> { ... }
+```
+
+1. **`unsafe fn` says the function performs capability-gated operations and takes
+   responsibility for them.** Inside it, a gated operation does not need its
+   capability granted to the project. The exemption is per function and has to be
+   written down, so a reader can see where it applies.
+2. **The project must hold the `unsafe` capability itself**, so the exemption
+   cannot be had by accident. Without it, the declaration and every call to it
+   report `E0201`.
+3. **An `unsafe fn`'s own `requires` clause is not checked against the project**,
+   because the function has declared that it copes with the capabilities it uses.
+   That is what the modifier is for.
+
+---
+
+## 6. Effect Composition & Polymorphism
 
 For higher-order functions:
 ```nil

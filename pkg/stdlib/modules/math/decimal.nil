@@ -1,7 +1,13 @@
 // Nilang Standard Library
 // Module: std/math/decimal
 //
-// Exact fixed-point decimal arithmetic without float64 inaccuracies.
+// নির্ভুল fixed-point দশমিক — float64-এর ভুল ছাড়া টাকার হিসাব।
+//
+// উদাহরণ:
+//
+//   import "std/math/decimal" as decimal;
+//   let মোট = decimal.add(decimal.new(1250, 2), decimal.new(750, 2));
+//   decimal.toString(মোট); // "20.00"
 
 let new = fn(value, scale) {
     return {

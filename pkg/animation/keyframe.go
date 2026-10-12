@@ -108,6 +108,13 @@ type Animation struct {
 	Tracks     []*KeyframeTrack
 	OnComplete func()
 	OnUpdate   func(progress float64)
+	// composite, when non-nil, evaluates Sequence/Parallel parts (U9.3).
+	composite *composite
+	// implicit animation endpoint (U9.4).
+	implicitProp string
+	implicitTo   float64
+	// Target receives applied values each tick (U9.1).
+	Target Target
 }
 
 // NewAnimation creates a new animation

@@ -3,13 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/hir"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 	"github.com/joysriramsarkar/nilLang/compiler/mir"
 	"github.com/joysriramsarkar/nilLang/compiler/oracle"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
 )
 
 func cmdOracle() {
@@ -114,16 +115,26 @@ func cmdHIR() {
 		return
 	}
 
-	l := lexer.New(string(codeBytes))
-	p := parser.New(l)
-	prog := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		fmt.Printf("❌ সিনট্যাক্স এরর: %s\n", strings.Join(p.Errors(), "\n"))
+	res := frontend.Check(string(codeBytes), frontend.Options{
+		Filename:  file,
+		SourceDir: filepath.Dir(file),
+	})
+	if len(res.ParseErrors) > 0 {
+		fmt.Printf("❌ সিনট্যাক্স এরর: %s\n", strings.Join(res.ParseErrors, "\n"))
+		return
+	}
+	if !res.OK {
+		fmt.Println("❌ টাইপ ত্রুটি:")
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				fmt.Printf("   %s\n", d.String())
+			}
+		}
 		return
 	}
 
 	lowerer := hir.NewLowerer()
-	hProg := lowerer.LowerProgram(prog)
+	hProg := lowerer.LowerProgram(backendProgram(res))
 	opt := hir.NewOptimizer()
 	optProg := opt.Optimize(hProg)
 
@@ -143,16 +154,26 @@ func cmdMIR() {
 		return
 	}
 
-	l := lexer.New(string(codeBytes))
-	p := parser.New(l)
-	prog := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		fmt.Printf("❌ সিনট্যাক্স এরর: %s\n", strings.Join(p.Errors(), "\n"))
+	res := frontend.Check(string(codeBytes), frontend.Options{
+		Filename:  file,
+		SourceDir: filepath.Dir(file),
+	})
+	if len(res.ParseErrors) > 0 {
+		fmt.Printf("❌ সিনট্যাক্স এরর: %s\n", strings.Join(res.ParseErrors, "\n"))
+		return
+	}
+	if !res.OK {
+		fmt.Println("❌ টাইপ ত্রুটি:")
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				fmt.Printf("   %s\n", d.String())
+			}
+		}
 		return
 	}
 
 	lowerer := hir.NewLowerer()
-	hProg := lowerer.LowerProgram(prog)
+	hProg := lowerer.LowerProgram(backendProgram(res))
 	opt := hir.NewOptimizer()
 	optProg := opt.Optimize(hProg)
 

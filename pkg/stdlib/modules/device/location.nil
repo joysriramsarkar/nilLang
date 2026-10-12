@@ -1,0 +1,23 @@
+// Nilang Standard Library
+// Module: std/device/location
+//
+// লোকেশন — FFI স্টাব।
+
+// hasProvider — লোকেশন-প্রদানকারী আছে কি না (স্টাবে false)।
+let hasProvider = fn() {
+    return false;
+};
+
+// current — বর্তমান অবস্থান; স্টাবে Err।
+let current = fn() {
+    return Err("E_NOSUPPORT: location backend not installed (FFI stub)");
+};
+
+// sampleDhaka — উদাহরণ/প্রিভিউ-অবস্থান (ঢাকা, বাংলাদেশ)।
+let sampleDhaka = fn() {
+    return Ok({
+        "latitude": 23.8103,
+        "longitude": 90.4125,
+        "label": "ঢাকা"
+    });
+};

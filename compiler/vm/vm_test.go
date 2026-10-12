@@ -1,11 +1,11 @@
 package vm
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"testing"
 
+	"github.com/joysriramsarkar/nilLang/compiler/capability"
 	"github.com/joysriramsarkar/nilLang/compiler/code"
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/lexer"
@@ -431,12 +431,31 @@ func TestCapabilitySecurityRejection(t *testing.T) {
 
 	machine := New(bytecode)
 	machine.CapabilityChecker = func(apiName string) error {
-		return fmt.Errorf("camera capability not granted in manifest")
+		return capability.NewDeniedError(apiName, capability.Requirement{capability.Camera},
+			nil, "camera capability not granted in manifest")
 	}
 
 	err := machine.Run()
 	if err == nil || !strings.Contains(err.Error(), "capability denied") {
 		t.Fatalf("expected capability denied error, got: %v", err)
+	}
+
+	// The refusal must be recoverable in two ways: by category, which is the
+	// cross-engine contract, and by errors.As, which reaches the wrapped cause.
+	category, ok := object.CategoryOf(err)
+	if !ok {
+		t.Fatalf("runtime error carries no category: %v", err)
+	}
+	if category != object.CategoryCapabilityDenied {
+		t.Errorf("category = %q, want %q", category, object.CategoryCapabilityDenied)
+	}
+
+	denied, ok := capability.AsDenied(err)
+	if !ok {
+		t.Fatalf("expected a *DeniedError to be reachable through the wrapper: %v", err)
+	}
+	if denied.Operation != "camera.capture" {
+		t.Errorf("Operation = %q, want camera.capture", denied.Operation)
 	}
 }
 

@@ -77,6 +77,17 @@ const (
 	OpArray
 	OpHash
 	OpIndex
+	// OpGetField reads `x.k`; OpIndex reads `x[k]`.
+	//
+	// They are separate instructions because they answer different questions.
+	// Indexing asks "what is at this key", and a key that is not there has the
+	// answer null. Dot access asks for a named member, and a member that does not
+	// exist is a mistake worth reporting: silently answering null turns a typo in
+	// a field name into a null that surfaces somewhere else entirely.
+	//
+	// The two used to compile to the same instruction, which is how the VM came
+	// to answer null for a dot access the evaluator refused.
+	OpGetField
 	OpCall
 	OpReturnValue
 	OpReturn
@@ -87,6 +98,14 @@ const (
 	OpGetFree     // read cell.Value — normal execution path
 	OpGetFreeCell // push raw *CaptureCell pointer — used only during closure creation
 	OpSetFree     // write back to a shared mutable capture cell
+
+	// OpBoxLocal turns a local slot into a shared *CaptureCell, in place.
+	//
+	// Mutable capture by reference needs the *enclosing* frame and the closure
+	// to see the same cell. Boxing in place achieves that: the local slot stops
+	// holding the value and starts holding the cell, so every later read and
+	// write in the enclosing frame goes through it too.
+	OpBoxLocal
 	OpCurrentClosure
 	OpToString
 	OpStringConcat
@@ -129,6 +148,7 @@ var definitions = map[Opcode]*Definition{
 	OpArray:            {"OpArray", []int{2}},
 	OpHash:             {"OpHash", []int{2}},
 	OpIndex:            {"OpIndex", []int{}},
+	OpGetField:         {"OpGetField", []int{}},
 	OpCall:             {"OpCall", []int{1}},
 	OpReturnValue:      {"OpReturnValue", []int{}},
 	OpReturn:           {"OpReturn", []int{}},
@@ -139,6 +159,7 @@ var definitions = map[Opcode]*Definition{
 	OpGetFree:          {"OpGetFree", []int{1}},
 	OpGetFreeCell:      {"OpGetFreeCell", []int{1}},
 	OpSetFree:          {"OpSetFree", []int{1}},
+	OpBoxLocal:         {"OpBoxLocal", []int{1}},
 	OpCurrentClosure:   {"OpCurrentClosure", []int{}},
 	OpToString:         {"OpToString", []int{}},
 	OpStringConcat:     {"OpStringConcat", []int{}},

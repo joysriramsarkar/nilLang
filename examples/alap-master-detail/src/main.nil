@@ -1,0 +1,42 @@
+component MasterDetail {
+    state selected: i32 = 0;
+
+    render {
+        return {
+            "type": "Page",
+            "title": "Master Detail",
+            "content": [
+                {
+                    "type": "Table",
+                    "headers": ["ID", "Name"],
+                    "rows": [
+                        ["1", "Alpha"],
+                        ["2", "Beta"]
+                    ]
+                },
+                {
+                    "type": "Button",
+                    "id": "select-2",
+                    "label": "Select Beta",
+                    "event": "select",
+                    "payload": {"id": 2}
+                },
+                {
+                    "type": "Card",
+                    "title": "Detail",
+                    "body": "Selected: \(selected)"
+                }
+            ],
+            "footer": "master-detail"
+        };
+    }
+
+    on select(payload) {
+        let id: i32 = 0;
+        if (payload != null) {
+            id = payload["id"] ?? 0;
+        }
+        selected = id;
+        emit("changed", selected);
+    }
+}

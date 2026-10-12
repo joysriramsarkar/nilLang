@@ -14,7 +14,7 @@ import (
 var bytecodeMagic = [4]byte{'N', 'A', 'B', 'C'}
 
 const (
-	bytecodeVersion uint16 = 1
+	bytecodeVersion uint16 = 2
 	maxImageItems          = 1 << 24
 
 	constantInteger  byte = 1
@@ -61,7 +61,9 @@ func DecodeBytecode(image []byte) (*corecompiler.Bytecode, error) {
 	if err := binary.Read(reader, binary.BigEndian, &version); err != nil {
 		return nil, fmt.Errorf("read NABC version: %w", err)
 	}
-	if version != bytecodeVersion {
+	// Version 1 images carry no purity byte on functions; version 2 appends
+	// one. Anything else was never written by this toolchain.
+	if version != bytecodeVersion && version != 1 {
 		return nil, fmt.Errorf("unsupported NABC version %d", version)
 	}
 
@@ -75,7 +77,7 @@ func DecodeBytecode(image []byte) (*corecompiler.Bytecode, error) {
 	}
 	constants := make([]object.Object, constantCount)
 	for index := range constants {
-		constants[index], err = decodeConstant(reader)
+		constants[index], err = decodeConstant(reader, version)
 		if err != nil {
 			return nil, fmt.Errorf("decode constant %d: %w", index, err)
 		}
@@ -113,13 +115,22 @@ func encodeConstant(writer io.Writer, constant object.Object) error {
 		if err := binary.Write(writer, binary.BigEndian, int32(value.NumLocals)); err != nil {
 			return err
 		}
-		return binary.Write(writer, binary.BigEndian, int32(value.NumParameters))
+		if err := binary.Write(writer, binary.BigEndian, int32(value.NumParameters)); err != nil {
+			return err
+		}
+		// The purity byte is what lets a deserialised image keep the runtime
+		// E0202 check. A set byte means `pure fn`; anything else is effectful.
+		var purity byte
+		if value.IsPure {
+			purity = 1
+		}
+		return binary.Write(writer, binary.BigEndian, purity)
 	default:
 		return fmt.Errorf("unsupported constant type %T", constant)
 	}
 }
 
-func decodeConstant(reader io.Reader) (object.Object, error) {
+func decodeConstant(reader io.Reader, version uint16) (object.Object, error) {
 	var kind byte
 	if err := binary.Read(reader, binary.BigEndian, &kind); err != nil {
 		return nil, err
@@ -158,11 +169,21 @@ func decodeConstant(reader io.Reader) (object.Object, error) {
 		if locals < 0 || parameters < 0 {
 			return nil, fmt.Errorf("negative function metadata")
 		}
-		return &object.CompiledFunction{
+		fn := &object.CompiledFunction{
 			Instructions:  instructions,
 			NumLocals:     int(locals),
 			NumParameters: int(parameters),
-		}, nil
+		}
+		// Version 1 images end here; version 2 appends the purity byte.
+		// Reading it only for v2 keeps old bundles decodable.
+		if version >= 2 {
+			var purity byte
+			if err := binary.Read(reader, binary.BigEndian, &purity); err != nil {
+				return nil, err
+			}
+			fn.IsPure = purity != 0
+		}
+		return fn, nil
 	default:
 		return nil, fmt.Errorf("unknown constant type %d", kind)
 	}

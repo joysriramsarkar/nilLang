@@ -24,9 +24,16 @@ component Counter {
     }
 
     on increment(payload) {
-        let step = 1;
+        // `step` carries the same width as `count`.
+        //
+        // Reading it out of a payload gives the checker nothing, and adding an
+        // untyped value to a declared `i32` is refused rather than assumed —
+        // which is what "no implicit numeric coercion" means. The fallback keeps
+        // the declaration's width because a literal takes the width of its
+        // context.
+        let step: i32 = 1;
         if (payload != null) {
-            step = payload["step"];
+            step = payload["step"] ?? 1;
         }
         count = count + step;
         emit("changed", count);

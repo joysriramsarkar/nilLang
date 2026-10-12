@@ -1,0 +1,45 @@
+// Nilang Standard Library
+// Module: std/device
+//
+// ডিভাইস API — ক্যামেরা, লোকেশন, সেন্সর, বায়োমেট্রিক, ব্যাটারি।
+//
+// এই মডিউল FFI-ভিত্তিক: মোবাইল এমবেডারে নেটিভ ফাংশন বসলে সত্যিকারের
+// মান দেবে; ডেস্কটপ/CI-তে নিরাপদ স্টাব-মান দেয় (available=false)।
+// কোনো ফাংশনই কখনো ক্র্যাশ করে না — হার্ডওয়্যার না থাকলে Err ফেরত যায়।
+//
+// উদাহরণ:
+//
+//   import "std/device" as device;
+//   let info = device.info();
+//   let loc = device.location(); // isOk(loc) হলে unwrap(loc)["latitude"]
+
+import "std/device/camera" as camera;
+import "std/device/location" as location;
+import "std/device/sensors" as sensors;
+import "std/device/biometric" as biometric;
+
+// info — হোস্ট/ডিভাইস তথ্য (সব প্ল্যাটফর্মে চলে)।
+let info = fn() {
+    return native("std.device.info");
+};
+
+// isAvailable — সত্যিকারের ডিভাইস-ব্যাকএন্ড আছে কি না।
+let isAvailable = fn() {
+    return info()["available"];
+};
+
+// ক্যামেরা পুনঃরপ্তানি।
+let capturePhoto = camera.capturePhoto;
+let hasCamera = camera.hasCamera;
+
+// লোকেশন পুনঃরপ্তানি (location নামটি import alias-এর, তাই currentLocation)।
+let currentLocation = location.current;
+let hasLocation = location.hasProvider;
+
+// সেন্সর পুনঃরপ্তানি।
+let readSensor = sensors.read;
+let sensorKinds = sensors.kinds;
+
+// বায়োমেট্রিক পুনঃরপ্তানি।
+let biometricKind = biometric.kind;
+let authenticate = biometric.authenticate;

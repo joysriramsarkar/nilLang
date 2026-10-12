@@ -32,7 +32,7 @@ component Counter {
 }`
 
 	svc := server.NewService("test", "")
-	registerDeclarativeUIEventRoute(svc, newDeclarativeUISessionStore(source))
+	registerDeclarativeUIEventRoute(svc, newDeclarativeUISessionStore(source, ""))
 	httpServer := httptest.NewServer(svc)
 	defer httpServer.Close()
 	client := newCookieClient(t)
@@ -67,7 +67,7 @@ component Counter {
     }
 }`
 	svc := server.NewService("test", "")
-	registerDeclarativeUIEventRoute(svc, newDeclarativeUISessionStore(source))
+	registerDeclarativeUIEventRoute(svc, newDeclarativeUISessionStore(source, ""))
 	httpServer := httptest.NewServer(svc)
 	defer httpServer.Close()
 
@@ -103,7 +103,7 @@ component Counter {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			svc := server.NewService("test", "")
-			registerDeclarativeUIEventRoute(svc, newDeclarativeUISessionStore(source))
+			registerDeclarativeUIEventRoute(svc, newDeclarativeUISessionStore(source, ""))
 			_, status, _ := svc.HandleRequest("POST", "/__alap/event", nil, test.body)
 			if status != 400 {
 				t.Fatalf("status = %d, want 400", status)
@@ -113,7 +113,7 @@ component Counter {
 }
 
 func TestDeclarativeUISessionStoreExpiresIdleSessions(t *testing.T) {
-	store := newDeclarativeUISessionStore(`component Counter { render { return {"type": "Page"}; } }`)
+	store := newDeclarativeUISessionStore(`component Counter { render { return {"type": "Page"}; } }`, "")
 	now := time.Date(2026, time.September, 9, 12, 0, 0, 0, time.UTC)
 	store.now = func() time.Time { return now }
 	firstContext := routing.NewContext("GET", "/")

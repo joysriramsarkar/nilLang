@@ -1,7 +1,13 @@
 // Nilang Standard Library
 // Module: std/concurrency/task
 //
-// `task` and `await` are language constructs in the current runtime.
+// `task` ও `await` ভাষা-কনস্ট্রাক্টের ওপর টাস্ক সহায়ক।
+//
+// উদাহরণ:
+//
+//   import "std/concurrency/task" as tasks;
+//   let f = tasks.spawn(fn() { return 40 + 2; });
+//   tasks.wait(f); // 42
 
 let spawn = fn(work) {
     return task {
@@ -11,4 +17,43 @@ let spawn = fn(work) {
 
 let wait = fn(future) {
     return await future;
+};
+
+// spawnValue — মানকে টাস্কে মুড়ে দেয় (পরীক্ষায় অলস মানের জন্য)।
+let spawnValue = fn(value) {
+    return task {
+        return value;
+    };
+};
+
+// spawnWith — আর্গুমেন্টসহ টাস্ক চালায়।
+// প্রতিটি কলের নিজস্ব বাইন্ডিং থাকে, তাই লুপের ভেতর থেকে ডাকলেও
+// টাস্কটি সঠিক মানটি ধরে (লুপ-ভেরিয়েবল ক্যাপচার-নিরাপদ)।
+let spawnWith = fn(work, arg) {
+    return task {
+        return work(arg);
+    };
+};
+
+// waitAll — ফিউচারের অ্যারের সব ফলাফল ক্রমানুসারে দেয়।
+let waitAll = fn(futures) {
+    let out = [];
+    let i = 0;
+    while (i < len(futures)) {
+        let f = futures[i];
+        out = push(out, await f);
+        i = i + 1;
+    }
+    return out;
+};
+
+// mapAsync — প্রতিটি আইটেমে worker চালায় (সব টাস্ক একসাথে, ক্রম রক্ষা করে)।
+let mapAsync = fn(items, worker) {
+    let futures = [];
+    let i = 0;
+    while (i < len(items)) {
+        futures = push(futures, spawnWith(worker, items[i]));
+        i = i + 1;
+    }
+    return waitAll(futures);
 };

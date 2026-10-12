@@ -132,9 +132,8 @@ func (v *VNode) RenderHTML() string {
 	return sb.String()
 }
 
-// ─── INCREMENTAL DOM PATCHING ──────────────────────────────────────────────
+// ─── INCREMENTAL DOM PATCHING (ADR-0005: single keyed-patch runtime) ─────────
 
-// PatchType defines DOM mutation operations
 type PatchType string
 
 const (
@@ -143,6 +142,7 @@ const (
 	PatchText        PatchType = "TEXT"
 	PatchInsertChild PatchType = "INSERT_CHILD"
 	PatchRemoveChild PatchType = "REMOVE_CHILD"
+	PatchMove        PatchType = "MOVE"
 )
 
 // Patch represents a discrete DOM mutation operation
@@ -154,9 +154,13 @@ type Patch struct {
 	Props  map[string]string `json:"props,omitempty"`
 	Text   string            `json:"text,omitempty"`
 	Index  int               `json:"index,omitempty"`
+	From   int               `json:"from,omitempty"`
+	To     int               `json:"to,omitempty"`
 }
 
-// Diff compares two VNode trees and returns the minimal list of patches
+// Diff compares two VNode trees and returns the minimal list of patches.
+// Children with non-empty keys use LIS-based keyed reordering (O(n)) so a
+// pure shuffle emits MOVE patches instead of needless REPLACE patches.
 func Diff(oldTree, newTree *VNode) []Patch {
 	patches := make([]Patch, 0)
 	diffRecursive(oldTree, newTree, []int{}, &patches)
@@ -167,8 +171,6 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 	if oldNode == nil && newNode == nil {
 		return
 	}
-
-	// 1. If old node doesn't exist, replace
 	if oldNode == nil {
 		*patches = append(*patches, Patch{
 			Type:   PatchReplace,
@@ -178,8 +180,6 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 		})
 		return
 	}
-
-	// 2. If new node doesn't exist, remove
 	if newNode == nil {
 		*patches = append(*patches, Patch{
 			Type:   PatchReplace,
@@ -189,9 +189,19 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 		})
 		return
 	}
-
-	// 3. Different types or tags -> complete replacement
-	if oldNode.Type != newNode.Type || oldNode.Tag != newNode.Tag || (oldNode.Key != "" && newNode.Key != "" && oldNode.Key != newNode.Key) {
+	if oldNode.Type != newNode.Type || oldNode.Tag != newNode.Tag {
+		*patches = append(*patches, Patch{
+			Type:   PatchReplace,
+			Path:   currentPath,
+			NodeID: newNode.ID,
+			VNode:  newNode,
+		})
+		return
+	}
+	// Same-position different keyed identity -> replace (identity changed).
+	if oldNode.Key != "" && newNode.Key != "" && oldNode.Key != newNode.Key {
+		// At the child-list level this is handled by keyed reorder; at the
+		// node level a key change means a different logical node.
 		*patches = append(*patches, Patch{
 			Type:   PatchReplace,
 			Path:   currentPath,
@@ -201,7 +211,6 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 		return
 	}
 
-	// 4. Text node comparison
 	if oldNode.Type == VNodeText && newNode.Type == VNodeText {
 		if oldNode.Text != newNode.Text {
 			*patches = append(*patches, Patch{
@@ -213,21 +222,17 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 		return
 	}
 
-	// 5. Props & Attributes comparison
 	propsDiff := make(map[string]string)
-	// Check updated/new attributes
 	for k, v := range newNode.Attrs {
 		if oldV, exists := oldNode.Attrs[k]; !exists || oldV != v {
 			propsDiff[k] = v
 		}
 	}
-	// Check removed attributes (marked with empty string)
 	for k := range oldNode.Attrs {
 		if _, exists := newNode.Attrs[k]; !exists {
 			propsDiff[k] = ""
 		}
 	}
-	// Check event updates
 	for k, v := range newNode.Events {
 		if oldV, exists := oldNode.Events[k]; !exists || oldV != v {
 			propsDiff["data-alap-"+k] = v
@@ -238,7 +243,6 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 			propsDiff["data-alap-"+k] = ""
 		}
 	}
-
 	if len(propsDiff) > 0 {
 		*patches = append(*patches, Patch{
 			Type:   PatchProps,
@@ -248,35 +252,40 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 		})
 	}
 
-	// 6. Children comparison
-	oldLen := len(oldNode.Children)
-	newLen := len(newNode.Children)
+	diffChildren(oldNode, newNode, currentPath, patches)
+}
+
+// diffChildren diffs child lists. When both sides carry keys for every
+// child, it uses keyed reconciliation with LIS so order-only changes become
+// MOVE patches. Otherwise it falls back to positional diff.
+func diffChildren(oldNode, newNode *VNode, currentPath []int, patches *[]Patch) {
+	oldKids := oldNode.Children
+	newKids := newNode.Children
+	if allKeyed(oldKids) && allKeyed(newKids) && len(oldKids) > 0 {
+		diffKeyedChildren(oldNode, newNode, currentPath, patches)
+		return
+	}
+	oldLen := len(oldKids)
+	newLen := len(newKids)
 	commonLen := oldLen
 	if newLen < commonLen {
 		commonLen = newLen
 	}
-
-	// Diff common children
 	for i := 0; i < commonLen; i++ {
-		childPath := make([]int, len(currentPath)+1)
-		copy(childPath, currentPath)
-		childPath[len(currentPath)] = i
-		diffRecursive(oldNode.Children[i], newNode.Children[i], childPath, patches)
+		childPath := append(append([]int{}, currentPath...), i)
+		diffRecursive(oldKids[i], newKids[i], childPath, patches)
 	}
-
-	// Extra children in new tree -> INSERT
 	if newLen > oldLen {
 		for i := oldLen; i < newLen; i++ {
 			*patches = append(*patches, Patch{
 				Type:   PatchInsertChild,
 				Path:   currentPath,
 				Index:  i,
-				VNode:  newNode.Children[i],
+				VNode:  newKids[i],
 				NodeID: newNode.ID,
 			})
 		}
 	} else if oldLen > newLen {
-		// Excess children in old tree -> REMOVE from the end
 		for i := oldLen - 1; i >= newLen; i-- {
 			*patches = append(*patches, Patch{
 				Type:   PatchRemoveChild,
@@ -286,6 +295,174 @@ func diffRecursive(oldNode, newNode *VNode, currentPath []int, patches *[]Patch)
 			})
 		}
 	}
+}
+
+func allKeyed(kids []*VNode) bool {
+	if len(kids) == 0 {
+		return false
+	}
+	for _, k := range kids {
+		if k == nil || k.Key == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// diffKeyedChildren implements O(n) keyed reconciliation:
+//  1. index new keys, match old keys (removals for missing, inserts for new);
+//  2. matched pairs are diffed recursively (props/text, not replace);
+//  3. order changes resolved via Longest Increasing Subsequence — only
+//     non-LIS members emit MOVE.
+func diffKeyedChildren(oldNode, newNode *VNode, currentPath []int, patches *[]Patch) {
+	oldKids := oldNode.Children
+	newKids := newNode.Children
+	oldIndex := make(map[string]int, len(oldKids))
+	for i, k := range oldKids {
+		oldIndex[k.Key] = i
+	}
+	newIndex := make(map[string]int, len(newKids))
+	for i, k := range newKids {
+		newIndex[k.Key] = i
+	}
+
+	// Removals (descending so indices stay valid when applied in order).
+	for i := len(oldKids) - 1; i >= 0; i-- {
+		if _, ok := newIndex[oldKids[i].Key]; !ok {
+			*patches = append(*patches, Patch{
+				Type:   PatchRemoveChild,
+				Path:   currentPath,
+				Index:  i,
+				NodeID: oldNode.ID,
+			})
+		}
+	}
+	// Inserts.
+	for i, k := range newKids {
+		if _, ok := oldIndex[k.Key]; !ok {
+			*patches = append(*patches, Patch{
+				Type:   PatchInsertChild,
+				Path:   currentPath,
+				Index:  i,
+				VNode:  k,
+				NodeID: newNode.ID,
+			})
+		}
+	}
+	// Recursive diff of matched pairs at their NEW positions.
+	for i, k := range newKids {
+		oi, ok := oldIndex[k.Key]
+		if !ok {
+			continue
+		}
+		childPath := append(append([]int{}, currentPath...), i)
+		diffRecursiveKeyed(oldKids[oi], k, childPath, patches)
+	}
+	// Reorder detection via LIS over old positions in new order.
+	seq := make([]int, 0, len(newKids))
+	for _, k := range newKids {
+		if oi, ok := oldIndex[k.Key]; ok {
+			if _, stillThere := newIndex[k.Key]; stillThere {
+				seq = append(seq, oi)
+			}
+		}
+	}
+	inLIS := longestIncreasingSet(seq)
+	// Map new-position -> whether its old position is in LIS.
+	pos := 0
+	for i, k := range newKids {
+		oi, ok := oldIndex[k.Key]
+		if !ok {
+			continue
+		}
+		_ = oi
+		if !inLIS[pos] {
+			*patches = append(*patches, Patch{
+				Type:   PatchMove,
+				Path:   currentPath,
+				NodeID: oldNode.ID,
+				From:   oldIndex[k.Key],
+				To:     i,
+			})
+		}
+		pos++
+	}
+}
+
+// diffRecursiveKeyed diffs two nodes known to share identity: never REPLACE
+// on key equality, only props/text/children.
+func diffRecursiveKeyed(oldNode, newNode *VNode, path []int, patches *[]Patch) {
+	if oldNode.Type != newNode.Type || oldNode.Tag != newNode.Tag {
+		*patches = append(*patches, Patch{
+			Type:   PatchReplace,
+			Path:   path,
+			NodeID: newNode.ID,
+			VNode:  newNode,
+		})
+		return
+	}
+	if oldNode.Type == VNodeText && newNode.Type == VNodeText {
+		if oldNode.Text != newNode.Text {
+			*patches = append(*patches, Patch{Type: PatchText, Path: path, Text: newNode.Text})
+		}
+		return
+	}
+	propsDiff := make(map[string]string)
+	for k, v := range newNode.Attrs {
+		if oldV, ok := oldNode.Attrs[k]; !ok || oldV != v {
+			propsDiff[k] = v
+		}
+	}
+	for k := range oldNode.Attrs {
+		if _, ok := newNode.Attrs[k]; !ok {
+			propsDiff[k] = ""
+		}
+	}
+	if len(propsDiff) > 0 {
+		*patches = append(*patches, Patch{Type: PatchProps, Path: path, NodeID: newNode.ID, Props: propsDiff})
+	}
+	diffChildren(oldNode, newNode, path, patches)
+}
+
+// longestIncreasingSet returns a boolean mask marking which elements of seq
+// belong to one longest increasing subsequence (O(n log n)).
+func longestIncreasingSet(seq []int) []bool {
+	n := len(seq)
+	mask := make([]bool, n)
+	if n == 0 {
+		return mask
+	}
+	tails := make([]int, 0, n)
+	prev := make([]int, n)
+	tailIdx := make([]int, 0, n)
+	for i := range prev {
+		prev[i] = -1
+	}
+	for i, v := range seq {
+		lo, hi := 0, len(tails)
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if tails[mid] < v {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo == len(tails) {
+			tails = append(tails, v)
+			tailIdx = append(tailIdx, i)
+		} else {
+			tails[lo] = v
+			tailIdx[lo] = i
+		}
+		if lo > 0 {
+			prev[i] = tailIdx[lo-1]
+		}
+	}
+	for k := tailIdx[len(tailIdx)-1]; k != -1; k = prev[k] {
+		mask[k] = true
+	}
+	return mask
 }
 
 // SerializePatches serializes patches into JSON format for network transport

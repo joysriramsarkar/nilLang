@@ -1,0 +1,128 @@
+// Nilang Standard Library
+// Module: std/io/path
+//
+// পাথ ম্যানিপুলেশন — "/" ও "\" দুটো বিভাজকই চেনে, হোস্টের ওপর নির্ভর করে না।
+//
+// উদাহরণ:
+//
+//   import "std/io/path" as path;
+//   path.joinPath("docs", "book/প্রথম.md"); // "docs/book/প্রথম.md"
+//   path.basename("a/b/c.txt");             // "c.txt"
+//   path.dirname("a/b/c.txt");              // "a/b"
+//   path.extName("c.txt");                  // ".txt"
+//   path.withoutExt("c.txt");               // "c"
+
+// splitBoth — দুই বিভাজকেই ভাগ করে।
+let splitBoth = fn(p) {
+    let fwd = split(p, "/");
+    let out = [];
+    let i = 0;
+    while (i < len(fwd)) {
+        let chunk = fwd[i];
+        let back = split(chunk, "\\");
+        let j = 0;
+        while (j < len(back)) {
+            out = push(out, back[j]);
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return out;
+};
+
+// joinPath — খণ্ডগুলো "/" দিয়ে জোড়ে (ফাঁকা খণ্ড বাদে)।
+let joinPath = fn(a, b) {
+    if (a == "" || a == null) {
+        return b;
+    }
+    if (b == "" || b == null) {
+        return a;
+    }
+    let tail = substr(a, len(a) - 1);
+    if (tail == "/" || tail == "\\") {
+        return a + b;
+    }
+    return a + "/" + b;
+};
+
+// joinAll — খণ্ডের অ্যারেকে এক পাথে জোড়ে।
+let joinAll = fn(parts) {
+    let out = "";
+    let i = 0;
+    while (i < len(parts)) {
+        out = joinPath(out, parts[i]);
+        i = i + 1;
+    }
+    return out;
+};
+
+// basename — পাথের শেষ খণ্ড (ফাইলের নাম)।
+let basename = fn(p) {
+    let parts = splitBoth(p);
+    if (len(parts) == 0) {
+        return "";
+    }
+    return last(parts);
+};
+
+// dirname — শেষ খণ্ড বাদে বাকি পাথ।
+let dirname = fn(p) {
+    let parts = splitBoth(p);
+    if (len(parts) <= 1) {
+        return "";
+    }
+    let kept = [];
+    let i = 0;
+    while (i < len(parts) - 1) {
+        kept = push(kept, parts[i]);
+        i = i + 1;
+    }
+    return join(kept, "/");
+};
+
+// extName — ".txt" আকারে এক্সটেনশন (না থাকলে "")।
+let extName = fn(p) {
+    let base = basename(p);
+    let parts = split(base, ".");
+    if (len(parts) < 2) {
+        return "";
+    }
+    return "." + last(parts);
+};
+
+// withoutExt — এক্সটেনশন বাদে ফাইলের নাম।
+let withoutExt = fn(p) {
+    let dir = dirname(p);
+    let base = basename(p);
+    let parts = split(base, ".");
+    if (len(parts) < 2) {
+        return p;
+    }
+    let kept = [];
+    let i = 0;
+    while (i < len(parts) - 1) {
+        kept = push(kept, parts[i]);
+        i = i + 1;
+    }
+    let stem = join(kept, ".");
+    if (dir == "") {
+        return stem;
+    }
+    return dir + "/" + stem;
+};
+
+// isAbsolute — "/" বা ড্রাইভ ("C:") দিয়ে শুরু কি না।
+let isAbsolute = fn(p) {
+    if (p == "" || p == null) {
+        return false;
+    }
+    if (substr(p, 0, 1) == "/") {
+        return true;
+    }
+    if (len(p) >= 2) {
+        if (substr(p, 1, 1) == ":") {
+            return true;
+        }
+    }
+    return false;
+};

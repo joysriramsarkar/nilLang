@@ -6,9 +6,8 @@ import (
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
-	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 )
 
@@ -61,26 +60,22 @@ func main() {
 }
 
 func compileSource(source string) (*compiler.Bytecode, error) {
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-
-	if len(p.Errors()) != 0 {
-		return nil, fmt.Errorf("parser errors:\n%s", strings.Join(p.Errors(), "\n"))
+	res := frontend.Check(source, frontend.Options{})
+	if len(res.ParseErrors) != 0 {
+		return nil, fmt.Errorf("parser errors:\n%s", strings.Join(res.ParseErrors, "\n"))
 	}
-
-	checker := typecheck.NewChecker()
-	if !checker.CheckProgram(program) {
-		diagnostics := make([]string, 0, len(checker.Diagnostics))
-		for _, diagnostic := range checker.Diagnostics {
-			diagnostics = append(diagnostics, diagnostic.String())
+	if !res.OK {
+		msgs := make([]string, 0, len(res.Diagnostics))
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				msgs = append(msgs, d.String())
+			}
 		}
-		return nil, fmt.Errorf("type checking failed:\n%s", strings.Join(diagnostics, "\n"))
+		return nil, fmt.Errorf("type checking failed:\n%s", strings.Join(msgs, "\n"))
 	}
 
 	comp := compiler.New()
-	err := comp.Compile(program)
-	if err != nil {
+	if err := comp.Compile(res.Program); err != nil {
 		return nil, err
 	}
 

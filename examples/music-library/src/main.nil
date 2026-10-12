@@ -1,0 +1,55 @@
+// MusicLibrary — a component driven by an imported module.
+//
+// This example replaces a scratch file that lived at the repository root and
+// imported "../logic/Library.nil", a path that does not exist. It exercises the
+// same shape — a component whose render pulls data from an imported module and
+// builds a list of cards — against a module that actually resolves.
+//
+// Run with:
+//   nil run examples/music-library/src/main.nil
+//   nil render examples/music-library/src/main.nil
+//   nil build examples/music-library/src/main.nil --target android
+
+import "../lib/Library.nil" as Library;
+
+component MusicApp {
+    state idx: i32 = 0;
+    state playing: String = "";
+
+    render {
+        let lib = Library.createLibrary();
+        let songs = Library.getAllSongs(lib);
+
+        let rows = [];
+        let i = 0;
+        while (i < len(songs)) {
+            rows = append(rows, {
+                "type": "Card",
+                "title": songs[i]["title"],
+                "body": songs[i]["artist"]
+            });
+            i = i + 1;
+        }
+
+        return {
+            "type": "Page",
+            "title": "Music Library",
+            "content": rows,
+            "footer": "total: \(len(songs))"
+        };
+    }
+
+    on play(payload) {
+        idx = idx + 1;
+        if (payload != null) {
+            playing = payload["title"];
+        }
+        emit("played", playing);
+    }
+
+    on reset(payload) {
+        idx = 0;
+        playing = "";
+        emit("reset", 0);
+    }
+}

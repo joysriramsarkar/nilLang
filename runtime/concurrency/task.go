@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/compiler/object"
@@ -76,49 +77,58 @@ func (t *Task) Spawn(action func(ctx context.Context) (object.Object, error)) *T
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				child.mu.Lock()
-				child.status = StatusFaulted
-				child.mu.Unlock()
-				child.future.Complete(nil, fmt.Errorf("task panicked: %v", r))
+				child.Fail(fmt.Errorf("task panicked: %v", r))
 			}
 		}()
 
 		// Check if already cancelled
 		select {
 		case <-child.ctx.Done():
-			child.mu.Lock()
-			child.status = StatusCancelled
-			child.mu.Unlock()
-			child.future.Complete(nil, ErrTaskCancelled)
+			child.Cancel()
 			return
 		default:
 		}
 
 		result, err := action(child.ctx)
-		child.mu.Lock()
-		defer child.mu.Unlock()
-
-		if child.ctx.Err() != nil {
-			child.status = StatusCancelled
-			child.future.Complete(nil, ErrTaskCancelled)
+		if err != nil {
+			// An action that reports cancellation, or that finished after
+			// its scope was cancelled, is cancelled rather than faulted:
+			// the distinction is whether the work failed or the tree did.
+			if errors.Is(err, ErrTaskCancelled) || child.ctx.Err() != nil {
+				child.Cancel()
+			} else {
+				child.Fail(err)
+			}
 			return
 		}
 
-		if err != nil {
-			child.status = StatusFaulted
-			child.future.Complete(nil, err)
-		} else {
-			child.status = StatusFulfilled
-			child.future.Complete(result, nil)
+		if child.ctx.Err() != nil {
+			child.Cancel()
+			return
 		}
+
+		child.mu.Lock()
+		child.status = StatusFulfilled
+		child.mu.Unlock()
+		child.future.Complete(result, nil)
 	}()
 
 	return child
 }
 
-// Cancel cancels this task and propagates cancellation recursively to all children
+// Cancel cancels this task and cascades the cancellation to all descendants.
+//
+// Cancellation flows strictly downward: a parent cancels its children, never
+// the reverse. An earlier version propagated a child's Cancel to its parent,
+// which re-cancelled the child, which re-cancelled the parent — unbounded
+// mutual recursion that exhausted the goroutine stack and crashed the host.
+// A faulted child cancels its siblings through Fail, not through Cancel.
 func (t *Task) Cancel() {
 	t.mu.Lock()
+	if t.status == StatusCancelled {
+		t.mu.Unlock()
+		return
+	}
 	t.status = StatusCancelled
 	children := append([]*Task(nil), t.children...)
 	t.mu.Unlock()
@@ -130,6 +140,60 @@ func (t *Task) Cancel() {
 	}
 
 	t.future.Complete(nil, ErrTaskCancelled)
+}
+
+// Fail marks the task faulted, cancels its own subtree and its siblings, and
+// completes the future with err.
+//
+// This is the sibling-cancel-on-fault half of the structured-concurrency
+// contract (CONCURRENCY.md §3.1): a fault in one branch must not leave the
+// others running. Unlike Cancel it does not mark the parent itself — the
+// parent observes the failure through its children's terminal states.
+func (t *Task) Fail(err error) {
+	if err == nil {
+		err = fmt.Errorf("task failed")
+	}
+	t.mu.Lock()
+	switch t.status {
+	case StatusFaulted, StatusCancelled, StatusFulfilled:
+		t.mu.Unlock()
+		return
+	}
+	t.status = StatusFaulted
+	children := append([]*Task(nil), t.children...)
+	parent := t.parent
+	t.mu.Unlock()
+
+	t.cancel()
+
+	for _, child := range children {
+		child.Cancel()
+	}
+	if parent != nil {
+		parent.cancelSiblings(t)
+	}
+
+	t.future.Complete(nil, err)
+}
+
+// cancelSiblings cancels every child except the faulted one, without marking
+// the scope itself. It is what keeps one branch's failure from leaving the
+// other branches running while leaving the parent's own state to its owner.
+func (t *Task) cancelSiblings(except *Task) {
+	t.mu.Lock()
+	siblings := append([]*Task(nil), t.children...)
+	t.mu.Unlock()
+	for _, sibling := range siblings {
+		if sibling != except {
+			sibling.Cancel()
+		}
+	}
+}
+
+// Done exposes the task's cancellation signal for hosts that manage their
+// own goroutine, such as the VM's OpTask, instead of using Spawn.
+func (t *Task) Done() <-chan struct{} {
+	return t.ctx.Done()
 }
 
 // Await waits for this task to resolve, return its result, or propagate error
@@ -145,16 +209,27 @@ func (t *Task) Status() TaskStatus {
 }
 
 // WithTimeout runs a task with a deadline; cancels if deadline expires
+//
+// On expiry the enclosing scope is cancelled, not just the child: a timeout
+// that left the parent running would let siblings outlive the deadline that
+// was supposed to bound them. The caller observes ErrTaskTimeout; work that
+// was already cancelled for another reason keeps its own error.
 func WithTimeout(parent *Task, timeout time.Duration, action func(ctx context.Context) (object.Object, error)) (object.Object, error) {
 	scope := NewTaskScope(parent)
+	var fired atomic.Bool
 	timer := time.AfterFunc(timeout, func() {
-		scope.Cancel()
+		fired.Store(true)
+		if parent != nil {
+			parent.Cancel()
+		} else {
+			scope.Cancel()
+		}
 	})
 	defer timer.Stop()
 
 	child := scope.Spawn(action)
 	val, err := child.Await()
-	if errors.Is(err, ErrTaskCancelled) && scope.ctx.Err() != nil {
+	if errors.Is(err, ErrTaskCancelled) && fired.Load() {
 		return nil, ErrTaskTimeout
 	}
 	return val, err

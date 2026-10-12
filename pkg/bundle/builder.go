@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/joysriramsarkar/nilLang/pkg/config"
 )
@@ -16,6 +18,12 @@ type Builder struct {
 	projectDir string
 	manifest   *Manifest
 	files      map[string][]byte // path in bundle -> content
+
+	// buildTime, when set via SetBuildTime, replaces the wall clock for the
+	// manifest timestamp and every zip entry's mtime, so two builds of the
+	// same inputs are byte-identical (reproducible build, L9.6).
+	buildTime    time.Time
+	hasBuildTime bool
 }
 
 // NewBuilder creates a new bundle builder
@@ -105,12 +113,28 @@ func (b *Builder) AddResources() error {
 	return nil
 }
 
+// SetBuildTime pins the manifest timestamp and zip entry mtimes, making
+// Build deterministic. A zero value is ignored.
+func (b *Builder) SetBuildTime(t time.Time) {
+	if t.IsZero() {
+		return
+	}
+	b.buildTime = t.UTC()
+	b.hasBuildTime = true
+}
+
 // Build creates the .nilax bundle file
 func (b *Builder) Build(outputPath string) error {
 	// Create output directory
 	outputDir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Deterministic manifest timestamp (L9.6): without this, two builds of
+	// identical inputs differ by the wall clock embedded in manifest.json.
+	if b.hasBuildTime {
+		b.manifest.CreatedAt = b.buildTime
 	}
 
 	// Create the ZIP file
@@ -132,9 +156,15 @@ func (b *Builder) Build(outputPath string) error {
 		return err
 	}
 
-	// Write all files
-	for bundlePath, content := range b.files {
-		if err := b.writeToZip(zipWriter, bundlePath, content); err != nil {
+	// Write all files in sorted order: Go map iteration is random, so an
+	// unsorted walk makes entry order (and the output hash) differ per build.
+	names := make([]string, 0, len(b.files))
+	for name := range b.files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, bundlePath := range names {
+		if err := b.writeToZip(zipWriter, bundlePath, b.files[bundlePath]); err != nil {
 			return fmt.Errorf("failed to write %s to bundle: %w", bundlePath, err)
 		}
 	}
@@ -143,7 +173,24 @@ func (b *Builder) Build(outputPath string) error {
 }
 
 func (b *Builder) writeToZip(zipWriter *zip.Writer, path string, content []byte) error {
-	writer, err := zipWriter.Create(path)
+	// With a pinned build time every entry carries the same mtime, so the
+	// archive bytes are a pure function of the inputs. Without one, keep the
+	// previous behaviour (library-default timestamp).
+	if !b.hasBuildTime {
+		writer, err := zipWriter.Create(path)
+		if err != nil {
+			return err
+		}
+		_, err = writer.Write(content)
+		return err
+	}
+	header := &zip.FileHeader{
+		Name:     path,
+		Method:   zip.Deflate,
+		Modified: b.buildTime,
+	}
+	header.SetMode(0644)
+	writer, err := zipWriter.CreateHeader(header)
 	if err != nil {
 		return err
 	}

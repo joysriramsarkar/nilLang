@@ -60,6 +60,11 @@ func (l *Lexer) NextToken() token.Token {
 			ch := l.ch
 			l.readChar()
 			tok = token.Token{Type: token.EQ, Literal: string(ch) + string(l.ch), Line: curLine, Column: curCol}
+		} else if l.peekChar() == '>' {
+			// `=>`, the match arm separator.
+			ch := l.ch
+			l.readChar()
+			tok = token.Token{Type: token.FARROW, Literal: string(ch) + string(l.ch), Line: curLine, Column: curCol}
 		} else {
 			tok = newToken(token.ASSIGN, l.ch, curLine, curCol)
 		}
@@ -76,6 +81,11 @@ func (l *Lexer) NextToken() token.Token {
 			ch := l.ch
 			l.readChar()
 			tok = token.Token{Type: token.MINUS_ASSIGN, Literal: string(ch) + string(l.ch), Line: curLine, Column: curCol}
+		} else if l.peekChar() == '>' {
+			// `->`, the return-type separator.
+			ch := l.ch
+			l.readChar()
+			tok = token.Token{Type: token.ARROW, Literal: string(ch) + string(l.ch), Line: curLine, Column: curCol}
 		} else {
 			tok = newToken(token.MINUS, l.ch, curLine, curCol)
 		}
@@ -126,7 +136,20 @@ func (l *Lexer) NextToken() token.Token {
 			tok = newToken(token.BIT_OR, l.ch, curLine, curCol)
 		}
 	case '?':
-		tok = newToken(token.QUESTION, l.ch, curLine, curCol)
+		// `?` alone is the ternary test and the optional-type marker. `??` and
+		// `?.` are single tokens rather than two, because a parser that saw two
+		// would have to decide whether the second `?` is an operator or the start
+		// of another construct — and `a ?? b ? c : d` is ambiguous without one.
+		switch l.peekChar() {
+		case '?':
+			l.readChar()
+			tok = newToken(token.QUESTION_QUESTION, l.ch, curLine, curCol)
+		case '.':
+			l.readChar()
+			tok = newToken(token.QUESTION_DOT, l.ch, curLine, curCol)
+		default:
+			tok = newToken(token.QUESTION, l.ch, curLine, curCol)
+		}
 	case ';':
 		tok = newToken(token.SEMICOLON, l.ch, curLine, curCol)
 	case ':':
@@ -134,7 +157,23 @@ func (l *Lexer) NextToken() token.Token {
 	case ',':
 		tok = newToken(token.COMMA, l.ch, curLine, curCol)
 	case '.':
-		tok = newToken(token.DOT, l.ch, curLine, curCol)
+		// `..` and `..=` form a range; a lone `.` is member access.
+		//
+		// Lexing the range as one token means a mistyped `0...5` reports one
+		// precise error rather than a cascade from a member access on a number.
+		if l.peekChar() == '.' {
+			l.readChar() // consume the second '.'
+			literal := ".."
+
+			if l.peekChar() == '=' {
+				l.readChar()
+				literal = "..="
+			}
+
+			tok = token.Token{Type: token.RANGE, Literal: literal, Line: curLine, Column: curCol}
+		} else {
+			tok = newToken(token.DOT, l.ch, curLine, curCol)
+		}
 	case '(':
 		tok = newToken(token.LPAREN, l.ch, curLine, curCol)
 	case ')':
@@ -373,14 +412,38 @@ func (l *Lexer) readIdentifier() string {
 
 func (l *Lexer) readNumber() (string, bool) {
 	position := l.position
+
+	// Radix-prefixed integers: 0x1F, 0o17, 0b1010. A prefix is only recognised
+	// when followed by at least one valid digit for that base, so "0" and
+	// "0.5" are unaffected and "0x" alone falls through as a decimal 0 plus an
+	// identifier, which the parser then reports with a precise diagnostic.
+	if l.ch == '0' && isRadixPrefix(l.peekChar()) {
+		l.readChar() // consume '0'
+		l.readChar() // consume the radix marker
+		for isHexDigit(l.ch) || l.ch == '_' {
+			l.readChar()
+		}
+		return l.input[position:l.position], false
+	}
+
 	isFloat := false
-	for isDigit(l.ch) || (l.ch == '.' && isDigit(l.peekChar())) {
+	for isDigit(l.ch) || l.ch == '_' ||
+		(l.ch == '.' && isDigit(l.peekChar())) {
 		if l.ch == '.' {
 			isFloat = true
 		}
 		l.readChar()
 	}
 	return l.input[position:l.position], isFloat
+}
+
+// isRadixPrefix reports whether r introduces a base-prefixed integer.
+func isRadixPrefix(r rune) bool {
+	switch r {
+	case 'x', 'X', 'b', 'B', 'o', 'O':
+		return true
+	}
+	return false
 }
 
 func isIdentStart(ch rune) bool {

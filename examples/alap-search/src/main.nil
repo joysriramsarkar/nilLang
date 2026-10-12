@@ -1,0 +1,45 @@
+component SearchDemo {
+    state attempts: i32 = 0;
+    state phase: String = "idle";
+
+    render {
+        return {
+            "type": "Page",
+            "title": "Search",
+            "content": [
+                {
+                    "type": "Card",
+                    "title": "Status",
+                    "body": "\(phase) (attempt \(attempts))"
+                },
+                {
+                    "type": "Button",
+                    "id": "search",
+                    "label": "Search",
+                    "event": "search",
+                    "payload": {}
+                },
+                {
+                    "type": "Button",
+                    "id": "retry",
+                    "label": "Retry",
+                    "event": "retry",
+                    "payload": {}
+                }
+            ],
+            "footer": "search / loading / retry"
+        };
+    }
+
+    on search(payload) {
+        phase = "loading";
+        attempts = attempts + 1;
+        emit("changed", phase);
+    }
+
+    on retry(payload) {
+        phase = "loading";
+        attempts = attempts + 1;
+        emit("changed", phase);
+    }
+}

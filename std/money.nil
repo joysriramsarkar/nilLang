@@ -1,7 +1,14 @@
 // Nilang Standard Library
 // Module: std/money
 //
-// Financial representation using exact Decimal values and currencies.
+// মুদ্রা-সচেতন টাকার উপস্থাপন — নির্ভুল Decimal মান + মুদ্রা-কোড।
+// add/sub Result দেয় (মুদ্রা-অমিলে Err), mulQty সরাসরি Money দেয়।
+//
+// উদাহরণ:
+//
+//   import "std/money" as money;
+//   let মোট = unwrap(money.add(money.ofMajor(150, "BDT"), money.ofMinor(500, "BDT")));
+//   money.format(মোট, "৳"); // "৳155.00"
 
 import "std/math/decimal" as decimal;
 

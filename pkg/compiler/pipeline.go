@@ -8,12 +8,39 @@ import (
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
-	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
+	"github.com/joysriramsarkar/nilLang/compiler/hir"
+	"github.com/joysriramsarkar/nilLang/compiler/mir"
 	"github.com/joysriramsarkar/nilLang/compiler/vm"
 	"github.com/joysriramsarkar/nilLang/pkg/stdlib"
 )
+
+// Backend names which path turns the lowered program into bytecode.
+type Backend string
+
+const (
+	// BackendDirect is the AST-to-bytecode compiler: the long-tested path, and
+	// the default.
+	BackendDirect Backend = "direct"
+
+	// BackendMir routes through HIR, MIR and the MIR bytecode emitter, so that
+	// the VM and WebAssembly consume the same canonical IR.
+	BackendMir Backend = "mir"
+)
+
+// BackendFromArgs reads a `--backend=` flag out of a command line.
+//
+// It is one function so that `nil run`, `nil build` and the bare `.nil` shortcut
+// cannot each decide for themselves which spelling means what.
+func BackendFromArgs(args []string) Backend {
+	for _, arg := range args {
+		if arg == "--backend=mir" {
+			return BackendMir
+		}
+	}
+	return BackendDirect
+}
 
 // Pipeline represents the complete compilation pipeline
 type Pipeline struct {
@@ -22,6 +49,7 @@ type Pipeline struct {
 	bytecode *compiler.Bytecode
 	errors   []string
 	warnings []string
+	backend  Backend
 }
 
 // NewPipeline creates a new compilation pipeline
@@ -31,7 +59,26 @@ func NewPipeline(source, filename string) *Pipeline {
 		filename: filename,
 		errors:   []string{},
 		warnings: []string{},
+		backend:  BackendDirect,
 	}
+}
+
+// WithBackend selects the bytecode path and returns the pipeline, so a caller
+// can say which one it meant without a second statement.
+func (p *Pipeline) WithBackend(backend Backend) *Pipeline {
+	p.backend = backend
+	return p
+}
+
+// CompileViaMir runs the canonical IR path: HIR, then MIR, then bytecode.
+//
+// It is exported because two callers need it and a rule written twice is a rule
+// free to differ: `build` goes through the pipeline's backend switch, `run --vm
+// --backend=mir` bypasses the pipeline entirely because it already holds a
+// checked program.
+func CompileViaMir(program *ast.Program) (*compiler.Bytecode, error) {
+	optimized := hir.NewOptimizer().Optimize(hir.NewLowerer().LowerProgram(program))
+	return mir.NewBytecodeEmitter(nil).EmitProgram(mir.NewLowerer().LowerHIR(optimized))
 }
 
 // CompileFile reads and compiles a .nil file
@@ -49,32 +96,86 @@ func CompileFile(path string) (*Pipeline, error) {
 	return pipeline, nil
 }
 
-// Compile runs the full compilation pipeline
-func (p *Pipeline) Compile() error {
-	// Phase 1: Lexing
-	l := lexer.New(p.source)
-
-	// Phase 2: Parsing
-	psr := parser.New(l)
-	program := psr.ParseProgram()
-
-	if len(psr.Errors()) > 0 {
-		p.errors = psr.Errors()
-		return fmt.Errorf("compilation failed with %d error(s):\n%s",
-			len(psr.Errors()), formatErrors(psr.Errors()))
+// CompileFileVia reads and compiles a .nil file through a named backend.
+func CompileFileVia(path string, backend Backend) (*Pipeline, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s: %w", path, err)
 	}
 
-	// Phase 3: Static type checking
-	checker := typecheck.NewChecker()
-	if !checker.CheckProgram(program) {
-		for _, diagnostic := range checker.Diagnostics {
-			p.errors = append(p.errors, diagnostic.String())
+	pipeline := NewPipeline(string(data), path).WithBackend(backend)
+	if err := pipeline.Compile(); err != nil {
+		return nil, err
+	}
+
+	return pipeline, nil
+}
+
+// Compile runs the full compilation pipeline.
+//
+// Parsing and type checking both go through the frontend gate so that every
+// backend observes identical diagnostics. See compiler/frontend.
+func (p *Pipeline) Compile() error {
+	res := frontend.Check(p.source, frontend.Options{
+		Filename:  p.filename,
+		SourceDir: filepath.Dir(p.filename),
+	})
+
+	if !res.OK {
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				p.errors = append(p.errors, d.String())
+			}
 		}
-		return fmt.Errorf("type checking failed with %d error(s):\n%s",
-			len(p.errors), formatErrors(p.errors))
+		if len(p.errors) == 0 {
+			// Defensive: OK is false but no error-severity diagnostic was
+			// recorded (only possible if a parse failed without a diagnostic).
+			p.errors = res.ParseErrors
+		}
+		summary := res.ErrSummary()
+		if summary == "" {
+			summary = fmt.Sprintf("compilation failed with %d error(s)", len(p.errors))
+		}
+		return fmt.Errorf("%s", summary)
+	}
+
+	for _, d := range res.Diagnostics {
+		if d.Severity == diagnostics.SeverityWarning {
+			p.warnings = append(p.warnings, d.String())
+		}
 	}
 
 	// Phase 4: Bytecode compilation
+	//
+	// The lowered program is what the engines can execute: for loops have
+	// become while loops. Compiling res.Program here would hit the guard in
+	// compileFor, which exists to catch exactly this mistake.
+	//
+	// # Why this is not the MIR path yet
+	//
+	// `L3.4` asks for both backends to consume one canonical IR, and the MIR
+	// path is now correct across the language's core — `TestThreeEnginesAgree`
+	// runs twenty-two programs through the evaluator, the direct compiler and
+	// the MIR emitter and requires all three to agree.
+	//
+	// It is not the default here because that test covers the core, not the
+	// whole language. Modules, imports, `task`/`await`, components and
+	// capabilities have not been through it, and switching a shipped path to a
+	// backend on the strength of twenty-two agreeing programs would be trading a
+	// tested path for a partly-tested one. `--backend=mir` exposes the new path
+	// so the comparison can be run at will; promoting it is the remaining half
+	// of `L3.4`, and the honest gate is conformance over the full suite, not a
+	// flag.
+	if p.backend == BackendMir {
+		bc, err := CompileViaMir(res.Lowered)
+		if err != nil {
+			return fmt.Errorf("MIR bytecode compilation failed: %w", err)
+		}
+		p.bytecode = bc
+		return nil
+	}
+
+	program := res.Lowered
 	comp := compiler.New()
 	comp.SourceDir = filepath.Dir(p.filename)
 	comp.LoadModule = loadModuleAST
@@ -179,11 +280,21 @@ func loadModuleAST(importPath, sourceDir string) (*ast.Program, string, error) {
 }
 
 func parseModuleSource(content, path string) (*ast.Program, error) {
-	l := lexer.New(content)
-	p := parser.New(l)
-	prog := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		return nil, fmt.Errorf("parse error in %s: %s", path, strings.Join(p.Errors(), "; "))
+	// Modules are type checked as part of the importing program, so a module
+	// load only needs to parse. Routing through the frontend gate keeps the
+	// diagnostic codes and spans identical to top level sources.
+	res := frontend.Check(content, frontend.Options{Filename: path, SkipTypeCheck: true})
+	if len(res.ParseErrors) > 0 {
+		return nil, fmt.Errorf("parse error in %s: %s", path, strings.Join(res.ParseErrors, "; "))
 	}
-	return prog, nil
+
+	// The lowered form, not the source form. A module is compiled into this
+	// program's bytecode, so `for`, `match`, `struct`, `enum` and `while let`
+	// have to be rewritten before the compiler sees them. Returning res.Program
+	// here left every module that used them reaching the bytecode compiler as
+	// nodes it has no instruction for.
+	if res.Lowered != nil {
+		return res.Lowered, nil
+	}
+	return res.Program, nil
 }

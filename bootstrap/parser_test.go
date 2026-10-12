@@ -279,11 +279,21 @@ func normalizeNode(t *testing.T, node ast.Node) map[string]any {
 		result := base("FunctionLiteral", node.Token.Literal, node.Token.Line, node.Token.Column)
 		parameters := make([]any, len(node.Parameters))
 		for index, parameter := range node.Parameters {
-			parameters[index] = normalizeNode(t, parameter)
+			parameters[index] = normalizeNode(t, parameter.Name)
 		}
 		result["parameters"] = parameters
 		result["body"] = normalizeNode(t, node.Body)
 		result["name"] = node.Name
+		// The annotations are recorded so that a golden file changes when a
+		// parameter or return type is added, rather than silently passing.
+		result["returnType"] = node.ReturnType
+		annotations := make([]any, len(node.Parameters))
+		for index, parameter := range node.Parameters {
+			if parameter != nil {
+				annotations[index] = parameter.TypeAnnotation
+			}
+		}
+		result["parameterTypes"] = annotations
 		return result
 	case *ast.CallExpression:
 		result := base("CallExpression", node.Token.Literal, node.Token.Line, node.Token.Column)

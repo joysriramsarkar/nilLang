@@ -1,9 +1,18 @@
 // Nilang Standard Library
 // Module: std/db
 //
-// SQL database connection, query builder, and transaction support.
+// SQL ডাটাবেস — সংযোগ, কোয়েরি, ট্রানজাকশন, কোয়েরি-বিল্ডার ও মাইগ্রেশন।
+//
+// উদাহরণ:
+//
+//   import "std/db" as db;
+//   let conn = db.connect("file:shop?mode=memory&cache=shared");
+//   db.exec(conn, "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer TEXT, amount INTEGER);", []);
+//   db.exec(conn, "INSERT INTO orders (customer, amount) VALUES (?, ?);", ["রহিম", 250]);
+//   let rows = db.query(conn, "SELECT customer FROM orders WHERE amount >= ?;", [100]);
 
 import "std/db/query_builder" as queryBuilder;
+import "std/data/migrate" as migrate;
 
 let connect = fn(dsn) {
     let dbDsn = dsn;
@@ -53,13 +62,49 @@ let transaction = fn(conn, block) {
     return res;
 };
 
+// queryOne — প্রথম সারি দেয় (না থাকলে null)।
+let queryOne = fn(conn, sql, params) {
+    let rows = query(conn, sql, params);
+    if (len(rows) == 0) {
+        return null;
+    }
+    return first(rows);
+};
+
+// insertMap — হ্যাশ থেকে INSERT চালায়, প্রভাবিত সারি-সংখ্যা দেয়।
+// চাবি সাজানো ক্রমে থাকে, তাই কলাম ও মানের ক্রম সবসময় মেলে।
+let insertMap = fn(conn, table, row) {
+    let keys = native("std.data.hash_keys", row);
+    let marks = [];
+    let vals = [];
+    let i = 0;
+    while (i < len(keys)) {
+        marks = push(marks, "?");
+        vals = push(vals, row[keys[i]]);
+        i = i + 1;
+    }
+    let sql = "INSERT INTO " + table + " (" + join(keys, ", ") + ") VALUES (" + join(marks, ", ") + ");";
+    return exec(conn, sql, vals);
+};
+
 let table = fn(tableName) {
     return queryBuilder.new(tableName);
 };
 
 let select = queryBuilder.select;
 let where = queryBuilder.where;
+let whereIn = queryBuilder.whereIn;
 let limit = queryBuilder.limit;
+let offset = queryBuilder.offset;
 let order = queryBuilder.order;
+let distinct = queryBuilder.distinct;
 let buildSql = queryBuilder.buildSql;
+let countSql = queryBuilder.countSql;
 let execute = queryBuilder.execute;
+let countRows = queryBuilder.count;
+
+// মাইগ্রেশন পুনঃরপ্তানি।
+let migrateEntry = migrate.entry;
+let migrateUp = migrate.up;
+let migratePending = migrate.pending;
+let migrateStatus = migrate.statusText;

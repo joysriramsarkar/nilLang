@@ -38,7 +38,10 @@ format("score=", 40 + 2.5);
 func TestDecodeBytecodeRejectsInvalidImages(t *testing.T) {
 	for _, image := range [][]byte{
 		[]byte("legacy instructions"),
-		append([]byte{'N', 'A', 'B', 'C', 0, 2}, make([]byte, 8)...),
+		// Version 3 was never written by this toolchain. (Version 2 with
+		// empty instructions and no constants is a valid empty image since
+		// the purity byte made 2 the current version.)
+		append([]byte{'N', 'A', 'B', 'C', 0, 3}, make([]byte, 8)...),
 	} {
 		if _, err := DecodeBytecode(image); err == nil {
 			t.Fatalf("expected invalid image %v to be rejected", image)

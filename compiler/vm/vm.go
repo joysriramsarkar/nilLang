@@ -1,25 +1,49 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
+	compbuiltin "github.com/joysriramsarkar/nilLang/compiler/builtin"
 	"github.com/joysriramsarkar/nilLang/compiler/code"
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
+	"github.com/joysriramsarkar/nilLang/runtime/concurrency"
 )
 
 const (
-	StackSize   = 2048
+	// StackSize is the operand stack capacity in slots.
+	//
+	// It must be large enough that MaxFrames is always the binding constraint
+	// rather than the stack, because which limit trips first determines the
+	// error category. When StackSize bound first, deep recursion reported
+	// StackOverflow while the tree-walking evaluator reported FrameOverflow for
+	// the same program, breaking the cross-engine agreement that
+	// ERROR_MODEL.md §4 requires.
+	//
+	// A frame consumes at least the callee slot plus one slot per local, so a
+	// conservative worst case is a handful of slots per frame. 8x MaxFrames
+	// leaves ample headroom for functions with many locals.
+	StackSize = MaxFrames * 8
+
 	GlobalsSize = 65536
-	MaxFrames   = 1024
+
+	// MaxFrames is the call frame depth limit. It is deliberately the tighter of
+	// the two limits: a program that recurses without bound should be told it
+	// ran out of frames, not that it ran out of operand stack.
+	MaxFrames = 1024
 )
 
 var (
-	True  = &object.Boolean{Value: true}
-	False = &object.Boolean{Value: false}
-	Null  = &object.Null{}
+	True  = object.TRUE
+	False = object.FALSE
+	Null  = object.NULL
 )
 
 type VM struct {
@@ -29,6 +53,45 @@ type VM struct {
 	sp    int // Always points to the next value. Top of stack is stack[sp-1]
 
 	globals []object.Object
+
+	// globalsMu guards the global store. Tasks run on their own goroutines
+	// while sharing their parent's globals (L6.2: the same backing slice,
+	// never a copy), so every global access takes this lock. A child VM
+	// created for a task shares the pointer, which is what makes a write in
+	// the task visible to the parent after the await.
+	globalsMu *sync.Mutex
+
+	// taskScope is the structured-concurrency scope tasks spawned by OpTask
+	// belong to (L6.1). It is created lazily so that VMs deserialised from
+	// older images, which never had one, still run. Every OpTask creates a
+	// child scope under it; a faulted child cancels its siblings through the
+	// same parent, and cancelling this scope cascades to the whole tree.
+	taskScope *concurrency.Task
+
+	// pureDepth counts the pure functions on the current call stack (L6.3).
+	// A nonzero depth makes an effectful call a runtime E0202, the dynamic
+	// half of the static check the type checker performs. Each VM tracks its
+	// own depth because each runs on a single goroutine.
+	pureDepth int
+
+	// cancellable marks a VM that runs a task body. Its Run loop polls the
+	// task scope's cancellation signal, which is what makes cascading and
+	// sibling cancellation stop the work rather than merely recording that
+	// it should. The main VM never sets this: polling on every instruction
+	// would tax programs that cannot be cancelled.
+	cancellable bool
+
+	// cancelCounter spaces the cancellation polls: one non-blocking check
+	// per 256 instructions keeps the steady-state cost to a counter bump.
+	cancelCounter uint64
+
+	// taskChildren records the scopes OpTask spawns, in spawn order. It
+	// exists for the debugger and for tests: the scope is what carries the
+	// tree relationship a fault or a cancellation travels through.
+	// taskChildrenMu guards it because a test may read the scopes while the
+	// VM that spawned them is still running.
+	taskChildren   []*concurrency.Task
+	taskChildrenMu sync.Mutex
 
 	// globalNames maps global slot indices to debug names (may be empty).
 	globalNames []string
@@ -45,9 +108,133 @@ type VM struct {
 	// stepping and inspection).
 	Debug *DebugState
 
+	// Heap, when non-nil, receives every heap allocation the VM makes and
+	// supplies the root set at collection time.
+	//
+	// It is optional because the collector is conservative bookkeeping: it
+	// makes the reachability model observable but does not free memory the Go
+	// allocator owns. A host that embeds the VM sets it to get reclaim counts
+	// and to prove that live structures are retained; the CLI leaves it nil to
+	// avoid the bookkeeping cost on every push.
+	Heap Heap
+
+	// gcTracking is true when Heap is configured.
+	gcTracking bool
+
 	// resumeSameIP is set when Run returns ErrPaused so the next Run resumes
 	// at the paused instruction instead of skipping it.
 	resumeSameIP bool
+}
+
+// Heap is the interface the VM needs from a garbage collector.
+//
+// It is an interface rather than a concrete type so that compiler/vm does not
+// import runtime/gc, which keeps the dependency direction the way
+// tests/architecture_test.go expects: the runtime may know about the VM's object
+// model, not the other way round.
+type Heap interface {
+	// Track registers an allocation.
+	Track(obj object.Object)
+
+	// SetRoots replaces the root set for the next collection.
+	SetRoots(roots []object.Object)
+
+	// Collect runs a cycle and returns how many objects were reclaimed.
+	Collect() int
+
+	// ObjectCount returns the number of tracked objects.
+	ObjectCount() int
+}
+
+// EnableGC attaches a collector to the VM.
+//
+// Allocation tracking starts immediately, and a collection runs when the tracked
+// object count crosses the heap's threshold.
+func (vm *VM) EnableGC(heap Heap) {
+	vm.Heap = heap
+	vm.gcTracking = heap != nil
+}
+
+// DisableGC detaches the collector.
+func (vm *VM) DisableGC() {
+	vm.Heap = nil
+	vm.gcTracking = false
+}
+
+// GCEnabled reports whether a collector is attached.
+func (vm *VM) GCEnabled() bool {
+	return vm.gcTracking
+}
+
+// allocateObject registers a freshly created heap object with the collector.
+//
+// Only genuinely heap allocated values are tracked. Integers, booleans and the
+// like are values rather than references, and tracing them would grow the
+// marked set without making anything reachable that was not already.
+func (vm *VM) allocateObject(obj object.Object) {
+	if !vm.gcTracking || obj == nil {
+		return
+	}
+	vm.Heap.Track(obj)
+}
+
+// GCRoots builds the root set for a collection: live operand stack slots,
+// globals, and the closures and cells held by active frames (MEMORY_MODEL.md §2).
+func (vm *VM) GCRoots() []object.Object {
+	roots := make([]object.Object, 0, vm.sp+vm.framesIndex+16)
+
+	for i := 0; i < vm.sp && i < len(vm.stack); i++ {
+		if obj := vm.stack[i]; obj != nil {
+			roots = append(roots, obj)
+		}
+	}
+
+	for i := 0; i < vm.framesIndex && i < len(vm.frames); i++ {
+		frame := vm.frames[i]
+		if frame == nil {
+			continue
+		}
+		if frame.cl != nil {
+			roots = append(roots, frame.cl)
+			for _, free := range frame.cl.Free {
+				roots = append(roots, free)
+			}
+		}
+	}
+
+	for i := 0; i < len(vm.globals); i++ {
+		mu := vm.ensureGlobalsMu()
+		mu.Lock()
+		obj := vm.globals[i]
+		mu.Unlock()
+		if obj != nil {
+			roots = append(roots, obj)
+		}
+	}
+
+	if vm.lastPoppedStackElem != nil {
+		roots = append(roots, vm.lastPoppedStackElem)
+	}
+
+	return roots
+}
+
+// CollectGarbage runs a collection against the VM's current root set and returns
+// the number of reclaimed objects.
+func (vm *VM) CollectGarbage() int {
+	if !vm.gcTracking {
+		return 0
+	}
+	vm.Heap.SetRoots(vm.GCRoots())
+	return vm.Heap.Collect()
+}
+
+// TrackedObjectCount returns the number of objects the collector is tracking.
+func (vm *VM) TrackedObjectCount() int {
+	if !vm.gcTracking {
+		return 0
+	}
+	return vm.Heap.ObjectCount()
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -70,6 +257,8 @@ func New(bytecode *compiler.Bytecode) *VM {
 		sp:    0,
 
 		globals:     make([]object.Object, GlobalsSize),
+		globalsMu:   &sync.Mutex{},
+		taskScope:   concurrency.NewTaskScope(nil),
 		globalNames: bytecode.GlobalNames,
 
 		frames:      frames,
@@ -83,6 +272,33 @@ func NewWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object) *VM {
 	return vm
 }
 
+// ensureTaskScope returns the VM's task scope, creating the root on first
+// use for VMs that predate the field.
+func (vm *VM) ensureTaskScope() *concurrency.Task {
+	if vm.taskScope == nil {
+		vm.taskScope = concurrency.NewTaskScope(nil)
+	}
+	return vm.taskScope
+}
+
+// ensureGlobalsMu returns the mutex guarding the global store, creating one
+// for VMs that predate the field. VMs that share a store must share the
+// pointer; this is only the fallback for a VM that has none.
+func (vm *VM) ensureGlobalsMu() *sync.Mutex {
+	if vm.globalsMu == nil {
+		vm.globalsMu = &sync.Mutex{}
+	}
+	return vm.globalsMu
+}
+
+// TaskChildScopes returns a copy of the scopes OpTask has spawned so far,
+// in spawn order. It exists for the debugger and for tests.
+func (vm *VM) TaskChildScopes() []*concurrency.Task {
+	vm.taskChildrenMu.Lock()
+	defer vm.taskChildrenMu.Unlock()
+	return append([]*concurrency.Task(nil), vm.taskChildren...)
+}
+
 func (vm *VM) StackTop() object.Object {
 	if vm.sp == 0 {
 		return nil
@@ -94,13 +310,70 @@ func (vm *VM) LastPoppedStackElem() object.Object {
 	return vm.lastPoppedStackElem
 }
 
+// GetGlobal returns the value stored in a global slot, or nil when the slot is
+// empty or out of range.
+//
+// Globals live in the VM's global array rather than on the operand stack, so
+// observing a program's effects after Run requires reading a slot by index.
+// The debugger, the conformance suite, and embedders all need this, and the
+// field is otherwise unreachable from outside the package.
+func (vm *VM) GetGlobal(index int) object.Object {
+	if index < 0 || index >= len(vm.globals) {
+		return nil
+	}
+	mu := vm.ensureGlobalsMu()
+	mu.Lock()
+	defer mu.Unlock()
+	return vm.globals[index]
+}
+
+// SetGlobal writes a value into a global slot, ignoring out of range indices.
+// It exists so that embedders and tests can seed global state before Run.
+func (vm *VM) SetGlobal(index int, value object.Object) {
+	if index < 0 || index >= len(vm.globals) {
+		return
+	}
+	mu := vm.ensureGlobalsMu()
+	mu.Lock()
+	defer mu.Unlock()
+	vm.globals[index] = value
+}
+
+// GlobalsSize reports how many global slots the VM provides.
+func (vm *VM) GlobalsSize() int {
+	return len(vm.globals)
+}
+
+// GlobalNames returns the debug names of global slots, indexed by slot.
+//
+// Names come from the compiler's symbol table and are empty when the bytecode
+// carries no debug information.
+func (vm *VM) GlobalNames() []string {
+	return vm.globalNames
+}
+
+// GlobalByName reads a global slot by its source-level name.
+//
+// Reading by index is fragile: a program that declares one extra binding shifts
+// every later slot, so an index-based read in a test or a debugger silently
+// inspects the wrong variable. The name is what the developer wrote.
+func (vm *VM) GlobalByName(name string) (object.Object, bool) {
+	for slot, globalName := range vm.globalNames {
+		if globalName == name {
+			value := vm.GetGlobal(slot)
+			return value, value != nil
+		}
+	}
+	return nil, false
+}
+
 func (vm *VM) currentFrame() *Frame {
 	return vm.frames[vm.framesIndex-1]
 }
 
 func (vm *VM) pushFrame(f *Frame) error {
 	if vm.framesIndex >= MaxFrames {
-		return fmt.Errorf("stack overflow: maximum call depth %d exceeded", MaxFrames)
+		return errFrameOverflow("maximum call depth %d exceeded", MaxFrames)
 	}
 	vm.frames[vm.framesIndex] = f
 	vm.framesIndex++
@@ -119,7 +392,7 @@ func (vm *VM) popFrame() (*Frame, error) {
 
 func (vm *VM) push(o object.Object) error {
 	if vm.sp >= StackSize {
-		return fmt.Errorf("stack overflow")
+		return errStackOverflow("evaluation stack exhausted")
 	}
 
 	vm.stack[vm.sp] = o
@@ -150,6 +423,16 @@ func (vm *VM) Run() error {
 	var op code.Opcode
 
 	for vm.framesIndex > 0 && vm.currentFrame().ip < len(vm.currentFrame().Instructions())-1 {
+		if vm.cancellable {
+			vm.cancelCounter++
+			if vm.cancelCounter&0xFF == 0 && vm.taskScope != nil {
+				select {
+				case <-vm.taskScope.Done():
+					return vmError(object.CategoryTaskCancelled, "task cancelled")
+				default:
+				}
+			}
+		}
 		if vm.resumeSameIP {
 			vm.resumeSameIP = false
 		} else {
@@ -280,13 +563,20 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
+			mu := vm.ensureGlobalsMu()
+			mu.Lock()
 			vm.globals[globalIndex] = val
+			mu.Unlock()
 
 		case code.OpGetGlobal:
 			globalIndex := code.ReadUint16(ins[ip+1:])
 			vm.currentFrame().ip += 2
 
-			err := vm.push(vm.globals[globalIndex])
+			mu := vm.ensureGlobalsMu()
+			mu.Lock()
+			global := vm.globals[globalIndex]
+			mu.Unlock()
+			err := vm.push(global)
 			if err != nil {
 				return err
 			}
@@ -297,6 +587,11 @@ func (vm *VM) Run() error {
 
 			array := vm.buildArray(vm.sp-numElements, vm.sp)
 			vm.truncateStack(vm.sp - numElements)
+
+			// Track before pushing: the array is not yet reachable from the root
+			// set, so a collection between allocation and push would sweep it
+			// while it is still referenced by this instruction's own stack.
+			vm.allocateObject(array)
 
 			err := vm.push(array)
 			if err != nil {
@@ -312,6 +607,8 @@ func (vm *VM) Run() error {
 				return err
 			}
 			vm.truncateStack(vm.sp - numElements)
+
+			vm.allocateObject(hash)
 
 			err = vm.push(hash)
 			if err != nil {
@@ -329,6 +626,21 @@ func (vm *VM) Run() error {
 			}
 
 			err = vm.executeIndexExpression(left, index)
+			if err != nil {
+				return err
+			}
+
+		case code.OpGetField:
+			member, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			left, err := vm.pop()
+			if err != nil {
+				return err
+			}
+
+			err = vm.executeGetField(left, member)
 			if err != nil {
 				return err
 			}
@@ -370,6 +682,9 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
+			if frame.isPure {
+				vm.pureDepth--
+			}
 			if frame.basePointer > 0 {
 				vm.truncateStack(frame.basePointer - 1)
 			} else {
@@ -384,6 +699,9 @@ func (vm *VM) Run() error {
 			frame, err := vm.popFrame()
 			if err != nil {
 				return err
+			}
+			if frame.isPure {
+				vm.pureDepth--
 			}
 			if frame.basePointer > 0 {
 				vm.truncateStack(frame.basePointer - 1)
@@ -406,9 +724,15 @@ func (vm *VM) Run() error {
 			frame := vm.currentFrame()
 			addr := frame.basePointer + int(localIndex)
 			if addr >= StackSize {
-				return fmt.Errorf("stack overflow: local index out of bounds")
+				return errInvalidBytecode("local index out of bounds")
 			}
-			vm.stack[addr] = val
+			// A boxed local holds a cell, so the assignment must go through it
+			// for the closure to observe the write.
+			if cell, ok := vm.stack[addr].(*object.CaptureCell); ok {
+				cell.Value = val
+			} else {
+				vm.stack[addr] = val
+			}
 
 		case code.OpGetLocal:
 			localIndex := code.ReadUint8(ins[ip+1:])
@@ -417,10 +741,46 @@ func (vm *VM) Run() error {
 			frame := vm.currentFrame()
 			addr := frame.basePointer + int(localIndex)
 			if addr >= StackSize {
-				return fmt.Errorf("stack overflow: local index out of bounds")
+				return errInvalidBytecode("local index out of bounds")
 			}
-			err := vm.push(vm.stack[addr])
+
+			// A boxed local holds a cell rather than a value; reading it means
+			// reading through the cell.
+			value := vm.stack[addr]
+			if cell, ok := value.(*object.CaptureCell); ok {
+				value = cell.Value
+			}
+
+			err := vm.push(value)
 			if err != nil {
+				return err
+			}
+
+		case code.OpBoxLocal:
+			localIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentFrame().ip += 1
+
+			frame := vm.currentFrame()
+			addr := frame.basePointer + int(localIndex)
+			if addr >= StackSize {
+				return errInvalidBytecode("local index out of bounds")
+			}
+
+			// Box in place so the enclosing frame and every closure that
+			// captures this local share one cell. Re-boxing an already boxed slot
+			// would silently split the two, so the existing cell is kept.
+			//
+			// The cell is then pushed, because OpClosure consumes one stack value
+			// per captured variable and pushClosure expects to find either a cell
+			// or a bare value there.
+			cell, alreadyBoxed := vm.stack[addr].(*object.CaptureCell)
+			if !alreadyBoxed {
+				cell = &object.CaptureCell{Value: vm.stack[addr]}
+				vm.allocateObject(cell)
+				vm.stack[addr] = cell
+			}
+
+			if err := vm.push(cell); err != nil {
 				return err
 			}
 
@@ -495,29 +855,57 @@ func (vm *VM) Run() error {
 			}
 			closure, ok := rawClosure.(*object.Closure)
 			if !ok {
-				return fmt.Errorf("task body is not a closure")
+				return errTypeMismatch("task body is not a function")
 			}
+			// The task joins the structured tree under this VM's scope: a
+			// faulted task cancels its siblings through the shared parent,
+			// and cancelling the scope cascades to every task in it
+			// (CONCURRENCY.md §3.1). The language-level future below is what
+			// the program awaits; the scope owns the lifecycle.
 			future := object.NewFuture()
-			globals := append([]object.Object(nil), vm.globals...)
-			constants := vm.constants
-			nativeCallHandler := vm.NativeCallHandler
-			go func() {
-				child := NewWithGlobalsStore(&compiler.Bytecode{Constants: constants}, globals)
-				child.NativeCallHandler = nativeCallHandler
-				if err := child.push(closure); err != nil {
-					future.Complete(nil, err)
-					return
-				}
-				if err := child.callClosure(closure, 0); err != nil {
-					future.Complete(nil, err)
-					return
-				}
-				err := child.Run()
-				future.Complete(child.StackTop(), err)
-			}()
+			vm.allocateObject(future)
+			scope := concurrency.NewTaskScope(vm.ensureTaskScope())
+			vm.taskChildrenMu.Lock()
+			vm.taskChildren = append(vm.taskChildren, scope)
+			vm.taskChildrenMu.Unlock()
 			if err := vm.push(future); err != nil {
 				return err
 			}
+			go func() {
+				defer func() {
+					// A panic inside a task must not take down the process.
+					// It becomes a faulted future, which CONCURRENCY.md §4
+					// requires, and faults its siblings through the scope.
+					if r := recover(); r != nil {
+						fault := errTaskFaulted("task panicked: %v", r)
+						scope.Fail(fault)
+						future.Complete(nil, fault)
+					}
+				}()
+
+				// Cooperative cancellation before starting: a task spawned
+				// into an already-cancelled tree never runs.
+				select {
+				case <-scope.Done():
+					scope.Cancel()
+					cancelled := vmError(object.CategoryTaskCancelled, "task cancelled before it started")
+					future.Complete(nil, cancelled)
+					return
+				default:
+				}
+
+				value, err := vm.runClosureShared(closure, scope)
+				if err != nil {
+					fault := asTaskFault(err)
+					scope.Fail(fault)
+					future.Complete(nil, fault)
+					return
+				}
+				if value == nil {
+					value = Null
+				}
+				future.Complete(value, nil)
+			}()
 
 		case code.OpAwait:
 			rawFuture, err := vm.pop()
@@ -526,10 +914,18 @@ func (vm *VM) Run() error {
 			}
 			future, ok := rawFuture.(*object.Future)
 			if !ok {
-				return fmt.Errorf("cannot await non-future value")
+				return errTypeMismatch("cannot await a non-task value")
 			}
 			result, err := future.Await()
 			if err != nil {
+				// A typed fault travels unchanged: the category is the
+				// cross-engine contract (ERROR_MODEL.md §4), and both
+				// engines report TaskFaulted for a failed task. The fault
+				// message already names the failure, so wrapping it would
+				// only reword what the other engine says.
+				if _, ok := object.CategoryOf(err); ok {
+					return err
+				}
 				return fmt.Errorf("task failed: %w", err)
 			}
 			if result == nil {
@@ -580,18 +976,50 @@ func (vm *VM) Run() error {
 
 			if vm.CapabilityChecker != nil {
 				if err := vm.CapabilityChecker(name); err != nil {
-					return fmt.Errorf("capability denied: %w", err)
+					// Wrap rather than flatten: the category satisfies the
+					// cross-engine contract while the cause keeps the operation
+					// name and missing capabilities reachable via errors.As.
+					return vmErrorWrap(object.CategoryCapabilityDenied, err, "%s", err)
 				}
 			}
 
-			if vm.NativeCallHandler != nil {
+			// A pure function never reaches a native operation: every
+			// OpNativeCall names a capability-gated, therefore effectful,
+			// operation, so reaching one with a pure frame on the stack is
+			// a runtime E0202 (L6.3). It runs after the capability check so
+			// that existing denial behaviour is unchanged; with no pure
+			// frame on the stack the check is skipped entirely.
+			if vm.pureDepth > 0 {
+				return vmError(object.CategoryTypeError,
+					"E0202: cannot call effectful operation %q inside a pure function", name)
+			}
+
+			// Dispatch: an embedder supplied handler takes precedence, then the
+			// language's own builtin, and only a genuinely absent operation
+			// yields null. Falling straight through to null would turn every
+			// gated builtin into a silent no-op once the compiler started
+			// emitting OpNativeCall for it.
+			switch {
+			case vm.NativeCallHandler != nil:
 				res, err := vm.NativeCallHandler(name, args)
 				if err != nil {
 					return err
 				}
+				if res == nil {
+					res = Null
+				}
 				vm.push(res)
-			} else {
-				vm.push(Null)
+
+			default:
+				builtinFn, ok := evaluator.Builtins[name]
+				if !ok {
+					return vmError(object.CategoryUnknownOperation, "native operation not implemented: %s", name)
+				}
+				result := builtinFn.Fn(args...)
+				if result == nil {
+					result = Null
+				}
+				vm.push(result)
 			}
 		}
 	}
@@ -628,7 +1056,7 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 		// operand concatenates, coercing the other side with Inspect().
 		return vm.push(&object.String{Value: left.Inspect() + right.Inspect()})
 	default:
-		return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
+		return errTypeMismatch("unsupported types for binary operation: %s %s", leftType, rightType)
 	}
 }
 
@@ -648,7 +1076,7 @@ func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Obj
 		result = leftValue / rightValue
 	case code.OpMod:
 		if rightValue == 0 {
-			return fmt.Errorf("modulo by zero")
+			return errModuloByZero()
 		}
 		result = math.Mod(leftValue, rightValue)
 	default:
@@ -672,12 +1100,12 @@ func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right object.O
 		result = leftValue * rightValue
 	case code.OpDiv:
 		if rightValue == 0 {
-			return fmt.Errorf("division by zero")
+			return errDivisionByZero()
 		}
 		result = leftValue / rightValue
 	case code.OpMod:
 		if rightValue == 0 {
-			return fmt.Errorf("modulo by zero")
+			return errModuloByZero()
 		}
 		result = leftValue % rightValue
 	default:
@@ -755,11 +1183,36 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 
 	switch op {
 	case code.OpEqual:
-		return vm.push(nativeBoolToBooleanObject(right == left))
+		return vm.push(nativeBoolToBooleanObject(objectsEqual(right, left)))
 	case code.OpNotEqual:
-		return vm.push(nativeBoolToBooleanObject(right != left))
+		return vm.push(nativeBoolToBooleanObject(!objectsEqual(right, left)))
 	default:
 		return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+	}
+}
+
+// objectsEqual compares two values for `==` when neither is a number, a string,
+// or a collection with its own comparison.
+//
+// It matches on type and value rather than pointer identity. Comparing the Go
+// interfaces directly would report `isOk(x) == false` as unequal, because the
+// boolean a builtin returned is a different pointer from this package's `False`.
+// Booleans and null are the values with no `Inspect` distinction worth relying
+// on, so they are matched structurally; everything else falls back to the
+// printed form, which is what the branch above already does.
+func objectsEqual(left, right object.Object) bool {
+	if left.Type() != right.Type() {
+		return false
+	}
+
+	switch left := left.(type) {
+	case *object.Boolean:
+		rightBool, ok := right.(*object.Boolean)
+		return ok && left.Value == rightBool.Value
+	case *object.Null:
+		return true
+	default:
+		return left.Inspect() == right.Inspect()
 	}
 }
 
@@ -864,8 +1317,59 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 	case left.Type() == object.HASH_OBJ:
 		return vm.executeHashIndex(left, index)
 	default:
-		return fmt.Errorf("index operator not supported: %s", left.Type())
+		return errTypeMismatch("index operator not supported on %s", left.Type())
 	}
+}
+
+// executeGetField reads a named member, and reports a member that is not there.
+//
+// # Why a miss is an error here but not in executeHashIndex
+//
+// `h["k"]` and `h.k` look alike and are not the same question. Indexing asks
+// "what is at this key", and a key that is not there has the answer null — that
+// is what a lookup miss means. Dot access asks for a member by name, and a
+// member that does not exist is a typo, a refactor that was not finished, or a
+// call to a method that needs parentheses. Answering null for any of those
+// moves the failure to whatever line happens to use the value, which is nowhere
+// near the mistake.
+//
+// This is why they compile to different instructions. They used to compile to
+// the same one, and the VM therefore answered null for a dot access the
+// evaluator refused — the two engines disagreed about the same program.
+func (vm *VM) executeGetField(left, member object.Object) error {
+	name, ok := member.(*object.String)
+	if !ok {
+		return errTypeMismatch("a field name must be a string, got %s", member.Type())
+	}
+
+	hashObject, isHash := left.(*object.Hash)
+	if !isHash {
+		// The wording matches the evaluator's. Both engines refuse a member on a
+		// primitive or an array, but they were describing it in different terms —
+		// "property access .length not supported on type STRING" against "index
+		// operator not supported on STRING" — so a reader comparing the two
+		// outputs had to work out whether they described one problem or two.
+		//
+		// The second message is the one that was wrong: this is a dot access, not
+		// an index, and saying otherwise sent the reader looking at brackets that
+		// are not in their program.
+		return errTypeMismatch("property access .%s not supported on type %s", name.Value, left.Type())
+	}
+
+	pair, present := hashObject.Pairs[name.HashKey()]
+	if !present {
+		// The wording matches the evaluator's on purpose. Two engines reporting
+		// the same mistake in different words is a divergence a conformance suite
+		// cannot express as agreement, and a reader comparing the two outputs
+		// would have to work out whether they describe one problem or two.
+		//
+		// The category is extra, not a difference: the evaluator raises an
+		// uncategorised error for this and the VM always categorises. What the
+		// suite compares is the category, and "the operation does not exist" is
+		// what this is.
+		return errUnknownOperation("unknown method %s on object", name.Value)
+	}
+	return vm.push(pair.Value)
 }
 
 func (vm *VM) executeStringIndex(str, index object.Object) error {
@@ -886,20 +1390,23 @@ func (vm *VM) executeSetIndex(target, index, val object.Object) error {
 	case *object.Array:
 		idxObj, ok := index.(*object.Integer)
 		if !ok {
-			return fmt.Errorf("array index must be an integer, got %s", index.Type())
+			return errTypeMismatch("array index must be an integer, got %s", index.Type())
 		}
 		idx := idxObj.Value
 		if idx < 0 || idx >= int64(len(t.Elements)) {
-			return fmt.Errorf("index out of bounds: %d", idx)
+			return errIndexOutOfBounds("index %d out of bounds", idx)
 		}
 		t.Elements[idx] = val
 		return nil
 	case *object.Hash:
-		hashable, ok := index.(object.Hashable)
-		if !ok {
-			return fmt.Errorf("unusable as hash key: %s", index.Type())
+		if _, ok := index.(object.Hashable); !ok {
+			return errTypeMismatch("unusable as hash key: %s", index.Type())
 		}
-		t.Pairs[hashable.HashKey()] = object.HashPair{Key: index, Value: val}
+		// Through `SetPair`, never by writing `Pairs` directly — see the note on
+		// `Hash.Pairs`. Writing the lookup table by hand leaves the written-order
+		// view stale, and the symptom is a value that prints in an order this engine
+		// and the others disagree about.
+		t.SetPair(index, val)
 		return nil
 	default:
 		return fmt.Errorf("index-assignment not supported on: %s", target.Type())
@@ -923,7 +1430,7 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 
 	key, ok := index.(object.Hashable)
 	if !ok {
-		return fmt.Errorf("unusable as hash key: %s", index.Type())
+		return errTypeMismatch("unusable as hash key: %s", index.Type())
 	}
 
 	pair, ok := hashObject.Pairs[key.HashKey()]
@@ -944,24 +1451,28 @@ func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
 	return &object.Array{Elements: elements}
 }
 
+// buildHash assembles a hash from key/value pairs pushed onto the stack.
+//
+// The pairs arrive in source order and are recorded through SetPair, so the hash
+// keeps that order. Building the map directly would leave the order empty and
+// fall back to sorted keys, which made a struct literal print its fields in
+// alphabetical order under `--vm` while the evaluator printed them as written.
 func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
-	hashedPairs := make(map[object.HashKey]object.HashPair)
+	pairs := (endIndex - startIndex) / 2
+	hash := object.NewHash(pairs)
 
 	for i := startIndex; i < endIndex; i += 2 {
 		key := vm.stack[i]
 		value := vm.stack[i+1]
 
-		pair := object.HashPair{Key: key, Value: value}
-
-		hashKey, ok := key.(object.Hashable)
-		if !ok {
+		if _, ok := key.(object.Hashable); !ok {
 			return nil, fmt.Errorf("unusable as hash key: %s", key.Type())
 		}
 
-		hashedPairs[hashKey.HashKey()] = pair
+		hash.SetPair(key, value)
 	}
 
-	return &object.Hash{Pairs: hashedPairs}, nil
+	return hash, nil
 }
 
 func (vm *VM) executeCall(numArgs int) error {
@@ -972,7 +1483,7 @@ func (vm *VM) executeCall(numArgs int) error {
 	case *object.Builtin:
 		return vm.callBuiltin(callee, numArgs)
 	default:
-		return fmt.Errorf("calling non-function and non-built-in: %s", callee.Type())
+		return errTypeMismatch("calling non-function and non-built-in: %s", callee.Type())
 	}
 }
 
@@ -982,14 +1493,40 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 			cl.Fn.NumParameters, numArgs)
 	}
 
+	// A non-pure function called while a pure one is on the stack
+	// contradicts the pure declaration: the call may perform an effect the
+	// declaration promised it would not (runtime E0202, L6.3).
+	if vm.pureDepth > 0 && !cl.Fn.IsPure {
+		return vmError(object.CategoryTypeError,
+			"E0202: cannot call side-effecting function inside a pure function")
+	}
+
+	// Frame depth is checked before stack capacity so that unbounded recursion
+	// reports FrameOverflow, matching the evaluator's call depth bound. See the
+	// StackSize comment for why the ordering matters.
+	if vm.framesIndex >= MaxFrames {
+		return errFrameOverflow("maximum call depth %d exceeded", MaxFrames)
+	}
+
 	frame := NewFrame(cl, vm.sp-numArgs)
+	frame.isPure = cl.Fn.IsPure
 	if err := vm.pushFrame(frame); err != nil {
 		return err
+	}
+	if frame.isPure {
+		vm.pureDepth++
 	}
 
 	newSp := frame.basePointer + cl.Fn.NumLocals
 	if newSp > StackSize {
-		return fmt.Errorf("stack overflow: call frame exceeded stack size")
+		// A single frame needing more slots than the whole stack is a genuine
+		// stack exhaustion, not recursion depth, so it keeps StackOverflow.
+		// The pushed frame is unwound first so the pure depth stays exact.
+		if popped, popErr := vm.popFrame(); popErr == nil && popped.isPure {
+			vm.pureDepth--
+		}
+		return errStackOverflow("call frame of %d slots exceeds the %d slot stack",
+			cl.Fn.NumLocals, StackSize)
 	}
 	vm.sp = newSp
 
@@ -998,6 +1535,20 @@ func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 
 func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 	args := vm.stack[vm.sp-numArgs : vm.sp]
+
+	// The capability and effect gates apply to calls through a variable
+	// exactly as they do to direct ones: without this a denied operation
+	// would only need one alias to escape the sandbox, and a pure function
+	// only one indirection to hide its effect.
+	if name, ok := evaluator.BuiltinName(builtin); ok {
+		if err := vm.checkBuiltinCall(name); err != nil {
+			vm.truncateStack(vm.sp - numArgs - 1)
+			return err
+		}
+		if name == "withTimeout" {
+			return vm.callWithTimeout(args, numArgs)
+		}
+	}
 
 	result := builtin.Fn(args...)
 
@@ -1009,14 +1560,214 @@ func (vm *VM) callBuiltin(builtin *object.Builtin, numArgs int) error {
 		vm.push(Null)
 	}
 
+	// A builtin signals failure by returning an error object rather than by
+	// raising anything, and the evaluator stops there because every one of its
+	// Eval calls propagates the value. Pushing the object and carrying on made
+	// `assert(false, "x")` a no-op under `--vm`: the program reached the next
+	// statement and the assertion never happened. ERROR_MODEL.md §4 requires
+	// both engines to fail on the same programs.
+	if vmErr, failed := topError(result); failed {
+		return vmErr
+	}
+
 	return nil
 }
+
+// checkBuiltinCall enforces the pure context (L6.3) and the capability
+// sandbox (L6.4) on a builtin call reached through OpCall, which is the
+// indirect form the OpNativeCall instrumentation cannot see. It returns nil
+// when the call may run.
+func (vm *VM) checkBuiltinCall(name string) error {
+	if vm.pureDepth > 0 && compbuiltin.IsEffectful(name) {
+		return vmError(object.CategoryTypeError,
+			"E0202: cannot call effectful builtin %q inside a pure function", name)
+	}
+	if vm.CapabilityChecker != nil {
+		if class, known := compbuiltin.Classify(name); known && class.Gated {
+			if err := vm.CapabilityChecker(name); err != nil {
+				return vmErrorWrap(object.CategoryCapabilityDenied, err, "%s", err)
+			}
+		}
+	}
+	return nil
+}
+
+// runClosureShared runs a closure on a child VM that shares this VM's global
+// store, constants and capability hooks (L6.1/L6.2).
+//
+// The globals slice and its mutex are shared, never copied, so a write the
+// task makes is visible to the parent after the await. The child inherits
+// the capability checker: without that a task could reach a host operation
+// its parent was never authorised for, which would make the sandbox
+// trivially bypassable by wrapping the work in a task. The child
+// deliberately does not inherit GC tracking or debugging: the parent owns
+// the heap, and a second collector over a shared store would reclaim objects
+// the parent still references.
+func (vm *VM) runClosureShared(closure *object.Closure, scope *concurrency.Task) (object.Object, error) {
+	child := &VM{
+		constants:         vm.constants,
+		stack:             make([]object.Object, StackSize),
+		globals:           vm.globals,
+		globalsMu:         vm.ensureGlobalsMu(),
+		globalNames:       vm.globalNames,
+		frames:            make([]*Frame, MaxFrames),
+		taskScope:         scope,
+		cancellable:       true,
+		NativeCallHandler: vm.NativeCallHandler,
+		CapabilityChecker: vm.CapabilityChecker,
+	}
+	if err := child.push(closure); err != nil {
+		return nil, err
+	}
+	if err := child.callClosure(closure, 0); err != nil {
+		return nil, err
+	}
+	if err := child.Run(); err != nil {
+		return nil, err
+	}
+	return child.StackTop(), nil
+}
+
+// callWithTimeout runs a zero-argument closure under a millisecond deadline
+// (CONCURRENCY.md §3.2, L6.1). The closure runs on a child VM with the
+// shared global store; an expired deadline reports TaskCancelled. The call
+// itself is effectful, so it is refused in a pure context like any other
+// gated operation — the check in checkBuiltinCall already ran before this.
+func (vm *VM) callWithTimeout(args []object.Object, numArgs int) error {
+	var result object.Object
+	switch {
+	case len(args) != 2:
+		result = object.RuntimeErrorf(object.CategoryTypeError,
+			"wrong number of arguments to `withTimeout`. got=%d, want=2", len(args))
+	case !isInteger(args[0]):
+		result = object.RuntimeErrorf(object.CategoryTypeError,
+			"first argument to `withTimeout` must be INTEGER milliseconds, got %s", args[0].Type())
+	default:
+		closure, ok := args[1].(*object.Closure)
+		if !ok {
+			result = object.RuntimeErrorf(object.CategoryTypeError,
+				"second argument to `withTimeout` must be a function, got %s", args[1].Type())
+		} else {
+			result = vm.runWithTimeout(args[0].(*object.Integer).Value, closure)
+		}
+	}
+
+	vm.truncateStack(vm.sp - numArgs - 1)
+
+	if result != nil {
+		vm.push(result)
+	} else {
+		vm.push(Null)
+	}
+
+	if vmErr, failed := topError(result); failed {
+		return vmErr
+	}
+
+	return nil
+}
+
+// runWithTimeout executes the closure off-goroutine and waits up to the
+// deadline for it. There is no preemption: an expired deadline abandons the
+// wait, not the work, and a panic in the work faults the result rather than
+// the process.
+func (vm *VM) runWithTimeout(timeoutMs int64, closure *object.Closure) object.Object {
+	type outcome struct {
+		value object.Object
+		err   error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- outcome{nil, errTaskFaulted("task panicked: %v", r)}
+			}
+		}()
+		value, err := vm.runClosureShared(closure, vm.ensureTaskScope())
+		done <- outcome{value, err}
+	}()
+
+	select {
+	case out := <-done:
+		if out.err != nil {
+			var runtimeErr *object.RuntimeError
+			if errors.As(out.err, &runtimeErr) {
+				return runtimeErr
+			}
+			return object.RuntimeErrorf(object.CategoryTaskFaulted, "task failed: %s", out.err.Error())
+		}
+		if out.value == nil {
+			return Null
+		}
+		return out.value
+	case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+		return object.RuntimeErrorf(object.CategoryTaskCancelled,
+			"withTimeout: task timeout exceeded after %dms", timeoutMs)
+	}
+}
+
+// asTaskFault converts a task body's failure into the fault the awaiting
+// program observes (L6.5). Every failure inside a task becomes a TaskFaulted
+// fault naming its cause; an error that already is one travels unchanged,
+// and cancellation travels as TaskCancelled rather than as a fault.
+func asTaskFault(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, concurrency.ErrTaskCancelled) {
+		return vmErrorWrap(object.CategoryTaskCancelled, err, "task cancelled")
+	}
+	if category, ok := object.CategoryOf(err); ok {
+		if category == object.CategoryTaskFaulted || category == object.CategoryTaskCancelled {
+			return err
+		}
+	}
+	var runtimeErr *object.RuntimeError
+	if errors.As(err, &runtimeErr) {
+		return vmErrorWrap(object.CategoryTaskFaulted, err, "task failed: %s", runtimeErr.Message)
+	}
+	return vmErrorWrap(object.CategoryTaskFaulted, err, "task failed: %s", err.Error())
+}
+
+// isInteger reports whether the value is an integer object.
+func isInteger(obj object.Object) bool {
+	_, ok := obj.(*object.Integer)
+	return ok
+}
+
+// topError reports whether an object's value is a runtime error, and if so
+// returns it as a Go error the VM can stop with.
+//
+// A categorised RuntimeError keeps its category, which is what ERROR_MODEL.md §4
+// requires both engines to agree on. A bare Error has none, so it is reported as
+// the plain message it is rather than being given a category here — inventing one
+// in the VM would make the two engines print different text for the same fault.
+func topError(obj object.Object) (error, bool) {
+	switch value := obj.(type) {
+	case *object.RuntimeError:
+		return value, true
+	case *object.Error:
+		// Inspect() is what the evaluator's front end prints for this object, so
+		// reusing it is what makes the two engines report the same text.
+		return uncategorisedError{message: value.Inspect()}, true
+	default:
+		return nil, false
+	}
+}
+
+// uncategorisedError carries a message with no category, for the errors that
+// never had one to begin with.
+type uncategorisedError struct {
+	message string
+}
+
+func (e uncategorisedError) Error() string { return e.message }
 
 func (vm *VM) pushClosure(constIndex, numFree int) error {
 	constant := vm.constants[constIndex]
 	function, ok := constant.(*object.CompiledFunction)
 	if !ok {
-		return fmt.Errorf("not a function: %+v", constant)
+		return errInvalidBytecode("not a function: %+v", constant)
 	}
 
 	// Wrap each captured value in a new CaptureCell (or re-use existing cell
@@ -1033,11 +1784,13 @@ func (vm *VM) pushClosure(constIndex, numFree int) error {
 			free[i] = cell
 		} else {
 			free[i] = &object.CaptureCell{Value: raw}
+			vm.allocateObject(free[i])
 		}
 	}
 	vm.truncateStack(vm.sp - numFree)
 
 	closure := &object.Closure{Fn: function, Free: free}
+	vm.allocateObject(closure)
 	return vm.push(closure)
 }
 
@@ -1048,22 +1801,95 @@ func nativeBoolToBooleanObject(input bool) *object.Boolean {
 	return False
 }
 
+// isTruthy reports whether a value counts as true.
+//
+// The comparison is by type and value, never by pointer identity. A boolean
+// produced by a Go builtin crosses the engine boundary as an ordinary
+// *object.Boolean that is not this package's `True` or `False` singleton, so a
+// `switch obj { case False: ... }` would fall through to the default branch and
+// call every builtin result truthy. That made `if (isOk(x)) { ... } else { ... }`
+// take the wrong branch under `--vm` while the evaluator took the right one.
 func isTruthy(obj object.Object) bool {
-	switch obj {
-	case Null:
+	switch value := obj.(type) {
+	case nil:
 		return false
-	case True:
-		return true
-	case False:
+	case *object.Boolean:
+		return value.Value
+	case *object.Null:
 		return false
+	case *object.Integer:
+		return value.Value != 0
 	default:
-		if intObj, ok := obj.(*object.Integer); ok {
-			return intObj.Value != 0
-		}
 		return true
 	}
 }
 
 func Disassemble(ins code.Instructions) string {
 	return ins.String()
+}
+
+// DisassembleWithConstants renders instructions alongside the constant pool,
+// resolving OpConstant operands to their values.
+//
+// The plain Disassemble form prints operand numbers, which is compact but
+// unreadable for a program whose behaviour depends on which operation a
+// OpNativeCall names. Debugging capability refusals in particular needs to see
+// the operation name in the listing.
+func DisassembleWithConstants(ins code.Instructions, constants []object.Object) string {
+	var out strings.Builder
+
+	i := 0
+	for i < len(ins) {
+		def, err := code.Lookup(ins[i])
+		if err != nil {
+			fmt.Fprintf(&out, "ERROR: %s\n", err)
+			continue
+		}
+
+		operands, read := code.ReadOperands(def, ins[i+1:])
+
+		operandText := make([]string, len(operands))
+		for idx, operand := range operands {
+			text := strconv.Itoa(operand)
+			if referencesConstant(def.Name, operandWidthAt(def, idx)) && operand >= 0 && operand < len(constants) {
+				text += " (" + constants[operand].Inspect() + ")"
+			}
+			operandText[idx] = text
+		}
+
+		line := def.Name
+		if len(operandText) > 0 {
+			line += " " + strings.Join(operandText, " ")
+		}
+		fmt.Fprintf(&out, "%04d %s\n", i, line)
+
+		i += 1 + read
+	}
+
+	return out.String()
+}
+
+// operandWidthAt returns the byte width of the operand at position idx.
+func operandWidthAt(def *code.Definition, idx int) int {
+	if idx < 0 || idx >= len(def.OperandWidths) {
+		return 0
+	}
+	return def.OperandWidths[idx]
+}
+
+// referencesConstant reports whether an operand is a constant pool index.
+//
+// Two operand widths appear in the bytecode: one byte for locals, builtins and
+// call arities, and two bytes for constants, globals and jumps. Globals and
+// jumps are also two bytes wide, so width alone is not enough to tell them
+// apart; the opcode decides.
+func referencesConstant(opName string, width int) bool {
+	if width != 2 {
+		return false
+	}
+	switch opName {
+	case "OpConstant", "OpNativeCall", "OpClosure":
+		return true
+	}
+	return false
 }

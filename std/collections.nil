@@ -1,5 +1,12 @@
 // Nilang Standard Library
 // Module: std/collections
+//
+// ফাংশনাল অ্যারে-সহায়ক — map/filter/reduce/find/zip/flatten।
+//
+// উদাহরণ:
+//
+//   import "std/collections" as c;
+//   c.map([1, 2, 3], fn(x) { return x * 2; }); // [2, 4, 6]
 
 let empty = fn() {
     return [];
@@ -242,4 +249,69 @@ let enumerate = fn(values) {
     }
 
     return result;
+};
+
+// flatMap — প্রতিটিতে mapper চালিয়ে ফলাফল-অ্যারে সমতল করে।
+let flatMap = fn(values, mapper) {
+    let result = [];
+    let i = 0;
+    while (i < len(values)) {
+        let mapped = mapper(values[i]);
+        let j = 0;
+        while (j < len(mapped)) {
+            result = push(result, mapped[j]);
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return result;
+};
+
+// flatten — এক-স্তর নেস্টেড অ্যারে সমতল করে।
+let flatten = fn(nested) {
+    return flatMap(nested, fn(x) { return x; });
+};
+
+// zip — দুটি অ্যারেকে [a, b] জোড়ার অ্যারে বানায় (ছোটটির দৈর্ঘ্যে)।
+let zip = fn(a, b) {
+    let result = [];
+    let n = len(a);
+    if (len(b) < n) {
+        n = len(b);
+    }
+    let i = 0;
+    while (i < n) {
+        result = push(result, [a[i], b[i]]);
+        i = i + 1;
+    }
+    return result;
+};
+
+// unique — প্রথম-আবির্ভাব ক্রমে স্বতন্ত্র মান।
+let unique = fn(values) {
+    let result = [];
+    let i = 0;
+    while (i < len(values)) {
+        if (indexOf(result, values[i]) == -1) {
+            result = push(result, values[i]);
+        }
+        i = i + 1;
+    }
+    return result;
+};
+
+// partition — predicate অনুযায়ী [মিল, অমিল] দুই অ্যারে।
+let partition = fn(values, predicate) {
+    let yes = [];
+    let no = [];
+    let i = 0;
+    while (i < len(values)) {
+        if (predicate(values[i])) {
+            yes = push(yes, values[i]);
+        } else {
+            no = push(no, values[i]);
+        }
+        i = i + 1;
+    }
+    return [yes, no];
 };

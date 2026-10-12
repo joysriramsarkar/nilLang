@@ -1,7 +1,8 @@
 // Nilang Standard Library
 // Module: std/fs
 //
-// Filesystem facade. Capability enforcement is a future runtime boundary.
+// ফাইলসিস্টেম-ফ্যাসাড — পড়া/লেখা/তালিকা/ডিরেক্টরি।
+// পাথ-ম্যানিপুলেশনের জন্য std/io/path দেখো।
 
 let exists = fn(path) {
     return fileExists(path);

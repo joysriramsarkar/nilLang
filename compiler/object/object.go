@@ -34,7 +34,83 @@ const (
 	CHANNEL_OBJ           = "CHANNEL"
 	RESULT_OBJ            = "RESULT"
 	OPTIONAL_OBJ          = "OPTIONAL"
+
+	// Loop control signals.
+	//
+	// They exist so that `break` and `continue` can unwind the tree-walking
+	// evaluator through its ordinary value channel, the same way `return`
+	// already does. The stack VM compiles a loop into real branches and never
+	// produces these.
+	BREAK_SIGNAL_OBJ    = "BREAK_SIGNAL"
+	CONTINUE_SIGNAL_OBJ = "CONTINUE_SIGNAL"
 )
+
+// The three values every engine and every builtin agrees on.
+//
+// They live here, rather than in one engine package, because a Go builtin
+// returns them and the value crosses into whichever engine is running. When each
+// package made its own, a boolean produced by `isOk` was a different pointer from
+// the VM's `False`, so `if (isOk(x)) { ... } else { ... }` took the wrong branch
+// under `--vm` while the evaluator was correct.
+//
+// They are exported so that code creating these values can create *these* ones.
+// Prefer them over `&Boolean{...}` for exactly that reason: the truthiness tests
+// compare by type and value, but a shared pointer also keeps identity
+// comparisons and the collector's mark set honest.
+var (
+	TRUE  = &Boolean{Value: true}
+	FALSE = &Boolean{Value: false}
+	NULL  = &Null{}
+)
+
+// IsTrue reports whether obj is the language's true value.
+func IsTrue(obj Object) bool {
+	b, ok := obj.(*Boolean)
+	return ok && b.Value
+}
+
+// IsFalse reports whether obj is the language's false value.
+func IsFalse(obj Object) bool {
+	b, ok := obj.(*Boolean)
+	return ok && !b.Value
+}
+
+// IsNull reports whether obj is the language's null value.
+func IsNull(obj Object) bool {
+	_, ok := obj.(*Null)
+	return ok
+}
+
+// LoopSignal is the evaluator's marker for `break` or `continue`.
+//
+// It is a distinct type rather than a sentinel Integer so that a program cannot
+// forge one: no builtin produces a LoopSignal, and none accepts one.
+//
+// The signal kind lives in `kind` rather than in a field named Type, because
+// Type is the method every Object must provide.
+type LoopSignal struct {
+	kind ObjectType
+}
+
+// NewLoopSignal builds a signal of the given kind.
+func NewLoopSignal(kind ObjectType) *LoopSignal {
+	return &LoopSignal{kind: kind}
+}
+
+// Type reports which loop control signal this is.
+func (l *LoopSignal) Type() ObjectType {
+	if l == nil {
+		return CONTINUE_SIGNAL_OBJ
+	}
+	return l.kind
+}
+
+func (l *LoopSignal) Inspect() string {
+	if l == nil || l.kind == BREAK_SIGNAL_OBJ {
+		return "break"
+	}
+	return "continue"
+}
 
 type Object interface {
 	Type() ObjectType
@@ -108,6 +184,13 @@ type Function struct {
 	Parameters []*ast.Identifier
 	Body       *ast.BlockStatement
 	Env        *Environment
+
+	// IsPure records a `pure fn` declaration. The evaluator refuses an
+	// effectful call made while a pure function is on the call stack
+	// (runtime E0202), which is the dynamic half of the static check the
+	// type checker performs. It defaults to false, so functions built by
+	// hand or by older lowering passes are treated as effectful.
+	IsPure bool
 }
 
 func (f *Function) Type() ObjectType { return FUNCTION_OBJ }
@@ -170,16 +253,101 @@ type HashPair struct {
 
 type Hash struct {
 	Pairs map[HashKey]HashPair
+
+	// order preserves insertion order for Pairs.
+	//
+	// Pairs alone cannot report a stable order, because a Go map has none. That
+	// matters wherever a hash is observed rather than only looked up: iterating
+	// `for k, v in hash`, printing a hash, and rendering a JSON response would
+	// otherwise produce a different order on every run. See SEMANTICS.md §1.4.
+	//
+	// order may be empty for a hash assembled programmatically; OrderedPairs
+	// then falls back to a sorted key order rather than a random one.
+	order []HashKey
+}
+
+// NewHash creates an empty hash with room for size entries.
+//
+// Construction always goes through this rather than a struct literal, because a
+// literal cannot initialise the order slice and would leave the hash in the
+// degraded state where iteration falls back to sorted keys.
+func NewHash(size int) *Hash {
+	if size < 0 {
+		size = 0
+	}
+	return &Hash{
+		Pairs: make(map[HashKey]HashPair, size),
+		order: make([]HashKey, 0, size),
+	}
+}
+
+// SetPair records a key and value, preserving insertion order.
+//
+// Every mutation goes through here so that the two views cannot diverge: a pair
+// present in Pairs but missing from order would make iteration incomplete.
+func (h *Hash) SetPair(key, value Object) {
+	hashKey, ok := key.(Hashable)
+	if !ok {
+		// A non-hashable key can never be looked up, so storing it would create
+		// an entry that is unreachable. The evaluator rejects such keys before
+		// reaching here.
+		return
+	}
+
+	hk := hashKey.HashKey()
+	if _, exists := h.Pairs[hk]; !exists {
+		h.order = append(h.order, hk)
+	}
+	h.Pairs[hk] = HashPair{Key: key, Value: value}
+}
+
+// OrderedPairs returns the hash's entries in insertion order.
+//
+// A hash built without SetPair, which is possible when a caller constructs the
+// Pairs map directly, falls back to sorted-by-inspection order so that output is
+// deterministic rather than dependent on Go's randomised map iteration.
+func (h *Hash) OrderedPairs() []HashPair {
+	if len(h.order) > 0 {
+		out := make([]HashPair, 0, len(h.order))
+		for _, hk := range h.order {
+			if pair, ok := h.Pairs[hk]; ok {
+				out = append(out, pair)
+			}
+		}
+		return out
+	}
+
+	keys := make([]HashKey, 0, len(h.Pairs))
+	for hk := range h.Pairs {
+		keys = append(keys, hk)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return h.Pairs[keys[i]].Key.Inspect() < h.Pairs[keys[j]].Key.Inspect()
+	})
+
+	out := make([]HashPair, 0, len(keys))
+	for _, hk := range keys {
+		out = append(out, h.Pairs[hk])
+	}
+	return out
 }
 
 func (h *Hash) Type() ObjectType { return HASH_OBJ }
+
+// Inspect renders the hash in insertion order.
+//
+// It used to sort the rendered pairs, which is a different thing: sorting the
+// *text* reorders keys and values independently, so `{ b: 1, a: 2 }` printed as
+// `{ a: 2, b: 1 }`. A struct's printed form then disagreed with the order its
+// fields were declared in, which is the one order a reader has to be able to
+// rely on. SEMANTICS.md §1.4 requires insertion order wherever a hash is
+// observed rather than only looked up.
 func (h *Hash) Inspect() string {
 	var out bytes.Buffer
-	pairs := []string{}
-	for _, pair := range h.Pairs {
+	pairs := make([]string, 0, len(h.Pairs))
+	for _, pair := range h.OrderedPairs() {
 		pairs = append(pairs, fmt.Sprintf("%s: %s", pair.Key.Inspect(), pair.Value.Inspect()))
 	}
-	sort.Strings(pairs)
 	out.WriteString("{")
 	out.WriteString(strings.Join(pairs, ", "))
 	out.WriteString("}")
@@ -199,6 +367,12 @@ type CompiledFunction struct {
 	Instructions  code.Instructions
 	NumLocals     int
 	NumParameters int
+
+	// IsPure records a `pure fn` declaration through compilation, so the VM
+	// can refuse an effectful call made while a pure function is on the call
+	// stack (runtime E0202). It travels in the NABC image (v2) beside the
+	// locals and parameter counts.
+	IsPure bool
 
 	// Name is the function name ("" for anonymous closures; "<main>" for the
 	// top-level script). Used by the debugger's call stack.
@@ -275,6 +449,23 @@ func NewFuture() *Future {
 
 func (f *Future) Type() ObjectType { return FUTURE_OBJ }
 func (f *Future) Inspect() string  { return "future" }
+
+// Resolved returns the value a completed Future settled on, and whether it has
+// completed at all.
+//
+// It exists for the garbage collector: a Future holds a reference to its result,
+// and that reference must be traced or the result would be swept while the
+// Future is still live. The query does not block, so a collector can ask during
+// a mark phase without deadlocking on the task that owns the Future.
+func (f *Future) Resolved() (Object, bool) {
+	select {
+	case <-f.done:
+		return f.result.Value, true
+	default:
+		return nil, false
+	}
+}
+
 func (f *Future) Complete(value Object, err error) {
 	f.completeOnce.Do(func() {
 		f.done <- futureResult{Value: value, Err: err}
@@ -302,6 +493,13 @@ type Environment struct {
 	store     map[string]Object
 	constants map[string]bool
 	outer     *Environment
+
+	// mu guards the store because task bodies run on their own goroutines
+	// while sharing their parent's bindings (L6.2). A task reads its
+	// parent's variables and assigns through to them; without the lock a
+	// concurrent map read and write is a fatal runtime error, not a data
+	// race the program could observe and recover from.
+	mu sync.RWMutex
 }
 
 func NewEnvironment() *Environment {
@@ -316,7 +514,9 @@ func NewEnclosedEnvironment(outer *Environment) *Environment {
 }
 
 func (e *Environment) Get(name string) (Object, bool) {
+	e.mu.RLock()
 	obj, ok := e.store[name]
+	e.mu.RUnlock()
 	if !ok && e.outer != nil {
 		obj, ok = e.outer.Get(name)
 	}
@@ -324,19 +524,27 @@ func (e *Environment) Get(name string) (Object, bool) {
 }
 
 func (e *Environment) Set(name string, val Object) Object {
+	e.mu.Lock()
 	e.store[name] = val
+	e.mu.Unlock()
 	return val
 }
 
 func (e *Environment) SetConst(name string, val Object) Object {
+	e.mu.Lock()
 	e.store[name] = val
 	e.constants[name] = true
+	e.mu.Unlock()
 	return val
 }
 
 func (e *Environment) IsConst(name string) bool {
-	if _, ok := e.store[name]; ok {
-		return e.constants[name]
+	e.mu.RLock()
+	_, ok := e.store[name]
+	isConst := e.constants[name]
+	e.mu.RUnlock()
+	if ok {
+		return isConst
 	}
 	if e.outer != nil {
 		return e.outer.IsConst(name)
@@ -345,13 +553,17 @@ func (e *Environment) IsConst(name string) bool {
 }
 
 func (e *Environment) Assign(name string, val Object) bool {
+	e.mu.Lock()
 	if _, ok := e.store[name]; ok {
 		if e.constants[name] {
+			e.mu.Unlock()
 			return false
 		}
 		e.store[name] = val
+		e.mu.Unlock()
 		return true
 	}
+	e.mu.Unlock()
 	if e.outer != nil {
 		return e.outer.Assign(name, val)
 	}
@@ -366,19 +578,23 @@ func (e *Environment) Snapshot() *Environment {
 	snapshot := NewEnvironment()
 	if e.outer != nil {
 		outerSnap := e.outer.Snapshot()
+		outerSnap.mu.RLock()
 		for name, value := range outerSnap.store {
 			snapshot.store[name] = value
 		}
 		for name := range outerSnap.constants {
 			snapshot.constants[name] = true
 		}
+		outerSnap.mu.RUnlock()
 	}
+	e.mu.RLock()
 	for name, value := range e.store {
 		snapshot.store[name] = value
 	}
 	for name := range e.constants {
 		snapshot.constants[name] = true
 	}
+	e.mu.RUnlock()
 	return snapshot
 }
 

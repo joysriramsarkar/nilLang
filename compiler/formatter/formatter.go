@@ -301,7 +301,19 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 		return fmt.Sprintf("[%s]", strings.Join(elems, ", "))
 
 	case *ast.HashLiteral:
-		var pairs []string
+		// Preserve the order the developer wrote. The formatter must not
+		// reshuffle a hash literal, since key and value expressions may carry
+		// order-dependent meaning.
+		if len(e.OrderedPairs) > 0 {
+			pairs := make([]string, 0, len(e.OrderedPairs))
+			for _, entry := range e.OrderedPairs {
+				pairs = append(pairs, fmt.Sprintf("%s: %s",
+					f.formatExpression(entry.Key), f.formatExpression(entry.Value)))
+			}
+			return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
+		}
+
+		pairs := make([]string, 0, len(e.Pairs))
 		for k, v := range e.Pairs {
 			pairs = append(pairs, fmt.Sprintf("%s: %s", f.formatExpression(k), f.formatExpression(v)))
 		}
@@ -326,14 +338,23 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 	case *ast.FunctionLiteral:
 		var params []string
 		for _, p := range e.Parameters {
-			params = append(params, p.Value)
+			if p != nil {
+				params = append(params, p.String())
+			}
 		}
 		name := ""
 		if e.Name != "" {
 			name = " " + e.Name
 		}
+		// The return type is printed only when it was written, so formatting a
+		// function round-trips to the same source rather than to one with an
+		// annotation the developer never added.
+		returns := ""
+		if e.ReturnType != "" {
+			returns = " -> " + e.ReturnType
+		}
 		bodyStr := f.formatBlockToString(e.Body)
-		return fmt.Sprintf("fn%s(%s) %s", name, strings.Join(params, ", "), bodyStr)
+		return fmt.Sprintf("fn%s(%s)%s %s", name, strings.Join(params, ", "), returns, bodyStr)
 	}
 
 	return expr.String()

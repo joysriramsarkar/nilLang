@@ -2,6 +2,20 @@
 
 package vm
 
+// NativeBridge — pure-Go fallback (L8.2).
+//
+// Role: when cgo is off (notably every mobile cross-build: Android NDK and
+// iOS toolchains never enable this package's cgo path), the VM still needs
+// time/sleep/math/device answers. This file provides them in pure Go with
+// identical signatures to bridge_cgo.go, so callers never branch on build
+// tags. Behavioural parity (same Call names, same error strings) is the
+// contract; `TestNativeBridgeParity` in the vm package guards it.
+//
+// Mobile note: the shipping artefact for phones is NOT this bridge — it is
+// `libnilang_core.so` (see docs/spec/MOBILE_RUNTIME.md), a small C-ABI core
+// built from runtime/core + runtime/vm/native. This fallback exists so the
+// desktop VM, CI and device-preview hosts run without a Rust toolchain.
+
 import (
 	"fmt"
 	"time"

@@ -2,6 +2,7 @@ package ast
 
 import (
 	"bytes"
+	"sort"
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/token"
@@ -193,6 +194,53 @@ type WhileStatement struct {
 	Body      *BlockStatement
 }
 
+// ForStatement is `for ... in ... { }` in any of its three forms:
+//
+//	for i in 0..10       iterate an integer range, i from 0 up to but not including 10
+//	for x in collection  bind each element in turn
+//	for k, v in pairs    bind index and element together
+//
+// The range's upper bound is exclusive, matching the counting a developer
+// expects from `0..10` and keeping the loop body free of an off-by-one guard.
+type ForStatement struct {
+	Token token.Token // token.FOR
+
+	// Key is the index variable, which is always bound. For the single-variable
+	// forms it holds the same name as Value.
+	Key *Identifier
+
+	// Value is the element variable.
+	Value *Identifier
+
+	// Iterable is what is being iterated: a RangeExpression, an array
+	// expression, a string, or a hash.
+	Iterable Expression
+
+	Body *BlockStatement
+}
+
+// RangeExpression is `start..end` or `start..=end`.
+//
+// The inclusive form is spelled with `=`, mirroring Python's `..=`, because
+// "does the last element appear" is a question a loop asks constantly and an
+// exclusive-only range forces an off-by-one guard into every such body.
+type RangeExpression struct {
+	Token     token.Token
+	Start     Expression
+	End       Expression
+	Inclusive bool
+}
+
+// BreakStatement exits the innermost enclosing loop.
+type BreakStatement struct {
+	Token token.Token
+}
+
+// ContinueStatement starts the next iteration of the innermost enclosing loop.
+type ContinueStatement struct {
+	Token token.Token
+}
+
 func (ws *WhileStatement) statementNode()       {}
 func (ws *WhileStatement) TokenLiteral() string { return ws.Token.Literal }
 func (ws *WhileStatement) String() string {
@@ -204,6 +252,79 @@ func (ws *WhileStatement) String() string {
 	out.WriteString(" }")
 	return out.String()
 }
+
+func (fs *ForStatement) statementNode()       {}
+func (fs *ForStatement) TokenLiteral() string { return fs.Token.Literal }
+func (fs *ForStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("for ")
+	if fs.Key != nil && fs.Value != nil && fs.Key.Value != fs.Value.Value {
+		out.WriteString(fs.Key.Value)
+		out.WriteString(", ")
+	}
+	if fs.Value != nil {
+		out.WriteString(fs.Value.Value)
+	}
+	out.WriteString(" in ")
+	if fs.Iterable != nil {
+		out.WriteString(fs.Iterable.String())
+	}
+	out.WriteString(" { ")
+	if fs.Body != nil {
+		out.WriteString(fs.Body.String())
+	}
+	out.WriteString(" }")
+	return out.String()
+}
+
+// LetExpression is `let name = value; body` in expression position.
+//
+// It exists because lowering `match` has to evaluate the subject exactly once
+// and then refer to it from every arm's test. Without it, each test would
+// re-evaluate the subject, which is observably wrong whenever the subject has
+// a side effect or costs something to compute.
+//
+// The binding is scoped to the body: the name is not visible after the
+// expression, and the body's value is the expression's value.
+type LetExpression struct {
+	Token token.Token
+	Name  *Identifier
+	Type  string
+	Value Expression
+	Body  Expression
+}
+
+func (le *LetExpression) expressionNode()      {}
+func (le *LetExpression) TokenLiteral() string { return le.Token.Literal }
+func (le *LetExpression) String() string {
+	return "let " + le.Name.Value + " = " + le.Value.String() + "; " + le.Body.String()
+}
+
+func (re *RangeExpression) expressionNode()      {}
+func (re *RangeExpression) TokenLiteral() string { return re.Token.Literal }
+func (re *RangeExpression) String() string {
+	var out bytes.Buffer
+	if re.Start != nil {
+		out.WriteString(re.Start.String())
+	}
+	if re.Inclusive {
+		out.WriteString("..=")
+	} else {
+		out.WriteString("..")
+	}
+	if re.End != nil {
+		out.WriteString(re.End.String())
+	}
+	return out.String()
+}
+
+func (bs *BreakStatement) statementNode()       {}
+func (bs *BreakStatement) TokenLiteral() string { return bs.Token.Literal }
+func (bs *BreakStatement) String() string       { return "break;" }
+
+func (cs *ContinueStatement) statementNode()       {}
+func (cs *ContinueStatement) TokenLiteral() string { return cs.Token.Literal }
+func (cs *ContinueStatement) String() string       { return "continue;" }
 
 // ─── EXPRESSIONS ────────────────────────────────────────────────────────────
 
@@ -371,11 +492,100 @@ func (ie *IfExpression) String() string {
 	return out.String()
 }
 
+// Parameter is one formal parameter: a name and an optional written type.
+//
+// The type is optional rather than required because `fn f(x) { }` was already
+// legal and remains so; a parameter with no annotation is `Any`, which is what
+// every parameter meant before annotations existed.
+//
+// Keeping the annotation as text rather than a parsed type is deliberate. It is
+// resolved against the file's scope by the type checker, in the same way a struct
+// field's type is, so a parameter may name a type declared after it.
+type Parameter struct {
+	Token token.Token
+	Name  *Identifier
+
+	// TypeAnnotation is the written type, empty when none was given.
+	TypeAnnotation string
+}
+
+func (p *Parameter) String() string {
+	if p.TypeAnnotation == "" {
+		return p.Name.Value
+	}
+	return p.Name.Value + ": " + p.TypeAnnotation
+}
+
+// ParameterNames returns just the names, for the consumers that bind them without
+// caring about the annotations — the evaluator's frame setup, for one.
+func (fl *FunctionLiteral) ParameterNames() []*Identifier {
+	names := make([]*Identifier, 0, len(fl.Parameters))
+	for _, p := range fl.Parameters {
+		names = append(names, p.Name)
+	}
+	return names
+}
+
 type FunctionLiteral struct {
-	Token      token.Token // token.FN
-	Parameters []*Identifier
-	Body       *BlockStatement
-	Name       string
+	Token token.Token // token.FN
+
+	// IsPure declares the function to have no effects. A side-effecting call
+	// inside one is E0202, which is what makes the declaration worth writing.
+	//
+	// It is a claim, not a fact the compiler establishes. Nothing forces a pure
+	// function's body to be pure; the checker rejects the calls it can see, and a
+	// call it cannot see is why the modifier is written `pure fn` rather than
+	// being inferred.
+	IsPure bool
+
+	// IsUnsafe declares that the function takes responsibility for
+	// capability-gated operations it performs.
+	//
+	// Inside such a function a gated builtin does not require its capability to
+	// be granted to the project: the function has declared that it copes with
+	// the absence. The project must grant `unsafe` itself, so the exemption is a
+	// decision someone recorded rather than one any function could make.
+	IsUnsafe bool
+
+	// Requires names the capabilities this function needs.
+	//
+	// It is checked at every call site rather than at run time, because a
+	// function whose capability is missing cannot do its job: the failure is
+	// known before the program runs.
+	Requires []string
+
+	// Parameters are the formal parameters, each with an optional type.
+	Parameters []*Parameter
+
+	// ReturnType is the written return type, empty when none was given.
+	//
+	// An absent annotation means `Any`, not "nothing": a function with no
+	// annotation has always been callable and assignable anywhere, and saying it
+	// returns nothing would reject every existing call.
+	ReturnType string
+
+	Body *BlockStatement
+	Name string
+
+	// TypeParams are the type parameters of a generic function: the `T, U` in
+	// `fn map<T, U>(...)`.
+	//
+	// They are names, not types, because nothing is decided until a call site
+	// binds them. That is the difference from a placeholder struct the parser
+	// produces for an unknown name: a type variable is deliberately unresolved.
+	TypeParams []string
+}
+
+// Modifiers renders the prefixes before `fn`, in the order they are written.
+func (fl *FunctionLiteral) Modifiers() string {
+	out := ""
+	if fl.IsPure {
+		out += "pure "
+	}
+	if fl.IsUnsafe {
+		out += "unsafe "
+	}
+	return out
 }
 
 func (fl *FunctionLiteral) expressionNode()      {}
@@ -386,13 +596,31 @@ func (fl *FunctionLiteral) String() string {
 	for _, p := range fl.Parameters {
 		params = append(params, p.String())
 	}
+	out.WriteString(fl.Modifiers())
 	out.WriteString(fl.TokenLiteral())
 	if fl.Name != "" {
 		out.WriteString(" " + fl.Name)
 	}
 	out.WriteString("(")
 	out.WriteString(strings.Join(params, ", "))
-	out.WriteString(") ")
+	out.WriteString(")")
+	if fl.ReturnType != "" {
+		out.WriteString(" -> " + fl.ReturnType)
+	}
+	if len(fl.Requires) > 0 {
+		out.WriteString(" requires " + strings.Join(fl.Requires, ", "))
+	}
+	// A signature has no body: a `trait` holds them, and so does an `extern`
+	// declaration. Printing one dereferenced a nil Body, so printing a trait's own
+	// method list — or an extern declaration — panicked rather than producing text.
+	//
+	// The `;` is what the source says. A signature that printed as if it had an
+	// empty body would re-parse as a definition.
+	if fl.Body == nil {
+		out.WriteString(";")
+		return out.String()
+	}
+	out.WriteString(" ")
 	out.WriteString(fl.Body.String())
 	return out.String()
 }
@@ -469,21 +697,69 @@ func (de *DotExpression) String() string {
 
 type HashLiteral struct {
 	Token token.Token // token.LBRACE
+
+	// Pairs is the key/value set of the literal.
+	//
+	// Deprecated for iteration: a Go map has no order, and SEMANTICS.md §1
+	// requires left-to-right lexical evaluation. Use OrderedPairs.
 	Pairs map[Expression]Expression
+
+	// OrderedPairs preserves source order. The parser appends to it as it
+	// reads each `key: value` pair, so evaluation, bytecode emission, and
+	// pretty printing all observe the order the developer wrote.
+	//
+	// OrderedPairs is authoritative when non-empty. Pairs is retained so that
+	// existing callers that look up by key keep working.
+	OrderedPairs []HashPairExpr
+}
+
+// HashPairExpr is one `key: value` entry of a hash literal.
+type HashPairExpr struct {
+	Key   Expression
+	Value Expression
+}
+
+// EntryCount reports how many pairs the literal holds, preferring the ordered
+// slice so that callers do not have to know which field is populated.
+func (hl *HashLiteral) EntryCount() int {
+	if len(hl.OrderedPairs) > 0 {
+		return len(hl.OrderedPairs)
+	}
+	return len(hl.Pairs)
+}
+
+// SetPair records a key/value pair in both the ordered slice and the map.
+//
+// It lives here so that the parser, the formatter, and any future builder all
+// keep the two views consistent; a pair present in one and missing from the
+// other is a determinism bug.
+func (hl *HashLiteral) SetPair(key, value Expression) {
+	if hl.Pairs == nil {
+		hl.Pairs = make(map[Expression]Expression)
+	}
+	hl.Pairs[key] = value
+	hl.OrderedPairs = append(hl.OrderedPairs, HashPairExpr{Key: key, Value: value})
 }
 
 func (hl *HashLiteral) expressionNode()      {}
 func (hl *HashLiteral) TokenLiteral() string { return hl.Token.Literal }
 func (hl *HashLiteral) String() string {
-	var out bytes.Buffer
-	pairs := []string{}
-	for k, v := range hl.Pairs {
-		pairs = append(pairs, k.String()+":"+v.String())
+	// Print in source order when available. Falling back to a sorted map keeps
+	// the output stable for hash nodes built by hand without an order slice.
+	pairs := make([]string, 0, hl.EntryCount())
+	if len(hl.OrderedPairs) > 0 {
+		for _, p := range hl.OrderedPairs {
+			pairs = append(pairs, p.Key.String()+":"+p.Value.String())
+		}
+	} else {
+		rendered := make([]string, 0, len(hl.Pairs))
+		for k, v := range hl.Pairs {
+			rendered = append(rendered, k.String()+":"+v.String())
+		}
+		sort.Strings(rendered)
+		pairs = rendered
 	}
-	out.WriteString("{")
-	out.WriteString(strings.Join(pairs, ", "))
-	out.WriteString("}")
-	return out.String()
+	return "{" + strings.Join(pairs, ", ") + "}"
 }
 
 // ─── DECLARATIVE COMPONENT AST ──────────────────────────────────────────────
@@ -589,6 +865,44 @@ type ImportStatement struct {
 	Path  *StringLiteral
 	Alias *Identifier
 	Names []*Identifier
+}
+
+// ExternStatement is `extern "C" fn name(params) -> Ret;` — a declaration that a
+// function exists, not a definition of one.
+//
+// # Why the signature and not a body
+//
+// The declaration *is* the whole content. A C function is compiled elsewhere and
+// linked in; there is nothing to put between the braces, and writing `{}` would
+// claim a definition the linker would then find a duplicate of.
+//
+// The `Fn` it carries has no body for the same reason. Everything else about it —
+// name, parameters, return annotation — is ordinary, and is parsed by the same
+// code that parses a definition, so the two cannot drift apart in what they accept.
+type ExternStatement struct {
+	Token token.Token // token.EXTERN
+
+	// Abi is the calling convention, written as a string. Only "C" exists, and it
+	// is written out rather than implied so that a second ABI later is a different
+	// declaration rather than a misspelling.
+	Abi string
+
+	// Fn is the signature. Body is always nil.
+	Fn *FunctionLiteral
+}
+
+func (es *ExternStatement) statementNode()       {}
+func (es *ExternStatement) TokenLiteral() string { return es.Token.Literal }
+func (es *ExternStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("extern \"" + es.Abi + "\" ")
+	if es.Fn != nil {
+		// The signature prints its own `;` when it has no body, so appending one
+		// here would give two.
+		return out.String() + es.Fn.String()
+	}
+	out.WriteString(";")
+	return out.String()
 }
 
 func (is *ImportStatement) statementNode()       {}

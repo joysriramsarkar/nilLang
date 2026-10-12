@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
 )
 
 const (
@@ -35,7 +37,7 @@ func main() {
 
 	// If argument ends in .nil, run it directly
 	if strings.HasSuffix(command, ".nil") {
-		runDirectFile(command, false)
+		runDirectFile(command, false, declaredCapabilitiesFor(command), pkgcompiler.BackendFromArgs(os.Args[2:]) == pkgcompiler.BackendMir)
 		return
 	}
 
@@ -44,6 +46,8 @@ func main() {
 		cmdBuild()
 	case "native":
 		cmdNative()
+	case "header":
+		cmdHeader(os.Args[2:])
 	case "run":
 		cmdRun()
 	case "init", "create":
@@ -58,10 +62,14 @@ func main() {
 		cmdGame()
 	case "check", "ai":
 		cmdCheck()
+	case "lint":
+		cmdLint()
 	case "verify":
 		cmdVerify()
 	case "oracle":
 		cmdOracle()
+	case "doc":
+		cmdDoc()
 	case "mir":
 		cmdMIR()
 	case "hir":
@@ -109,9 +117,11 @@ func printUsage() {
 	fmt.Println("  add <package>              Alap ইকোসিস্টেম প্যাকেজ যোগ করুন (যেমন: alap/web)")
 	fmt.Println("  profile [list|inspect]     NilLang রানটাইম প্রোফাইল ও ক্যাপাবিলিটি দেখুন")
 	fmt.Println("  game [init|doctor|engines] Android, Godot, Unity, Unreal গেম scaffolding ও readiness check")
-	fmt.Println("  check [path]               ক্যাপাবিলিটি ও AI ওরাকল ভ্যালিডেশন চেক করুন")
+	fmt.Println("  check [path] [--ci]        ক্যাপাবিলিটি ও AI ওরাকল ভ্যালিডেশন চেক করুন (--ci: warning-এ ব্যর্থ)")
+	fmt.Println("  lint [path]                লিন্ট রুল সেট চালান (LINT001–LINT003)")
 	fmt.Println("  verify [component]         Verified Novelty পাইপলাইন চালান")
 	fmt.Println("  oracle [subcommand]        AI কম্পাইলার ওরাকল ও গ্রাউন্ড-ট্রুথ (list-types, list-functions, inspect, check)")
+	fmt.Println("  doc [name] [--json]        API রেফারেন্স: বিল্ট-ইন/টাইপ/std মডিউল (Markdown বা JSON)")
 	fmt.Println("  hir [file.nil]             হাই-লেভেল ইন্টারমিডিয়েট রিপ্রেজেন্টেশন (HIR) দেখুন")
 	fmt.Println("  mir [file.nil]             মিড-লেভেল ইন্টারমিডিয়েট রিপ্রেজেন্টেশন (MIR / CFG) দেখুন")
 	fmt.Println("  build [target|-allos]      টার্গেট ওএস (linux, windows, macos, onuron, android, wasm, web) বা -allos এর জন্য বিল্ড করুন")

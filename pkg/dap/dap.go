@@ -23,9 +23,9 @@ import (
 
 // Server is a DAP adapter over stdio (Content-Length framed JSON).
 type Server struct {
-	r  *bufio.Reader
-	w  io.Writer
-	mu sync.Mutex
+	r   *bufio.Reader
+	w   io.Writer
+	mu  sync.Mutex
 	seq int
 
 	sourceFile string
@@ -39,6 +39,13 @@ type Server struct {
 
 	started    bool
 	stopReason string
+
+	// conditions maps breakpoint lines to their condition expressions
+	// (L9.3). Only single-identifier truthiness and `name ==/!= literal`
+	// comparisons are evaluated; anything else is rejected at set-time.
+	conditions map[int]string
+	// exceptionFilters holds the active setExceptionBreakpoints filters.
+	exceptionFilters []string
 }
 
 // NewServer creates a DAP server for the given source file/source text using
@@ -183,6 +190,17 @@ func (s *Server) runVM() {
 		err := s.machine.Run()
 		if errors.Is(err, vm.ErrPaused) {
 			loc := s.machine.Location()
+			// L9.3: conditional breakpoint — a false condition resumes
+			// silently instead of reporting a stop. Continue() skips the
+			// current location so the same breakpoint does not re-trigger.
+			if cond, ok := s.conditions[loc.Line]; ok && cond != "" {
+				if s.evalCondition(cond) {
+					// fall through to the stop report below
+				} else {
+					s.ds.Continue()
+					continue
+				}
+			}
 			reason := s.stopReason
 			if reason == "" {
 				reason = "breakpoint"
@@ -200,6 +218,17 @@ func (s *Server) runVM() {
 			continue
 		}
 		if err != nil {
+			if s.exceptionStop() {
+				s.event("stopped", map[string]any{
+					"reason": "exception", "threadId": 1, "allThreadsStopped": true,
+					"text": err.Error(),
+				})
+				select {
+				case <-s.resumeCh:
+				case <-s.stopCh:
+					return
+				}
+			}
 			s.event("output", map[string]any{"category": "stderr", "output": err.Error() + "\n"})
 			s.event("exited", map[string]any{"exitCode": 1})
 			return
@@ -234,9 +263,15 @@ func (s *Server) Serve() error {
 		case "initialize":
 			s.respond(reqSeq, command, true, map[string]any{
 				"capabilities": map[string]any{
-					"supportsConfigurationDoneRequest": true,
-					"supportsEvaluateForHovers":        true,
-					"supportsFunctionBreakpoints":      true,
+					"supportsConfigurationDoneRequest":  true,
+					"supportsEvaluateForHovers":         true,
+					"supportsFunctionBreakpoints":       true,
+					"supportsConditionalBreakpoints":    true,
+					"supportsHitConditionalBreakpoints": false,
+					"exceptionBreakpointFilters": []map[string]any{
+						{"filter": "all", "label": "All errors", "default": false},
+						{"filter": "uncaught", "label": "Uncaught errors", "default": false},
+					},
 				},
 				"serverInfo": map[string]any{"name": "nil dap", "version": "1.0.0"},
 			}, "")
@@ -260,18 +295,48 @@ func (s *Server) Serve() error {
 				}
 			}
 			src := sourcePath(args)
-			lines := breakpointLines(args)
+			bps := breakpointSpecs(args)
+			lines := make([]int, 0, len(bps))
+			for _, b := range bps {
+				lines = append(lines, b.line)
+			}
 			s.ds.SetBreakpoints(src, lines)
-			out := make([]map[string]any, 0, len(lines))
-			for i, ln := range lines {
-				out = append(out, map[string]any{
-					"id": i + 1, "verified": validLine(s.source, ln), "line": ln,
+			// L9.3: record per-line conditions; a condition the evaluator
+			// cannot handle marks its breakpoint unverified with a message
+			// rather than failing silently at pause time.
+			if s.conditions == nil {
+				s.conditions = map[int]string{}
+			} else {
+				for k := range s.conditions {
+					delete(s.conditions, k)
+				}
+			}
+			out := make([]map[string]any, 0, len(bps))
+			for i, b := range bps {
+				entry := map[string]any{
+					"id": i + 1, "line": b.line,
 					"source": map[string]any{"name": src, "path": src},
-				})
+				}
+				if b.condition == "" {
+					entry["verified"] = validLine(s.source, b.line)
+				} else if validCondition(b.condition) {
+					s.conditions[b.line] = b.condition
+					entry["verified"] = validLine(s.source, b.line)
+				} else {
+					entry["verified"] = false
+					entry["message"] = "unsupported condition: use a variable name or `name ==/!= literal`"
+				}
+				out = append(out, entry)
 			}
 			s.respond(reqSeq, command, true, map[string]any{"breakpoints": out}, "")
 		case "setExceptionBreakpoints":
-			s.respond(reqSeq, command, true, map[string]any{"breakpoints": []any{}}, "")
+			filters := exceptionFilters(args)
+			s.exceptionFilters = filters
+			out := make([]map[string]any, 0, len(filters))
+			for _, f := range filters {
+				out = append(out, map[string]any{"filter": f, "verified": true})
+			}
+			s.respond(reqSeq, command, true, map[string]any{"breakpoints": out}, "")
 		case "threads":
 			s.respond(reqSeq, command, true, map[string]any{"threads": []map[string]any{{"id": 1, "name": "main"}}}, "")
 		case "stackTrace":
@@ -382,12 +447,105 @@ func sourcePath(args map[string]any) string {
 	return "main.nil"
 }
 
-func breakpointLines(args map[string]any) []int {
-	var out []int
+type breakpointSpec struct {
+	line      int
+	condition string
+}
+
+func breakpointSpecs(args map[string]any) []breakpointSpec {
+	var out []breakpointSpec
 	if bps, ok := args["breakpoints"].([]any); ok {
 		for _, b := range bps {
 			if m, ok := b.(map[string]any); ok {
-				out = append(out, intOf(m["line"]))
+				spec := breakpointSpec{line: intOf(m["line"])}
+				if c, ok := m["condition"].(string); ok {
+					spec.condition = strings.TrimSpace(c)
+				}
+				out = append(out, spec)
+			}
+		}
+	}
+	return out
+}
+
+func breakpointLines(args map[string]any) []int {
+	var out []int
+	for _, b := range breakpointSpecs(args) {
+		out = append(out, b.line)
+	}
+	return out
+}
+
+// validCondition accepts a bare identifier or `name == literal` /
+// `name != literal`. Anything richer is refused at set-time (L9.3) so the
+// client sees the limit instead of a breakpoint that never fires.
+func validCondition(cond string) bool {
+	cond = strings.TrimSpace(cond)
+	if cond == "" {
+		return true
+	}
+	for _, op := range []string{"==", "!="} {
+		if parts := strings.SplitN(cond, op, 2); len(parts) == 2 {
+			return isIdent(strings.TrimSpace(parts[0])) && strings.TrimSpace(parts[1]) != ""
+		}
+	}
+	return isIdent(cond)
+}
+
+func isIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9' && i > 0) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// evalCondition evaluates a validated condition against the paused VM.
+func (s *Server) evalCondition(cond string) bool {
+	for _, op := range []string{"==", "!="} {
+		if parts := strings.SplitN(cond, op, 2); len(parts) == 2 {
+			name := strings.TrimSpace(parts[0])
+			want := strings.TrimSpace(parts[1])
+			v, ok := s.machine.EvaluateName(name)
+			if !ok {
+				return false
+			}
+			eq := strings.TrimSpace(v.Value) == want ||
+				strings.Trim(strings.TrimSpace(v.Value), `"`) == strings.Trim(want, `"`)
+			if op == "!=" {
+				return !eq
+			}
+			return eq
+		}
+	}
+	v, ok := s.machine.EvaluateName(strings.TrimSpace(cond))
+	if !ok {
+		return false
+	}
+	switch strings.TrimSpace(v.Value) {
+	case "", "0", "false", "null", "(nil)":
+		return false
+	default:
+		return true
+	}
+}
+
+// exceptionStop reports whether a failing run should first surface as an
+// exception stop (L9.3): any active filter ("all" or "uncaught") enables it,
+// because the VM has no catch boundary — every error is uncaught.
+func (s *Server) exceptionStop() bool { return len(s.exceptionFilters) > 0 }
+
+func exceptionFilters(args map[string]any) []string {
+	var out []string
+	if fs, ok := args["filters"].([]any); ok {
+		for _, f := range fs {
+			if name, ok := f.(string); ok && name != "" {
+				out = append(out, name)
 			}
 		}
 	}

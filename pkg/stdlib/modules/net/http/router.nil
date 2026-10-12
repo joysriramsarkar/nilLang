@@ -1,7 +1,13 @@
 // Nilang Standard Library
 // Module: std/net/http/router
 //
-// HTTP router, request and response builders.
+// HTTP রাউটার — রুট নিবন্ধন, অনুরোধ-ডিসপ্যাচ ও response বিল্ডার।
+//
+// উদাহরণ:
+//
+//   import "std/net/http/router" as router;
+//   let r = router.new();
+//   router.get(r, "/api/ping", fn(req) { return router.responseText(200, "pong"); });
 
 import "std/data/json" as json;
 

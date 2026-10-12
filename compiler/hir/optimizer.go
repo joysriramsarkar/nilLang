@@ -29,8 +29,8 @@ func (o *Optimizer) optimizeStatement(stmt Statement) Statement {
 		}
 	case *AssignStmt:
 		return &AssignStmt{
-			Name:  s.Name,
-			Value: o.optimizeExpression(s.Value),
+			Target: o.optimizeExpression(s.Target),
+			Value:  o.optimizeExpression(s.Value),
 		}
 	case *ReturnStmt:
 		return &ReturnStmt{
@@ -57,9 +57,19 @@ func (o *Optimizer) optimizeStatement(stmt Statement) Statement {
 			Alternative: o.optimizeBlock(s.Alternative),
 		}
 	case *WhileStmt:
+		// A loop invariant binding is computed on every iteration of a loop that
+		// changes nothing about it. `let n = xs.length; while ... { ... n ... }`
+		// recomputes `xs.length` each time round, which is a method call, an index
+		// and a comparison, for a value the program wrote down once.
+		//
+		// It is the most valuable hoist in the language because a loop body that
+		// reads a collection almost always reads its length first, and a UI
+		// component's render body almost always does.
+		hoisted, body := hoistLoopInvariants(s.Body)
 		return &WhileStmt{
 			Condition: o.optimizeExpression(s.Condition),
-			Body:      o.optimizeBlock(s.Body),
+			PreLoop:   hoistDeclarations(hoisted),
+			Body:      o.optimizeBlock(body),
 		}
 	case *BlockStmt:
 		return o.optimizeBlock(s)
@@ -88,6 +98,31 @@ func (o *Optimizer) optimizeExpression(expr Expression) Expression {
 	}
 
 	switch e := expr.(type) {
+	case *IfExpr:
+		// A select's arms are constant-folded, but the condition is left alone.
+		//
+		// Folding the condition would turn a two-way choice into a single value
+		// and delete the other arm — which is a *different* optimisation, one that
+		// has to know the arm is pure. An arm may be an arbitrary expression, and
+		// "it does not have side effects" is a claim this pass cannot make.
+		return &IfExpr{
+			Condition: o.optimizeExpression(e.Condition),
+			WhenTrue:  o.optimizeExpression(e.WhenTrue),
+			WhenFalse: o.optimizeExpression(e.WhenFalse),
+			ExprType:  e.ExprType,
+		}
+
+	case *BlockExpr:
+		// Both arms of a `?.` or a `??` sit inside one of these, so a pass that
+		// walks expressions but not blocks walks straight past the whole construct.
+		stmts := make([]Statement, 0, len(e.Statements))
+		for _, s := range e.Statements {
+			if opt := o.optimizeStatement(s); opt != nil {
+				stmts = append(stmts, opt)
+			}
+		}
+		return &BlockExpr{Statements: stmts}
+
 	case *BinaryExpr:
 		left := o.optimizeExpression(e.Left)
 		right := o.optimizeExpression(e.Right)
@@ -175,9 +210,26 @@ func (o *Optimizer) optimizeExpression(expr Expression) Expression {
 
 	case *FnLit:
 		return &FnLit{
+			// The name is copied because this case *rebuilds* the node rather
+			// than returning it. Omitting it made every named function print as
+			// `fn()` after optimisation while the pre-optimisation HIR showed the
+			// name — a difference that appears only when the optimiser runs, and so
+			// looks like the optimiser's fault rather than an omission.
+			Name:   e.Name,
 			Params: e.Params,
 			Body:   o.optimizeBlock(e.Body),
 			FnType: e.FnType,
+			// Purity travels for the same reason: a field not written here
+			// is a field the optimiser deletes.
+			IsPure: e.IsPure,
+			// The same reason the name is copied: this case rebuilds the node, so
+			// a field not written here is a field the optimiser deletes. Dropping
+			// the ABI turned every extern declaration into an empty function
+			// definition, which the linker then rejected as a duplicate symbol for
+			// a function that already existed.
+			ExternAbi:    e.ExternAbi,
+			ExternReturn: e.ExternReturn,
+			ExternParams: e.ExternParams,
 		}
 
 	case *ListLit:

@@ -1,5 +1,13 @@
 // Nilang Standard Library
 // Module: std/strings
+//
+// স্ট্রিং ইউটিলিটি — বাংলা-নিরাপদ (দৈর্ঘ্য = রুন-গণনা)।
+//
+// উদাহরণ:
+//
+//   import "std/strings" as s;
+//   s.capitalize("nilang"); // "Nilang"
+//   s.padLeft("42", 5, "0"); // "00042"
 
 let empty = fn(value) {
     return len(value) == 0;
@@ -112,4 +120,35 @@ let substring = fn(value, start, length) {
 
 let length = fn(value) {
     return len(value);
+};
+
+// padLeft — বামে pad দিয়ে width পর্যন্ত ভরে।
+// উদাহরণ: padLeft("42", 5, "0") == "00042"
+let padLeft = fn(value, width, pad) {
+    let s = str(value);
+    while (len(s) < width) {
+        s = pad + s;
+    }
+    return s;
+};
+
+// padRight — ডানে pad দিয়ে width পর্যন্ত ভরে।
+let padRight = fn(value, width, pad) {
+    let s = str(value);
+    while (len(s) < width) {
+        s = s + pad;
+    }
+    return s;
+};
+
+// truncate — maxLen-এর বেশি হলে suffix ("...") দিয়ে ছাঁটে।
+let truncate = fn(value, maxLen, suffix) {
+    if (len(value) <= maxLen) {
+        return value;
+    }
+    let tail = suffix;
+    if (tail == null) {
+        tail = "...";
+    }
+    return substr(value, 0, maxLen) + tail;
 };

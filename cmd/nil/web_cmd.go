@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -26,15 +27,21 @@ type declarativeUISession struct {
 }
 
 type declarativeUISessionStore struct {
-	source   string
+	source string
+
+	// entryDir is the directory of the entry file, used as the base for
+	// relative imports when a new browser session loads the app.
+	entryDir string
+
 	mu       sync.Mutex
 	sessions map[string]*declarativeUISession
 	now      func() time.Time
 }
 
-func newDeclarativeUISessionStore(source string) *declarativeUISessionStore {
+func newDeclarativeUISessionStore(source, entryDir string) *declarativeUISessionStore {
 	return &declarativeUISessionStore{
 		source:   source,
+		entryDir: entryDir,
 		sessions: make(map[string]*declarativeUISession),
 		now:      time.Now,
 	}
@@ -57,7 +64,7 @@ func (store *declarativeUISessionStore) resolve(ctx *routing.Context) (*declarat
 		}
 	}
 
-	app, err := loadDeclarativeUI(store.source)
+	app, err := loadDeclarativeUI(store.source, store.entryDir)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +80,38 @@ func (store *declarativeUISessionStore) resolve(ctx *routing.Context) (*declarat
 		sessionID,
 	)
 	return session, nil
+}
+
+// replaceAllApps swaps a freshly rebuilt app into every live session.
+//
+// It is how hot reload propagates: sessions keep their identity and their
+// cookies, so an open browser tab keeps working, but each session's app is the
+// new build. Returns how many sessions were updated.
+func (s *declarativeUISessionStore) replaceAllApps(app *declarativeUIApp) int {
+	if s == nil || app == nil {
+		return 0
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, session := range s.sessions {
+		session.mu.Lock()
+		session.app = app
+		session.mu.Unlock()
+	}
+	return len(s.sessions)
+}
+
+// SetSource replaces the source a new session will be built from, so a session
+// created after a reload serves the current code rather than the startup text.
+func (s *declarativeUISessionStore) SetSource(source string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.source = source
+	s.mu.Unlock()
 }
 
 func newDeclarativeUISessionID() (string, error) {
@@ -111,7 +150,7 @@ func cmdDev() {
 			fmt.Fprintf(os.Stderr, "❌ UI source পড়া যায়নি (%s): %v\n", entryFile, err)
 			return
 		}
-		app, err = loadDeclarativeUI(string(source))
+		app, err = loadDeclarativeUI(string(source), filepath.Dir(entryFile))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "❌ UI source লোড করা যায়নি (%s): %v\n", entryFile, err)
 			return
@@ -119,19 +158,43 @@ func cmdDev() {
 		appSource = string(source)
 	}
 
-	fmt.Println("⚡ [Alap Web Dev Server]")
-	fmt.Printf("   লোকাল সার্ভার চালু হচ্ছে: http://localhost:%s\n", port)
-	fmt.Println("   • Radix Tree Routing: সক্রিয়")
-	fmt.Println("   • SSR & State Hydration: সক্রিয়")
-	fmt.Println("   • Auto Security Headers (CSP/HSTS): সক্রিয়")
-	fmt.Println("   • Hot-Reload File Watcher: প্রস্তুত")
-	fmt.Println("   বন্ধ করতে Ctrl+C চাপুন...")
-
 	svc := server.NewService("AlapDevApp", "")
 	var sessions *declarativeUISessionStore
 	if app != nil {
-		sessions = newDeclarativeUISessionStore(appSource)
+		sessions = newDeclarativeUISessionStore(appSource, filepath.Dir(entryFile))
 	}
+
+	// Hot reload: watch the entry file and its project directory, then rebuild
+	// the app and every browser session when something changes.
+	//
+	// The watcher starts before the banner so the advertised capability is the
+	// one actually running. Sessions are rebuilt rather than dropped, so a
+	// developer's open tab keeps working after an edit.
+	var watcherStop chan struct{}
+	watchedFiles := 0
+	if app != nil {
+		watcher, watchErr := newDevWatcher(entryFile, sessions)
+		if watchErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  hot-reload unavailable: %v\n", watchErr)
+		} else {
+			watcherStop = make(chan struct{})
+			watchedFiles = len(watcher.Files())
+			go watcher.Start(watcherStop)
+			defer close(watcherStop)
+		}
+	}
+
+	fmt.Println("⚡ [Alap Web Dev Server]")
+	fmt.Printf("   local server starting: http://localhost:%s\n", port)
+	fmt.Println("   • Radix Tree Routing: active")
+	fmt.Println("   • SSR & State Hydration: active")
+	fmt.Println("   • Auto Security Headers (CSP/HSTS): active")
+	if watcherStop != nil {
+		fmt.Printf("   • Hot-Reload File Watcher: active (%d files)\n", watchedFiles)
+	} else {
+		fmt.Println("   • Hot-Reload File Watcher: inactive")
+	}
+	fmt.Println("   press Ctrl+C to stop...")
 
 	// Register root web route
 	svc.GET("/", func(ctx *routing.Context) (interface{}, error) {
@@ -188,6 +251,11 @@ func cmdDev() {
 	})
 
 	svc.GET("/alap-runtime.js", func(ctx *routing.Context) (interface{}, error) {
+		// ADR-0005/U0.2: single canonical runtime — serve the embedded
+		// patch-based bundle first, fall back to disk copies.
+		if js := ui.RuntimeJS(); js != "" {
+			return server.JSResponse{JS: js}, nil
+		}
 		if data, err := os.ReadFile("pkg/alap/runtime/alap-runtime.js"); err == nil {
 			return server.JSResponse{JS: string(data)}, nil
 		}

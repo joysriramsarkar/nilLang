@@ -1,9 +1,8 @@
 // Nilang Standard Library
 // Module: std/data/csv
 //
-// Simple CSV helpers. Full quoted-field parsing should be supplied by
-// a host-backed CSV implementation once byte/string escape primitives
-// are formalized.
+// সরল CSV সহায়ক — parse/parseLine/encodeRow।
+// উদ্ধৃত-ফিল্ডের পূর্ণ পার্সিং ভবিষ্যৎ হোস্ট-বাস্তবায়নের কাজ।
 
 let parseLine = fn(line) {
     return split(line, ",");

@@ -1,8 +1,59 @@
 // Nilang Standard Library
 // Module: std/net/socket
 //
-// Socket operations require a Network capability and host primitives.
+// TCP সকেট ক্লায়েন্ট — হোস্ট রানটাইমের ওপর সত্যিকারের সংযোগ।
+//
+// প্রতিটি সংযোগ একটি পূর্ণসংখ্যা হ্যান্ডেল। একই হ্যান্ডেল টেবিল TLS-এর
+// সাথেও ভাগ করা হয়, তাই TLS হ্যান্ডেলেও send/receive/close চলে।
+//
+// উদাহরণ:
+//
+//   import "std/net/socket" as socket;
+//   let conn = socket.connect("127.0.0.1", 8080);
+//   socket.send(conn, "ping");
+//   let reply = socket.receive(conn, 1024);
+//   socket.close(conn);
 
-let connect = fn(address) {
-    return null;
+// connect — host:port-এ TCP সংযোগ খোলে, হ্যান্ডেল দেয়।
+let connect = fn(host, port) {
+    return native("std.net.tcp_connect", host, port);
+};
+
+// send — খোলা সংযোগে লেখা পাঠায়, লেখা বাইট সংখ্যা দেয়।
+let send = fn(conn, data) {
+    return native("std.net.tcp_send", conn, data);
+};
+
+// receive — সংযোগ থেকে সর্বোচ্চ maxBytes পড়ে স্ট্রিং দেয়।
+let receive = fn(conn, maxBytes) {
+    return native("std.net.tcp_receive", conn, maxBytes);
+};
+
+// close — সংযোগ বন্ধ করে হ্যান্ডেল মুক্ত করে।
+let close = fn(conn) {
+    return native("std.net.tcp_close", conn);
+};
+
+// sendLine — লাইন + "\n" পাঠায়।
+let sendLine = fn(conn, line) {
+    return send(conn, line + "\n");
+};
+
+// sendAll — পুরো লেখা পাঠানো নিশ্চিত করে (আংশিক write পুনরায় চেষ্টা করে)।
+let sendAll = fn(conn, data) {
+    let total = 0;
+    let guard = 0;
+    while (total < len(data)) {
+        let rest = substr(data, total);
+        let n = send(conn, rest);
+        total = total + n;
+        guard = guard + 1;
+        if (guard > 1000) {
+            return total;
+        }
+        if (n == 0) {
+            return total;
+        }
+    }
+    return total;
 };

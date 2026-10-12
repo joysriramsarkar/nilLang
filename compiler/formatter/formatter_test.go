@@ -78,16 +78,21 @@ func TestFormatterIfElseAndHash(t *testing.T) {
 		t.Fatalf("if/else mismatch:\nGot:\n%s\nExpected:\n%s", formatted, expected)
 	}
 
-	// Deterministic Hash key ordering
 	hashSrc := `let m = { "z": 100, "a": 200, "m": 300 };`
-	expectedHash := `let m = {"a": 200, "m": 300, "z": 100};
+
+	// A hash literal keeps the order it was written in. The formatter used to
+	// sort keys alphabetically to paper over Go map iteration order, which made
+	// output deterministic but silently reordered the developer's code. Order
+	// preservation is the real requirement (SEMANTICS.md §1), so the assertion
+	// is that formatting is a no-op on an already-formatted literal.
+	expectedHash := `let m = {"z": 100, "a": 200, "m": 300};
 `
 	fHash, err := Format(hashSrc)
 	if err != nil {
 		t.Fatalf("failed to format hash: %v", err)
 	}
 	if fHash != expectedHash {
-		t.Fatalf("hash mismatch:\nGot:\n%s\nExpected:\n%s", fHash, expectedHash)
+		t.Fatalf("hash order was not preserved:\nGot:\n%s\nExpected:\n%s", fHash, expectedHash)
 	}
 }
 

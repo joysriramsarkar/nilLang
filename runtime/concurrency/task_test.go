@@ -97,6 +97,54 @@ func TestTaskPanicIsolation(t *testing.T) {
 	}
 }
 
+func TestSiblingCancelOnFault(t *testing.T) {
+	root := NewTaskScope(nil)
+
+	fault := root.Spawn(func(ctx context.Context) (object.Object, error) {
+		panic("simulated fault")
+	})
+
+	sibling := root.Spawn(func(ctx context.Context) (object.Object, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ErrTaskCancelled
+		case <-time.After(5 * time.Second):
+			return &object.Integer{Value: 42}, nil
+		}
+	})
+
+	_, errFault := fault.Await()
+	if errFault == nil {
+		t.Fatal("expected the fault task to fail")
+	}
+
+	_, errSibling := sibling.Await()
+	if !errors.Is(errSibling, ErrTaskCancelled) {
+		t.Errorf("expected sibling to be cancelled by parent-cascading-cancel, got %v", errSibling)
+	}
+}
+
+func TestTaskTimeoutCancelsSiblings(t *testing.T) {
+	root := NewTaskScope(nil)
+
+	_, err := WithTimeout(root, 30*time.Millisecond, func(ctx context.Context) (object.Object, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+			return &object.Integer{Value: 1}, nil
+		}
+	})
+
+	if !errors.Is(err, ErrTaskTimeout) {
+		t.Errorf("expected timeout, got %v", err)
+	}
+
+	if root.Status() != StatusCancelled {
+		t.Errorf("expected parent cancelled by timeout, got %s", root.Status())
+	}
+}
+
 func TestConcurrentChildTaskAggregation(t *testing.T) {
 	root := NewTaskScope(nil)
 	const count = 20

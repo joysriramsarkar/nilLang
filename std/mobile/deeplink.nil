@@ -1,0 +1,54 @@
+// Nilang Standard Library
+// Module: std/mobile/deeplink
+//
+// Deep link পার্সিং — "nilang://shop/product/42?ref=home" থেকে রুট।
+
+import "std/net/url" as url;
+
+// parse — {"scheme": ..., "host": ..., "path": ..., "query": ..., "params": ...}।
+let parse = fn(link) {
+    let q = url.query(link);
+    return {
+        "scheme": url.scheme(link),
+        "host": url.host(link),
+        "path": url.path(link),
+        "query": q,
+        "params": q
+    };
+};
+
+// route — path-কে রুট-নামে বদলায় ("/product/42" -> "product")।
+let route = fn(link) {
+    let p = url.path(link);
+    let segs = split(p, "/");
+    let clean = [];
+    let i = 0;
+    while (i < len(segs)) {
+        if (segs[i] != "") {
+            clean = push(clean, segs[i]);
+        }
+        i = i + 1;
+    }
+    if (len(clean) == 0) {
+        return "home";
+    }
+    return first(clean);
+};
+
+// routeArg — রুটের পরের খণ্ড ("/product/42" -> "42", না থাকলে null)।
+let routeArg = fn(link) {
+    let p = url.path(link);
+    let segs = split(p, "/");
+    let clean = [];
+    let i = 0;
+    while (i < len(segs)) {
+        if (segs[i] != "") {
+            clean = push(clean, segs[i]);
+        }
+        i = i + 1;
+    }
+    if (len(clean) < 2) {
+        return null;
+    }
+    return clean[1];
+};

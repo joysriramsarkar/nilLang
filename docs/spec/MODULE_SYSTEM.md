@@ -8,10 +8,15 @@
 ## 0. Implementation Boundary
 
 Import parsing, evaluator module loading, cache-based single initialization,
-and cycle rejection are implemented. Complete export/private visibility,
-selective-import enforcement across every backend, package resolution through
-`nil.lock`, and concurrent initialization are planned. Sections describing
-those behaviors are target contracts until their module tests are enabled.
+cycle rejection, and `export`/`private` visibility are implemented, with
+visibility enforced by both backends. Package resolution through `nil.lock`,
+`import { x as y }` renaming, and concurrent initialization are planned. Sections
+describing those behaviors are target contracts until their module tests are
+enabled.
+
+Visibility itself is specified normatively in SEMANTICS §4B; this document
+describes where it sits in the module system and defers to that section for its
+rules.
 
 ## 1. Overview & Principles
 
@@ -22,6 +27,28 @@ Modules in NilLang are discrete compilation units and lexical namespaces. The mo
 2. **No Ambient Globals**: Importing a module binds its exported symbols to a namespace or into the local lexical scope. Modules cannot inject symbols into the global scope.
 3. **Strict Acyclic Dependency Graph**: Cycles in the import graph (`A -> B -> A`) are detected at compile time and rejected with diagnostic `E0301`.
 4. **Deterministic Initialization Order**: Modules are initialized once in topological dependency order (post-order traversal).
+5. **Imported Modules Are Lowered**: A module is executed, so it goes through the
+   lowering pass exactly as a top-level program does. `for`, `match`, `struct`,
+   `enum`, and `while let` are rewritten before any backend sees the module.
+
+   Rule 5 was previously unsatisfied in both engines, which loaded the module's
+   source program while the importing program was lowered. A module using any of
+   those constructs reached the backend as a node it refuses, reported as an
+   internal error — a bug report waiting to be filed against the language's own
+   standard library.
+6. **Inlined Modules Keep Separate Namespaces on the VM**: the evaluator runs
+   each module in its own enclosed environment, but the bytecode compiler
+   inlines every module into one shared global scope. Two modules declaring the
+   same top-level name therefore take two global slots (per-import generation),
+   never one shared slot: otherwise the second module silently overwrites the
+   first, the alias snapshot misses the name, and internal calls resolve to
+   whichever module wrote the slot last. The evaluator never had this problem;
+   the rule exists to keep the two engines agreeing.
+7. **A Shadowed Builtin Is Not a Builtin Call**: a bare `exec(...)` inside a
+   module that defines its own `exec` (like `std/db`) calls the module function
+   on both engines. The capability gate fires only when the name resolves to
+   the builtin itself (or nothing); the evaluator always resolved it this way,
+   and the bytecode compiler's gate now matches.
 
 ---
 
@@ -33,7 +60,9 @@ ImportStatement ::= "import" StringLiteral ( "as" Identifier )? ";"
 
 ImportItem      ::= Identifier ( "as" Identifier )?
 
-ExportStatement ::= "export" ( LetStatement | ConstStatement | FunctionDeclaration | StructDecl | EnumDecl )
+ExportStatement ::= "export" ( LetStatement | ConstStatement | FunctionDeclaration
+                                | StructDecl | EnumDecl | TypeAliasDecl )
+PrivateStatement::= "private" ( ...same alternatives as ExportStatement... )
 ```
 
 ### 2.1 Examples
@@ -50,7 +79,13 @@ export const PI = 3.14159265359;
 export fn add(a: Int, b: Int) -> Int {
     return a + b;
 }
+
+// Internal helper, reachable from inside the module only
+private fn validate(x: Int) -> Int { return x; }
 ```
+
+`export` and `private` are soft keywords. They introduce a declaration only when
+one follows, so neither takes the name away as an identifier.
 
 ---
 

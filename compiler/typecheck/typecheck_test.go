@@ -46,7 +46,12 @@ func TestTypecheckAnnotatedLet(t *testing.T) {
 	}{
 		{name: "matching initializer", input: `let count: i32 = 0;`, wantValid: true},
 		{name: "mismatched initializer", input: `let count: i32 = "zero";`, wantErrCode: "E0101"},
-		{name: "unknown annotation", input: `let count: Missing = 0;`, wantErrCode: "E0101"},
+		// An unknown name is E0502, not E0101. `types.Parse` is deliberately
+		// permissive — an unrecognised name becomes an empty struct so a type from
+		// an unread module still parses — which meant the old behaviour reported a
+		// type *mismatch* about a type that did not exist, sending the reader to
+		// look at the value instead of the name.
+		{name: "unknown annotation", input: `let count: Missing = 0;`, wantErrCode: "E0502"},
 	}
 
 	for _, test := range tests {

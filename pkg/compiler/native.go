@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 )
 
 type NativeOptions struct {
@@ -26,13 +26,25 @@ type nativeEmitter struct {
 }
 
 func CompileNative(source, outputPath string, options NativeOptions) error {
-	programParser := parser.New(lexer.New(source))
-	program := programParser.ParseProgram()
-	if len(programParser.Errors()) > 0 {
-		return fmt.Errorf("native parse failed:\n%s", strings.Join(programParser.Errors(), "\n"))
+	// The native backend emits code straight from the AST, so it must go
+	// through the same frontend gate as every other backend. Skipping the
+	// checker here used to let ill-typed programs reach cc and fail with a C
+	// compiler message instead of a Nilang diagnostic.
+	res := frontend.Check(source, frontend.Options{})
+	if len(res.ParseErrors) > 0 {
+		return fmt.Errorf("native parse failed:\n%s", strings.Join(res.ParseErrors, "\n"))
+	}
+	if !res.OK {
+		msgs := make([]string, 0, len(res.Diagnostics))
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				msgs = append(msgs, d.String())
+			}
+		}
+		return fmt.Errorf("native type check failed:\n%s", strings.Join(msgs, "\n"))
 	}
 
-	generated, err := GenerateNativeC(program)
+	generated, err := GenerateNativeC(res.Program)
 	if err != nil {
 		return err
 	}

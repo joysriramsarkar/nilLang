@@ -1,7 +1,7 @@
 // Nilang Standard Library
 // Module: std/base64
 //
-// Base64 encoding and decoding convenience module.
+// Base64 এনকোড/ডিকোড সুবিধা-মডিউল (std/data/base64-এর ওপর)।
 
 let encode = fn(value) {
     return native("std.base64.encode", value);

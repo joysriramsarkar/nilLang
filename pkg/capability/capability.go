@@ -133,7 +133,7 @@ var CapabilityMatrix = map[string]map[Type]PermissionLevel{
 		CapSensors:    PermAllowed,
 		CapScanner:    PermRestricted, // Camera-based barcode scanning
 		CapPrinter:    PermRestricted, // Bluetooth / thermal receipt printers
-		CapProcess:    PermDenied, // Spawning arbitrary child processes restricted
+		CapProcess:    PermDenied,     // Spawning arbitrary child processes restricted
 	},
 	"server": {
 		CapNetwork:    PermAllowed,

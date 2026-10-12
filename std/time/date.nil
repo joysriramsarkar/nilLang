@@ -1,11 +1,21 @@
 // Nilang Standard Library
 // Module: std/time/date
 //
-// Stable date API waits for a real Date type in core.
-// This file provides Unix-second helpers only.
+// তারিখ-সহায়ক — ইউনিক্স-সেকেন্ড গণিত + UTC ফরম্যাট (হোস্ট)।
+//
+// বর্তমান সময় instant.nowUnix() থেকে নেওয়া হয় (সরাসরি time() নয়),
+// যাতে আমদানিকারীর `time` alias বিল্ট-ইনকে ছায়া করলেও ঠিক থাকে।
 
+import "std/time/instant" as instant;
+
+// উদাহরণ:
+//
+//   import "std/time/date" as date;
+//   date.format(0, "YYYY-MM-DD"); // "1970-01-01"
+
+// unixNow — বর্তমান ইউনিক্স সময় (সেকেন্ডে)।
 let unixNow = fn() {
-    return time();
+    return instant.nowUnix();
 };
 
 let addSeconds = fn(timestamp, seconds) {
@@ -14,4 +24,45 @@ let addSeconds = fn(timestamp, seconds) {
 
 let difference = fn(a, b) {
     return a - b;
+};
+
+// addDays — দিন যোগ করে।
+let addDays = fn(timestamp, days) {
+    return timestamp + days * 86400;
+};
+
+// addHours — ঘণ্টা যোগ করে।
+let addHours = fn(timestamp, hours) {
+    return timestamp + hours * 3600;
+};
+
+// isSameDay — দুটি সেকেন্ড-টাইমস্ট্যাম্প একই UTC-দিনে কি না।
+let isSameDay = fn(a, b) {
+    return a / 86400 == b / 86400;
+};
+
+// format — millis + প্যাটার্ন থেকে UTC লেখা (হোস্ট)।
+// টোকেন: YYYY MM DD hh mm ss। উদাহরণ: format(0, "YYYY-MM-DD") == "1970-01-01"
+let format = fn(millis, pattern) {
+    return native("std.time.format", millis, pattern);
+};
+
+// formatSeconds — সেকেন্ড-টাইমস্ট্যাম্প থেকে UTC লেখা।
+let formatSeconds = fn(secs, pattern) {
+    return format(secs * 1000, pattern);
+};
+
+// today — আজ UTC "YYYY-MM-DD"।
+let today = fn() {
+    return formatSeconds(instant.nowUnix(), "YYYY-MM-DD");
+};
+
+// yearOf — সেকেন্ড-টাইমস্ট্যাম্প থেকে বছর (UTC)।
+let yearOf = fn(secs) {
+    return formatSeconds(secs, "YYYY");
+};
+
+// isoNow — বর্তমান মুহূর্ত RFC3339 UTC লেখায়।
+let isoNow = fn() {
+    return native("std.time.now_iso");
 };

@@ -1,8 +1,8 @@
 // Nilang Standard Library
 // Module: std/process
 //
-// Process facade over the current `exec` builtin.
-// `exec` returns the process exit code.
+// প্রসেস-ফ্যাসাড — বর্তমান `exec` বিল্ট-ইনের ওপর।
+// `exec` প্রসেসের exit code দেয়।
 
 let run = fn(command) {
     return exec(command);

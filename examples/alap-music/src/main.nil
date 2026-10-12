@@ -1,0 +1,34 @@
+component MusicDB {
+    state query: String = "";
+    state plays: i32 = 0;
+
+    render {
+        return {
+            "type": "Page",
+            "title": "Music Library",
+            "content": [
+                {
+                    "type": "Table",
+                    "headers": ["Title", "Artist", "Plays"],
+                    "rows": [
+                        ["Bhatiyali", "Unknown", "\(plays)"],
+                        ["Nazrul Geeti", "Kazi Nazrul", "12"]
+                    ]
+                },
+                {
+                    "type": "Button",
+                    "id": "play",
+                    "label": "Play",
+                    "event": "play",
+                    "payload": {}
+                }
+            ],
+            "footer": "Alap Music"
+        };
+    }
+
+    on play(payload) {
+        plays = plays + 1;
+        emit("changed", plays);
+    }
+}

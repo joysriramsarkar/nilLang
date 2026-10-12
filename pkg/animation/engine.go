@@ -202,37 +202,13 @@ func Typewriter(duration float64, totalChars int) *Animation {
 	return anim
 }
 
-// Sequence creates a sequence of animations
+// Sequence creates a sequence of animations (U9.3: real composition —
+// time-sliced end-to-end; evaluate with ValuesAt).
 func Sequence(animations ...*Animation) *Animation {
-	if len(animations) == 0 {
-		return NewAnimation("empty", 0)
-	}
-
-	totalDuration := 0.0
-	for _, anim := range animations {
-		totalDuration += anim.Delay + anim.Duration
-	}
-
-	sequence := NewAnimation("sequence", totalDuration)
-	// In a full implementation, this would chain animations
-	return sequence
+	return SequenceOf(animations...)
 }
 
-// Parallel creates parallel animations
+// Parallel creates parallel animations (U9.3: overlaid; duration is max).
 func Parallel(animations ...*Animation) *Animation {
-	if len(animations) == 0 {
-		return NewAnimation("empty", 0)
-	}
-
-	maxDuration := 0.0
-	for _, anim := range animations {
-		d := anim.Delay + anim.Duration
-		if d > maxDuration {
-			maxDuration = d
-		}
-	}
-
-	parallel := NewAnimation("parallel", maxDuration)
-	// In a full implementation, this would run animations in parallel
-	return parallel
+	return ParallelOf(animations...)
 }

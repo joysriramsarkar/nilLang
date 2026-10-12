@@ -7,6 +7,13 @@ import (
 
 type Severity string
 
+// CodeLoweringFailed is reported when a program parses and type checks but a
+// construct cannot be translated into an executable form.
+//
+// It is a source error, not an internal fault: `break` outside a loop is
+// something a developer writes and needs told about precisely.
+const CodeLoweringFailed = "E0005"
+
 const (
 	SeverityError   Severity = "ERROR"
 	SeverityWarning Severity = "WARNING"
@@ -114,6 +121,11 @@ func (d *Diagnostic) Format(useColor bool) string {
 
 // DiagnosticCatalog provides standard descriptions for compiler error codes
 var DiagnosticCatalog = map[string]string{
+	"E0001": "Unexpected Token: A character or token appeared where the grammar does not allow it.",
+	"E0002": "Unterminated String: A string literal is missing its closing quote.",
+	"E0003": "Unexpected EOF: The file ended in the middle of a statement, expression, or block.",
+	"E0004": "Syntax Error: A required token is missing, or an unexpected token appears in its place.",
+	"E0005": "Lowering Failed: The source parses and type checks, but a construct could not be translated into executable form, such as `break` outside a loop.",
 	"E0101": "Type Mismatch: Expression type does not conform to the expected target type.",
 	"E0102": "Undefined Symbol: The requested identifier is not found in the current or enclosing lexical scopes.",
 	"E0103": "Missing Initializer: Variable requires an initializer until definite assignment is supported.",

@@ -111,6 +111,14 @@ func (s *Server) dispatch(req Request) {
 					ResolveProvider:   false,
 					TriggerCharacters: []string{".", ":"},
 				},
+				DefinitionProvider: true,
+				ReferencesProvider: true,
+				RenameProvider:     true,
+				InlayHintProvider:  true,
+				SemanticTokensProvider: &SemanticTokensOptions{
+					Legend: SemanticTokensLegend{TokenTypes: SemanticTokenTypes},
+					Full:   true,
+				},
 			},
 			ServerInfo: &ServerInfo{
 				Name:    "nil-lsp",
@@ -236,6 +244,90 @@ func (s *Server) dispatch(req Request) {
 			s.sendResponse(req.ID, completions, nil)
 		}
 
+	case "textDocument/definition":
+		var params DefinitionParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			s.docsMu.RLock()
+			doc, ok := s.documents[params.TextDocument.URI]
+			s.docsMu.RUnlock()
+
+			if !ok {
+				s.sendResponse(req.ID, nil, nil)
+				return
+			}
+			s.sendResponse(req.ID, ComputeDefinition(doc.Content, params.Position, params.TextDocument.URI), nil)
+		}
+
+	case "textDocument/references":
+		var params ReferencesParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			s.docsMu.RLock()
+			doc, ok := s.documents[params.TextDocument.URI]
+			s.docsMu.RUnlock()
+
+			if !ok {
+				s.sendResponse(req.ID, []Location{}, nil)
+				return
+			}
+			refs := ComputeReferences(doc.Content, params.Position, params.TextDocument.URI)
+			if refs == nil {
+				refs = []Location{}
+			}
+			s.sendResponse(req.ID, refs, nil)
+		}
+
+	case "textDocument/rename":
+		var params RenameParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			s.docsMu.RLock()
+			doc, ok := s.documents[params.TextDocument.URI]
+			s.docsMu.RUnlock()
+
+			if !ok {
+				s.sendResponse(req.ID, []TextEdit{}, nil)
+				return
+			}
+			edits := ComputeRename(doc.Content, params.Position, params.NewName)
+			if edits == nil {
+				edits = []TextEdit{}
+			}
+			s.sendResponse(req.ID, edits, nil)
+		}
+
+	case "textDocument/inlayHint":
+		var params InlayHintParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			s.docsMu.RLock()
+			doc, ok := s.documents[params.TextDocument.URI]
+			s.docsMu.RUnlock()
+
+			if !ok {
+				s.sendResponse(req.ID, []InlayHint{}, nil)
+				return
+			}
+			hints := ComputeInlayHints(doc.Content)
+			if hints == nil {
+				hints = []InlayHint{}
+			}
+			s.sendResponse(req.ID, hints, nil)
+		}
+
+	case "textDocument/semanticTokens/full":
+		var params struct {
+			TextDocument TextDocumentIdentifier `json:"textDocument"`
+		}
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			s.docsMu.RLock()
+			doc, ok := s.documents[params.TextDocument.URI]
+			s.docsMu.RUnlock()
+
+			content := ""
+			if ok {
+				content = doc.Content
+			}
+			s.sendResponse(req.ID, ComputeSemanticTokens(content), nil)
+		}
+
 	default:
 		// Unknown request, reply method not found if it has an ID
 		if len(req.ID) > 0 {
@@ -262,8 +354,13 @@ func (s *Server) validateDocument(uri string, content string, version *int) {
 					End:   Position{Line: 0, Character: 1},
 				},
 				Severity: SeverityError,
-				Source:   "nil-parser",
-				Message:  parseErr,
+				// L9.2: syntax diagnostics carry a stable code (L0.2 E0001–E0004
+				// family). The parser returns plain strings, so every syntax
+				// failure is E0001 (general syntax error) here; the typechecker
+				// below reports its own specific codes.
+				Code:    "E0001",
+				Source:  "nil-parser",
+				Message: parseErr,
 			})
 		}
 	} else if prog != nil {

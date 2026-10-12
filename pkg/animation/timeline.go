@@ -131,8 +131,15 @@ func (tl *Timeline) Play() {
 				anim.OnUpdate(normalizedTime)
 			}
 
-			// Apply values (in a real implementation, this would update UI elements)
-			_ = values
+			// U9.1: apply values to the bound target instead of discarding.
+			// Reduced motion snaps to the end state.
+			if ReducedMotion {
+				ApplyValues(anim.Target, anim.ValuesAt(1))
+			} else if anim.composite != nil {
+				ApplyValues(anim.Target, anim.ValuesAt(normalizedTime))
+			} else {
+				ApplyValues(anim.Target, values)
+			}
 		}
 
 		// Call frame callback

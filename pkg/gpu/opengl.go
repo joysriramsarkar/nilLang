@@ -157,24 +157,52 @@ func (r *SoftwareRenderer) IsInitialized() bool                                 
 // MetalRenderer placeholder for iOS
 type MetalRenderer struct {
 	initialized bool
+	width       int
+	height      int
+	frames      int
+	clearColor  Color
+	draws       int
 }
 
-func NewMetalRenderer() *MetalRenderer                                                     { return &MetalRenderer{} }
-func (r *MetalRenderer) Init(width, height int) error                                      { r.initialized = true; return nil }
-func (r *MetalRenderer) Destroy() error                                                    { return nil }
-func (r *MetalRenderer) BeginFrame() error                                                 { return nil }
-func (r *MetalRenderer) EndFrame() error                                                   { return nil }
-func (r *MetalRenderer) Present() error                                                    { return nil }
-func (r *MetalRenderer) Clear(red, g, b, a float32)                                        {}
-func (r *MetalRenderer) DrawRect(x, y, w, h float32, color Color)                          {}
-func (r *MetalRenderer) DrawRoundedRect(x, y, w, h, radius float32, color Color)           {}
-func (r *MetalRenderer) DrawCircle(cx, cy, radius float32, color Color)                    {}
-func (r *MetalRenderer) DrawLine(x1, y1, x2, y2 float32, color Color, thickness float32)   {}
-func (r *MetalRenderer) DrawText(text string, x, y float32, fontSize float32, color Color) {}
-func (r *MetalRenderer) DrawImage(texture *Texture, x, y, w, h float32)                    {}
+func NewMetalRenderer() *MetalRenderer { return &MetalRenderer{} }
+func (r *MetalRenderer) Init(width, height int) error {
+	r.initialized = true
+	r.width, r.height = width, height
+	return nil
+}
+func (r *MetalRenderer) Destroy() error    { r.initialized = false; return nil }
+func (r *MetalRenderer) BeginFrame() error { return r.requireInit() }
+func (r *MetalRenderer) EndFrame() error   { return r.requireInit() }
+func (r *MetalRenderer) Present() error {
+	if err := r.requireInit(); err != nil {
+		return err
+	}
+	r.frames++
+	return nil
+}
+func (r *MetalRenderer) Clear(red, g, b, a float32)                                        { r.clearColor = Color{red, g, b, a} }
+func (r *MetalRenderer) DrawRect(x, y, w, h float32, color Color)                          { r.draws++ }
+func (r *MetalRenderer) DrawRoundedRect(x, y, w, h, radius float32, color Color)           { r.draws++ }
+func (r *MetalRenderer) DrawCircle(cx, cy, radius float32, color Color)                    { r.draws++ }
+func (r *MetalRenderer) DrawLine(x1, y1, x2, y2 float32, color Color, thickness float32)   { r.draws++ }
+func (r *MetalRenderer) DrawText(text string, x, y float32, fontSize float32, color Color) { r.draws++ }
+func (r *MetalRenderer) DrawImage(texture *Texture, x, y, w, h float32)                    { r.draws++ }
 func (r *MetalRenderer) PushTransform(transform Mat4)                                      {}
 func (r *MetalRenderer) PopTransform()                                                     {}
 func (r *MetalRenderer) SetScissor(x, y, w, h int)                                         {}
 func (r *MetalRenderer) GetBackend() BackendType                                           { return BackendMetal }
 func (r *MetalRenderer) GetCapabilities() *Capabilities                                    { return &Capabilities{} }
 func (r *MetalRenderer) IsInitialized() bool                                               { return r.initialized }
+
+// Frames counts presented frames (harness assertion helper).
+func (r *MetalRenderer) Frames() int { return r.frames }
+
+// Draws counts recorded draw calls.
+func (r *MetalRenderer) Draws() int { return r.draws }
+
+func (r *MetalRenderer) requireInit() error {
+	if !r.initialized {
+		return errNotInitialized()
+	}
+	return nil
+}

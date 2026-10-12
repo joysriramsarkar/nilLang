@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoadDeclarativeUIRejectsTypeErrorsBeforeEvaluation(t *testing.T) {
-	_, err := loadDeclarativeUI(`component Broken { render { missing = 1; return {"type": "Page"}; } }`)
+	_, err := loadDeclarativeUI(`component Broken { render { missing = 1; return {"type": "Page"}; } }`, "")
 	if err == nil {
 		t.Fatal("expected undeclared assignment to fail type checking")
 	}
@@ -32,7 +32,7 @@ component Counter {
         count = count + 1;
         emit("changed", count);
     }
-}`)
+}`, "")
 	if err != nil {
 		t.Fatalf("loadDeclarativeUI returned error: %v", err)
 	}
@@ -72,7 +72,7 @@ component Form {
     state result = "";
     render { return {"type": "Page"}; }
     on submit(payload) { result = payload["user"]["name"] + payload["tags"][0]; }
-}`)
+}`, "")
 	if err != nil {
 		t.Fatalf("loadDeclarativeUI returned error: %v", err)
 	}
@@ -105,7 +105,7 @@ component Form {
 		};
 	}
 	on submit(payload) {}
-}`)
+}`, "")
 	if err != nil {
 		t.Fatalf("loadDeclarativeUI returned error: %v", err)
 	}
@@ -125,7 +125,7 @@ component BuiltPage {
     build {
         return {"type": "Page", "title": "Built", "content": []};
     }
-}`)
+}`, "")
 	if err != nil {
 		t.Fatalf("loadDeclarativeUI returned error: %v", err)
 	}
@@ -140,7 +140,7 @@ component BuiltPage {
 }
 
 func TestDeclarativeUIAppAcceptsStaticPage(t *testing.T) {
-	app, err := loadDeclarativeUI(`let page = {"type": "Page", "title": "Static", "content": []};`)
+	app, err := loadDeclarativeUI(`let page = {"type": "Page", "title": "Static", "content": []};`, "")
 	if err != nil {
 		t.Fatalf("loadDeclarativeUI returned error: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestDeclarativeUIAppAcceptsStaticPage(t *testing.T) {
 }
 
 func TestHashToGoMap(t *testing.T) {
-	app, err := loadDeclarativeUI(`component State { state count = 2; render { return {"type": "Page"}; } }`)
+	app, err := loadDeclarativeUI(`component State { state count = 2; render { return {"type": "Page"}; } }`, "")
 	if err != nil {
 		t.Fatalf("loadDeclarativeUI returned error: %v", err)
 	}

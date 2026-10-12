@@ -1,0 +1,33 @@
+// Library — the module imported by ../src/main.nil.
+//
+// Modules expose plain bindings; a function value is a `let` bound to an `fn`.
+
+let songs = [
+    {"title": "আবার ফিরে এলে", "artist": "সুনীল বৌর", "year": 1997},
+    {"title": "মায়া", "artist": "অনন্যা রায়", "year": 2004},
+    {"title": "Notun Upakhyan", "artist": "Rabindrasangeet", "year": 1901}
+];
+
+let createLibrary = fn() {
+    return {"songs": songs};
+};
+
+let getAllSongs = fn(lib) {
+    return lib["songs"];
+};
+
+let getSongCount = fn(lib) {
+    return len(lib["songs"]);
+};
+
+let findByTitle = fn(lib, title) {
+    let all = getAllSongs(lib);
+    let i = 0;
+    while (i < len(all)) {
+        if (all[i]["title"] == title) {
+            return all[i];
+        }
+        i = i + 1;
+    }
+    return null;
+};

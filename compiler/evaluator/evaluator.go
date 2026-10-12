@@ -1,20 +1,182 @@
 package evaluator
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
+	compbuiltin "github.com/joysriramsarkar/nilLang/compiler/builtin"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
+	"github.com/joysriramsarkar/nilLang/runtime/concurrency"
 )
 
 var (
-	NULL  = &object.Null{}
-	TRUE  = &object.Boolean{Value: true}
-	FALSE = &object.Boolean{Value: false}
+	NULL  = object.NULL
+	TRUE  = object.TRUE
+	FALSE = object.FALSE
 )
 
+// CapabilityChecker gates effectful builtin calls at the call site (L6.4).
+//
+// When nil every builtin runs, which is the historical behaviour the
+// conformance suite relies on. `nil run` installs the manifest's grant check
+// here, so a denied operation fails with CategoryCapabilityDenied — the same
+// category the VM reports for the same program. Tests set and reset it
+// around the denied cases they assert on.
+var CapabilityChecker func(operation string) error
+
+// pureDepth counts the pure functions on the current call stack (L6.3).
+//
+// It is atomic rather than plain because task bodies evaluate on their own
+// goroutines while sharing the process. A nonzero depth means an effectful
+// call — a capability-gated builtin or a non-pure function — is a runtime
+// E0202, the dynamic half of the static check the type checker performs.
+var pureDepth atomic.Int64
+
+// evalTaskRootMu guards the lazy root scope below.
+var evalTaskRootMu sync.Mutex
+
+// evalTaskRoot is the parent scope of every task the evaluator spawns.
+//
+// The tree is deliberately flat — one root, every task its child — because
+// Eval carries no scope handle to nest under. What matters for the
+// structured-concurrency contract is that the tree exists at all: cancelling
+// the root cascades to every task, and one task's fault cancels its siblings
+// through the same parent.
+var evalTaskRoot *concurrency.Task
+
+// newEvalTaskScope returns the scope tasks spawned by Eval belong to,
+// creating the root on first use.
+func newEvalTaskScope() *concurrency.Task {
+	evalTaskRootMu.Lock()
+	defer evalTaskRootMu.Unlock()
+	if evalTaskRoot == nil {
+		evalTaskRoot = concurrency.NewTaskScope(nil)
+	}
+	return evalTaskRoot
+}
+
+// builtinNameCache remembers reverse builtin lookups so that gating a call
+// does not scan the whole table on every invocation. Only positive hits are
+// cached: a builtin registered later (tests do this) must still be found.
+var builtinNameCache sync.Map // *object.Builtin -> string
+
+// BuiltinName resolves a builtin value to the name it is registered under,
+// for the capability and effect gates. The second result is false for values
+// that came from anywhere but the builtin table, such as native-module
+// closures, which neither gate applies to.
+func BuiltinName(fn *object.Builtin) (string, bool) {
+	if name, ok := builtinNameCache.Load(fn); ok {
+		return name.(string), true
+	}
+	for name, builtin := range Builtins {
+		if builtin == fn {
+			builtinNameCache.Store(fn, name)
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// checkBuiltinCall enforces the capability sandbox (L6.4) and the pure
+// context (L6.3) on a builtin call. It returns nil when the call may run.
+func checkBuiltinCall(fn *object.Builtin) object.Object {
+	if CapabilityChecker == nil && pureDepth.Load() == 0 {
+		return nil
+	}
+	name, ok := BuiltinName(fn)
+	if !ok {
+		return nil
+	}
+	if pureDepth.Load() > 0 && compbuiltin.IsEffectful(name) {
+		return runtimeError(object.CategoryTypeError,
+			"E0202: cannot call effectful builtin %q inside a pure function", name)
+	}
+	if CapabilityChecker != nil {
+		if class, known := compbuiltin.Classify(name); known && class.Gated {
+			if err := CapabilityChecker(name); err != nil {
+				return object.RuntimeErrorWrapf(object.CategoryCapabilityDenied, err,
+					"capability denied: %s requires [%s]: %s", name, class.Requires, err)
+			}
+		}
+	}
+	return nil
+}
+
+// taskFaultError converts a task body's failure into the future's error.
+//
+// Every failure inside a task — a returned error object, a Go error, a
+// panic — becomes a TaskFaulted fault that names its cause
+// (CONCURRENCY.md §4). Cancellation is the exception: a cancelled task
+// reports TaskCancelled, because the parent did not fail, it was stopped.
+// The cause keeps its own category underneath for inspection, but what
+// `await` reports is the fault: the parent did not divide by zero, its
+// child did.
+func taskFaultError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, concurrency.ErrTaskCancelled) {
+		return object.RuntimeErrorWrapf(object.CategoryTaskCancelled, err, "task cancelled")
+	}
+	if category, ok := object.CategoryOf(err); ok {
+		if category == object.CategoryTaskFaulted || category == object.CategoryTaskCancelled {
+			return err
+		}
+	}
+	var runtimeErr *object.RuntimeError
+	if errors.As(err, &runtimeErr) {
+		return object.RuntimeErrorWrapf(object.CategoryTaskFaulted, err,
+			"task failed: %s", runtimeErr.Message)
+	}
+	return object.RuntimeErrorWrapf(object.CategoryTaskFaulted, err,
+		"task failed: %s", err.Error())
+}
+
+// taskBodyError converts an error object a task body evaluated to into the Go
+// error the task tree completes with, preserving a categorised error as is.
+func taskBodyError(obj object.Object) error {
+	if runtimeErr, ok := obj.(*object.RuntimeError); ok {
+		return runtimeErr
+	}
+	if errObj, ok := obj.(*object.Error); ok {
+		return errors.New(errObj.Inspect())
+	}
+	return errors.New("task failed")
+}
+
+// faultAsObject converts a faulted future's error back into the object the
+// awaiting program observes, preserving a typed fault rather than flattening
+// it into prose the other engine would word differently.
+func faultAsObject(err error) object.Object {
+	var runtimeErr *object.RuntimeError
+	if errors.As(err, &runtimeErr) {
+		return runtimeErr
+	}
+	return newError("task failed: %s", err)
+}
+
+// Eval evaluates an AST node in an environment.
+//
+// Recursion is bounded in applyFunction rather than here, so that the bound
+// counts call frames the way the VM's MaxFrames does. Counting AST nodes
+// instead would make the two engines disagree about when a given program
+// overflows.
 func Eval(node ast.Node, env *object.Environment) object.Object {
+	return evalNode(node, env)
+}
+
+func evalNode(node ast.Node, env *object.Environment) object.Object {
+	// A visibility marker changes what leaves the module, not what the
+	// declaration does when the module runs, so the wrapper is transparent here.
+	if wrapped, ok := node.(*ast.ExportStatement); ok && wrapped.Decl != nil {
+		return Eval(wrapped.Decl, env)
+	}
+
 	switch node := node.(type) {
 	case *ast.Program:
 		return evalProgram(node, env)
@@ -86,6 +248,32 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 	case *ast.WhileStatement:
 		return evalWhileStatement(node, env)
+	case *ast.LetExpression:
+		return evalLetExpression(node, env)
+	case *ast.StructDecl, *ast.EnumDecl, *ast.TypeAliasDecl:
+		// Declarations have no run-time effect: a struct's name is a type and
+		// its fields are checked statically. The type checker is what knows
+		// about them; by the time code runs, there is nothing left to do.
+		return NULL
+	case *ast.MatchExpression:
+		return newError("internal error: a `match` reached the evaluator without being lowered")
+
+	case *ast.CoalesceExpression, *ast.SafeAccessExpression:
+		// Refusing explicitly matters here more than anywhere else. Without a
+		// case this function returns nil, the enclosing statement carries on with
+		// nothing on the stack, and the program produces a *wrong answer* instead
+		// of stopping — which is the one outcome a reader cannot diagnose.
+		return newError("internal error: `??` or `?.` reached the evaluator without being lowered")
+	case *ast.EnumVariantExpr:
+		return newError("internal error: an enum variant reached the evaluator without being lowered")
+	case *ast.StructLiteral:
+		return newError("internal error: a struct literal reached the evaluator without being lowered")
+	case *ast.ForStatement:
+		return evalForStatement(node, env)
+	case *ast.BreakStatement:
+		return BREAK_SIGNAL
+	case *ast.ContinueStatement:
+		return CONTINUE_SIGNAL
 	case *ast.EntityStatement:
 		fields := make([]object.EntityFieldObj, len(node.Fields))
 		for i, f := range node.Fields {
@@ -173,17 +361,23 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 	case *ast.Identifier:
 		return evalIdentifier(node, env)
 	case *ast.FunctionLiteral:
-		params := node.Parameters
 		body := node.Body
-		fn := &object.Function{Parameters: params, Env: env, Body: body}
+		// Only the names are kept: the annotations were the compiler's business
+		// and the evaluator has nothing to do with them once checked.
+		fn := &object.Function{Parameters: node.ParameterNames(), Env: env, Body: body, IsPure: node.IsPure}
 		if node.Name != "" {
 			env.Set(node.Name, fn)
 		}
 		return fn
 	case *ast.TaskExpression:
 		future := object.NewFuture()
-		taskEnv := env.Snapshot()
-		go func() {
+		// Shared bindings, not a copy: the child environment encloses the
+		// parent's, so the task reads the parent's variables and assigns
+		// through to them (L6.2). The store lock in object.Environment is
+		// what makes that sharing memory-safe across goroutines.
+		taskEnv := object.NewEnclosedEnvironment(env)
+		scope := newEvalTaskScope()
+		task := scope.Spawn(func(ctx context.Context) (object.Object, error) {
 			result := Eval(node.Body, taskEnv)
 			if returnValue, ok := result.(*object.ReturnValue); ok {
 				result = returnValue.Value
@@ -191,7 +385,25 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			if result == nil {
 				result = NULL
 			}
-			future.Complete(result, nil)
+			// A body that evaluated to an error faults the task rather than
+			// fulfilling it with the error as a value: awaiting the future
+			// must observe the failure, and the tree must cancel the
+			// siblings, both of which only happen through the error path.
+			if isError(result) {
+				return nil, taskBodyError(result)
+			}
+			return result, nil
+		})
+		// Bridge the task tree's future to the language-level future the
+		// program awaits. The tree owns cancellation and fault routing;
+		// this future owns the value the program observes.
+		go func() {
+			value, err := task.Await()
+			if err != nil {
+				future.Complete(nil, taskFaultError(err))
+				return
+			}
+			future.Complete(value, nil)
 		}()
 		return future
 	case *ast.AwaitExpression:
@@ -205,7 +417,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 		result, err := future.Await()
 		if err != nil {
-			return newError("task failed: %s", err)
+			return faultAsObject(err)
 		}
 		return result
 	case *ast.CallExpression:
@@ -262,12 +474,23 @@ func evalProgram(program *ast.Program, env *object.Environment) object.Object {
 			return result.Value
 		case *object.Error:
 			return result
+		case *object.RuntimeError:
+			// A categorised failure halts the program exactly like a legacy
+			// error: the VM unwinds its whole Run on the same fault, and a
+			// program that continued past it in one engine but not the other
+			// would disagree with itself about what ran (ERROR_MODEL.md §4).
+			return result
 		}
 	}
 
 	return result
 }
 
+// evalBlockStatement evaluates a block, propagating control flow signals.
+//
+// A reak or continue must stop the block immediately, not merely be its
+// last value: in { if (x) { break; } work(); } the work() after the
+// reak must not run. Checking only the final value would let it.
 func evalBlockStatement(block *ast.BlockStatement, env *object.Environment) object.Object {
 	var result object.Object
 
@@ -275,14 +498,39 @@ func evalBlockStatement(block *ast.BlockStatement, env *object.Environment) obje
 		result = Eval(statement, env)
 
 		if result != nil {
-			rt := result.Type()
-			if rt == object.RETURN_VALUE_OBJ || rt == object.ERROR_OBJ {
+			switch result.Type() {
+			case object.RETURN_VALUE_OBJ, object.ERROR_OBJ,
+				object.BREAK_SIGNAL_OBJ, object.CONTINUE_SIGNAL_OBJ:
 				return result
 			}
 		}
 	}
 
 	return result
+}
+
+// evalLetExpression evaluates `let name = value; body`.
+//
+// The binding is scoped to the body, matching the block form of `let`. Scoping
+// matters rather than being cosmetic: the lowering of `match` introduces these,
+// and a leaked name would collide with the next `match`'s hidden subject.
+//
+// The result is the body's value, which is what makes this an expression rather
+// than a statement.
+func evalLetExpression(le *ast.LetExpression, env *object.Environment) object.Object {
+	if le.Name == nil || le.Value == nil || le.Body == nil {
+		return newError("a `let` expression needs a name, a value, and a body")
+	}
+
+	value := Eval(le.Value, env)
+	if isError(value) {
+		return value
+	}
+
+	scoped := object.NewEnclosedEnvironment(env)
+	scoped.Set(le.Name.Value, value)
+
+	return Eval(le.Body, scoped)
 }
 
 func evalWhileStatement(ws *ast.WhileStatement, env *object.Environment) object.Object {
@@ -298,12 +546,22 @@ func evalWhileStatement(ws *ast.WhileStatement, env *object.Environment) object.
 			break
 		}
 
-		result = Eval(ws.Body, env)
-		if result != nil {
-			rt := result.Type()
-			if rt == object.RETURN_VALUE_OBJ || rt == object.ERROR_OBJ {
+		bodyResult := Eval(ws.Body, env)
+		if bodyResult != nil {
+			switch bodyResult.Type() {
+			case object.BREAK_SIGNAL_OBJ:
+				// The loop is consumed by the signal, so the loop's value is
+				// whatever the body last produced, not the signal itself.
 				return result
+			case object.CONTINUE_SIGNAL_OBJ:
+				// Skip the rest of this pass and re-test the condition. The
+				// cursor increment lives inside the lowered body, so a `for`
+				// loop's `continue` still advances it.
+				continue
+			case object.RETURN_VALUE_OBJ, object.ERROR_OBJ:
+				return bodyResult
 			}
+			result = bodyResult
 		}
 	}
 
@@ -344,18 +602,26 @@ func evalPrefixExpression(operator string, right object.Object) object.Object {
 	}
 }
 
+// evalBangOperatorExpression implements `!x`.
+//
+// Like isTruthy, this matches on type and value rather than pointer identity, so
+// `!isOk(x)` negates a boolean that came from a builtin instead of quietly
+// reporting false.
 func evalBangOperatorExpression(right object.Object) object.Object {
-	switch right {
-	case TRUE:
-		return FALSE
-	case FALSE:
+	switch value := right.(type) {
+	case *object.Boolean:
+		if value.Value {
+			return FALSE
+		}
 		return TRUE
-	case NULL:
+	case *object.Null:
 		return TRUE
-	default:
-		if intObj, ok := right.(*object.Integer); ok && intObj.Value == 0 {
+	case *object.Integer:
+		if value.Value == 0 {
 			return TRUE
 		}
+		return FALSE
+	default:
 		return FALSE
 	}
 }
@@ -418,12 +684,12 @@ func evalIntegerInfixExpression(operator string, left, right object.Object) obje
 		return &object.Integer{Value: leftVal * rightVal}
 	case "/":
 		if rightVal == 0 {
-			return newError("division by zero")
+			return runtimeError(object.CategoryDivisionByZero, "division by zero")
 		}
 		return &object.Integer{Value: leftVal / rightVal}
 	case "%":
 		if rightVal == 0 {
-			return newError("modulo by zero")
+			return runtimeError(object.CategoryDivisionByZero, "modulo by zero")
 		}
 		return &object.Integer{Value: leftVal % rightVal}
 	case "<":
@@ -602,24 +868,80 @@ func makeUINamespace() *object.Hash {
 	})
 }
 
+// isTruthy reports whether a value counts as true.
+//
+// The comparison is by type and value, never by pointer identity, so a boolean
+// that arrived from a host boundary or a builtin is treated the same as one this
+// package created. See the note on the VM's copy of this function for the bug
+// that motivated the rule.
 func isTruthy(obj object.Object) bool {
-	switch obj {
-	case NULL:
+	switch value := obj.(type) {
+	case nil:
 		return false
-	case TRUE:
-		return true
-	case FALSE:
+	case *object.Boolean:
+		return value.Value
+	case *object.Null:
 		return false
+	case *object.Integer:
+		return value.Value != 0
 	default:
-		if intObj, ok := obj.(*object.Integer); ok {
-			return intObj.Value != 0
-		}
 		return true
 	}
 }
 
 func newError(format string, a ...interface{}) *object.Error {
 	return &object.Error{Message: fmt.Sprintf(format, a...)}
+}
+
+// runtimeError builds a categorised error for the tree-walking engine.
+//
+// ERROR_MODEL.md §4 requires both engines to report the same category for the
+// same fault. The evaluator unwinds by returning Objects rather than Go errors,
+// so the category travels on the returned object. runtimeErrorf is the
+// counterpart of the VM's vmError, and the two must be changed together.
+func runtimeError(category object.ErrorCategory, format string, a ...interface{}) *object.RuntimeError {
+	return object.RuntimeErrorf(category, format, a...)
+}
+
+// evalCallDepthLimit bounds evaluator call recursion.
+//
+// The tree-walking engine recurses in Go, so unbounded user recursion would
+// exhaust the goroutine stack and crash the process rather than report an
+// error. The VM already bounds this with MaxFrames (1024); matching that number
+// here is what makes the two engines agree on which programs overflow.
+const evalCallDepthLimit = 1024
+
+// callDepth tracks the current evaluator call depth.
+var callDepth int
+
+// EvalWithDepthLimit is Eval with an explicit call depth bound.
+//
+// It exists for embedders and tests that need a different bound than the package
+// default, such as a mobile host with a smaller goroutine stack. A limit of zero
+// or less uses the package default.
+func EvalWithDepthLimit(node ast.Node, env *object.Environment, limit int) object.Object {
+	if limit <= 0 {
+		return Eval(node, env)
+	}
+
+	callDepth++
+	defer func() { callDepth-- }()
+
+	if callDepth > limit {
+		return runtimeError(object.CategoryFrameOverflow,
+			"call frame depth exceeded %d", limit)
+	}
+
+	return evalNode(node, env)
+}
+
+// ResetDepth returns the evaluator's call depth counter to zero.
+//
+// A panic recovered by an embedder can leave the counter elevated, which would
+// make later programs hit the limit early. Calling this after a recovered panic
+// restores the invariant.
+func ResetDepth() {
+	callDepth = 0
 }
 
 func isError(obj object.Object) bool {
@@ -649,13 +971,39 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 	}
 	switch fn := fn.(type) {
 	case *object.Function:
+		// A non-pure function called while a pure one is on the stack
+		// contradicts the pure declaration: the call may perform an effect
+		// the declaration promised it would not (runtime E0202, L6.3).
+		if pureDepth.Load() > 0 && !fn.IsPure {
+			return runtimeError(object.CategoryTypeError,
+				"E0202: cannot call side-effecting function inside a pure function")
+		}
+		// Count the frame before recursing so that unbounded user recursion
+		// reports FrameOverflow instead of exhausting the goroutine stack. This
+		// mirrors the VM's MaxFrames, which is what lets both engines agree on
+		// which programs overflow.
+		if callDepth >= evalCallDepthLimit {
+			return runtimeError(object.CategoryFrameOverflow,
+				"call frame depth exceeded %d", evalCallDepthLimit)
+		}
+		callDepth++
+		defer func() { callDepth-- }()
+
+		if fn.IsPure {
+			pureDepth.Add(1)
+			defer pureDepth.Add(-1)
+		}
+
 		extendedEnv := extendFunctionEnv(fn, args)
 		evaluated := Eval(fn.Body, extendedEnv)
 		return unwrapReturnValue(evaluated)
 	case *object.Builtin:
+		if gated := checkBuiltinCall(fn); gated != nil {
+			return gated
+		}
 		return fn.Fn(args...)
 	default:
-		return newError("not a function: %s", fn.Type())
+		return runtimeError(object.CategoryTypeError, "not a function: %s", fn.Type())
 	}
 }
 
@@ -690,7 +1038,7 @@ func evalIndexExpression(left, index object.Object) object.Object {
 	case left.Type() == object.HASH_OBJ:
 		return evalHashIndexExpression(left, index)
 	default:
-		return newError("index operator not supported: %s[%s]", left.Type(), index.Type())
+		return runtimeError(object.CategoryTypeError, "index operator not supported: %s[%s]", left.Type(), index.Type())
 	}
 }
 
@@ -717,7 +1065,32 @@ func evalArrayIndexExpression(array, index object.Object) object.Object {
 }
 
 func evalHashLiteral(node *ast.HashLiteral, env *object.Environment) object.Object {
-	pairs := make(map[object.HashKey]object.HashPair)
+	pairs := object.NewHash(node.EntryCount())
+
+	// Evaluate in source order. SEMANTICS.md §1 requires left-to-right lexical
+	// evaluation, and when a key expression has side effects that order is
+	// observable. node.OrderedPairs is populated by the parser; the map
+	// fallback keeps hash nodes built by hand working.
+	if len(node.OrderedPairs) > 0 {
+		for _, entry := range node.OrderedPairs {
+			key := Eval(entry.Key, env)
+			if isError(key) {
+				return key
+			}
+
+			if _, ok := key.(object.Hashable); !ok {
+				return newError("unusable as hash key: %s", key.Type())
+			}
+
+			value := Eval(entry.Value, env)
+			if isError(value) {
+				return value
+			}
+
+			pairs.SetPair(key, value)
+		}
+		return pairs
+	}
 
 	for keyNode, valueNode := range node.Pairs {
 		key := Eval(keyNode, env)
@@ -725,8 +1098,7 @@ func evalHashLiteral(node *ast.HashLiteral, env *object.Environment) object.Obje
 			return key
 		}
 
-		hashKey, ok := key.(object.Hashable)
-		if !ok {
+		if _, ok := key.(object.Hashable); !ok {
 			return newError("unusable as hash key: %s", key.Type())
 		}
 
@@ -735,11 +1107,10 @@ func evalHashLiteral(node *ast.HashLiteral, env *object.Environment) object.Obje
 			return value
 		}
 
-		hashed := hashKey.HashKey()
-		pairs[hashed] = object.HashPair{Key: key, Value: value}
+		pairs.SetPair(key, value)
 	}
 
-	return &object.Hash{Pairs: pairs}
+	return pairs
 }
 
 func evalHashIndexExpression(hash, index object.Object) object.Object {
@@ -761,11 +1132,20 @@ func evalHashIndexExpression(hash, index object.Object) object.Object {
 func evalIndexAssign(left, index, val object.Object) object.Object {
 	switch l := left.(type) {
 	case *object.Hash:
-		hashable, ok := index.(object.Hashable)
-		if !ok {
+		if _, ok := index.(object.Hashable); !ok {
 			return newError("unusable as hash key: %s", index.Type())
 		}
-		l.Pairs[hashable.HashKey()] = object.HashPair{Key: index, Value: val}
+		// Through `SetPair`, never by writing `Pairs` directly.
+		//
+		// A hash holds two views of itself — a lookup table and the order the keys
+		// were written in — and writing to one of them leaves the other stale. The
+		// symptom is not a wrong lookup: it is a value that prints in a different
+		// order than it was written, on one engine and not the others.
+		//
+		// SEMANTICS.md §1 records this for the VM; the evaluator had the same write
+		// and it was found again by a map built with twelve assignments, which is the
+		// only way a map is ever grown.
+		l.SetPair(index, val)
 		return val
 	case *object.Array:
 		idxObj, ok := index.(*object.Integer)
@@ -774,12 +1154,12 @@ func evalIndexAssign(left, index, val object.Object) object.Object {
 		}
 		idx := idxObj.Value
 		if idx < 0 || idx >= int64(len(l.Elements)) {
-			return newError("index out of bounds: %d", idx)
+			return runtimeError(object.CategoryIndexOutOfBounds, "index %d out of bounds", idx)
 		}
 		l.Elements[idx] = val
 		return val
 	default:
-		return newError("index-assignment not supported on: %s", left.Type())
+		return runtimeError(object.CategoryTypeError, "index-assignment not supported on: %s", left.Type())
 	}
 }
 
@@ -822,7 +1202,7 @@ func evalDotExpression(left object.Object, member string) object.Object {
 		return getHashMethod(obj, member)
 
 	default:
-		return newError("property access .%s not supported on type %s", member, left.Type())
+		return runtimeError(object.CategoryTypeError, "property access .%s not supported on type %s", member, left.Type())
 	}
 }
 
@@ -912,7 +1292,7 @@ func getHashMethod(hash *object.Hash, method string) object.Object {
 
 func setHashKey(hash *object.Hash, key string, val object.Object) {
 	k := &object.String{Value: key}
-	hash.Pairs[k.HashKey()] = object.HashPair{Key: k, Value: val}
+	hash.SetPair(k, val)
 }
 
 func appendHashList(hash *object.Hash, listKey string, item object.Object) {
@@ -928,17 +1308,16 @@ func appendHashList(hash *object.Hash, listKey string, item object.Object) {
 
 	if arr == nil {
 		arr = &object.Array{Elements: []object.Object{}}
-		hash.Pairs[hKey] = object.HashPair{Key: k, Value: arr}
+		hash.SetPair(k, arr)
 	}
 
 	arr.Elements = append(arr.Elements, item)
 }
 
 func MakeHashObj(m map[string]object.Object) *object.Hash {
-	pairs := make(map[object.HashKey]object.HashPair)
+	pairs := object.NewHash(len(m))
 	for k, v := range m {
-		keyObj := &object.String{Value: k}
-		pairs[keyObj.HashKey()] = object.HashPair{Key: keyObj, Value: v}
+		pairs.SetPair(&object.String{Value: k}, v)
 	}
-	return &object.Hash{Pairs: pairs}
+	return pairs
 }

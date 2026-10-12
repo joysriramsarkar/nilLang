@@ -3,12 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
-	"github.com/joysriramsarkar/nilLang/compiler/object"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
 	"io"
 	"os"
+
+	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
+	"github.com/joysriramsarkar/nilLang/compiler/object"
 )
 
 const NIL_PROMPT = "নীলাং >> "
@@ -33,16 +33,16 @@ func Start(in io.Reader, out io.Writer) {
 			return
 		}
 
-		l := lexer.New(line)
-		p := parser.New(l)
-
-		program := p.ParseProgram()
-		if len(p.Errors()) != 0 {
-			printParserErrors(out, p.Errors())
+		// The REPL evaluates each line as a whole program, so it routes through
+		// the same frontend gate as `nil run`. Definitions persist in env
+		// because the evaluator reuses it across iterations.
+		res := frontend.Check(line, frontend.Options{SkipTypeCheck: true})
+		if len(res.ParseErrors) != 0 {
+			printParserErrors(out, res.ParseErrors)
 			continue
 		}
 
-		evaluated := evaluator.Eval(program, env)
+		evaluated := evaluator.Eval(res.Program, env)
 		if evaluated != nil {
 			io.WriteString(out, evaluated.Inspect())
 			io.WriteString(out, "\n")

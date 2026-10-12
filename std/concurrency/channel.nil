@@ -1,5 +1,14 @@
 // Nilang Standard Library
 // Module: std/concurrency/channel
+//
+// বাফার্ড চ্যানেলের ওপর সহায়ক (Channel/send/receive বিল্ট-ইন)।
+//
+// উদাহরণ:
+//
+//   import "std/concurrency/channel" as ch;
+//   let c = ch.create(4);
+//   ch.sendValue(c, "কাজ");
+//   ch.receiveValue(c); // "কাজ"
 
 let create = fn(capacity) {
     return Channel(capacity);
@@ -11,4 +20,63 @@ let sendValue = fn(channel, value) {
 
 let receiveValue = fn(channel) {
     return receive(channel);
+};
+
+// sendAll — মানের অ্যারের সবগুলো পাঠায়।
+let sendAll = fn(channel, values) {
+    let i = 0;
+    while (i < len(values)) {
+        send(channel, values[i]);
+        i = i + 1;
+    }
+    return len(values);
+};
+
+// receiveAll — count সংখ্যক মান পড়ে অ্যারে দেয়।
+let receiveAll = fn(channel, count) {
+    let out = [];
+    let i = 0;
+    while (i < count) {
+        out = push(out, receive(channel));
+        i = i + 1;
+    }
+    return out;
+};
+
+// pipeline — প্রযোজকের মানগুলো ভোক্তা-ফাংশনে চালিয়ে ফলাফল-চ্যানেল দেয়।
+// ভোক্তা একটি টাস্কে চলে; count সংখ্যক মান প্রক্রিয়া করে।
+let pipeline = fn(source, count, transform) {
+    let out = Channel(count);
+    let done = task {
+        let i = 0;
+        while (i < count) {
+            let v = receive(source);
+            send(out, transform(v));
+            i = i + 1;
+        }
+        return count;
+    };
+    return {
+        "output": out,
+        "done": done
+    };
+};
+
+// selectRecv — কয়েকটি (১–৩টি) চ্যানেলের মধ্যে যেটি আগে মান দেয় সেটি পড়ে
+// {"index": i, "value": v} দেয় (হোস্ট reflect.Select-এর ওপর)।
+// উদাহরণ: selectRecv([c1, c2]) — c1-এ মান থাকলে {"index": 0, "value": ...}।
+let selectRecv = fn(channels) {
+    if (len(channels) == 1) {
+        return {
+            "index": 0,
+            "value": receive(channels[0])
+        };
+    }
+    if (len(channels) == 2) {
+        return native("std.sync.select_recv", channels[0], channels[1]);
+    }
+    if (len(channels) == 3) {
+        return native("std.sync.select_recv", channels[0], channels[1], channels[2]);
+    }
+    return Err("selectRecv supports 1..3 channels");
 };

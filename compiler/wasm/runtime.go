@@ -1,10 +1,27 @@
 package wasm
 
 import (
+	_ "embed"
 	"fmt"
 )
 
+//go:embed nil_runtime.js
+var nilRuntimeJS string
+
+// NilRuntimeJS returns the bundled WebAssembly runtime bridge (L7.7): DOM
+// binding, canvas helpers, setTimeout wrappers, fetch stubs and puts/log.
+// `nil build wasm` writes it beside index.html so the harness can load it
+// with a plain script tag and no bundler.
+func NilRuntimeJS() string {
+	return nilRuntimeJS
+}
+
 // GenerateBrowserHarness generates modern HTML and JS to load and execute the NilLang WASM module
+//
+// The page mounts the runtime bridge (nil_runtime.js, L7.7) into a #nil-app
+// container (L7.8): the bridge owns the import object, the on-page console
+// and the status line, and the bootstrap below only instantiates the module
+// and calls its main export.
 func GenerateBrowserHarness(appName string, wasmFilename string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
@@ -92,56 +109,89 @@ func GenerateBrowserHarness(appName string, wasmFilename string) string {
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" id="nil-app" data-nil-app="%s">
     <header>
       <h1>🌌 %s</h1>
       <span class="badge">NilLang WASM • Alap Web</span>
     </header>
 
-    <div id="console">Initializing NilLang WebAssembly Runtime...\n</div>
+    <div id="console" data-nil-console>Initializing Nilang WebAssembly Runtime...\n</div>
+    <canvas id="nil-canvas" width="640" height="360" style="width:100%%;border:1px solid var(--border);border-radius:8px;margin-top:1rem;"></canvas>
 
     <div class="status">
       <span class="dot"></span>
-      <span id="runtime-status">WASM Ready</span>
+      <span id="runtime-status" data-nil-status>WASM Ready</span>
     </div>
   </div>
 
+  <script src="nil_runtime.js"></script>
   <script>
-    const term = document.getElementById("console");
-    function log(msg) {
-      term.textContent += msg + "\\n";
-      term.scrollTop = term.scrollHeight;
-    }
+    (function () {
+      var appName = %q;
+      var wasmFile = %q;
 
-    const importObject = {
-      env: {
-        puts: (code) => {
-          log("[stdout] " + code);
-        },
-        time: () => Date.now(),
-        memory: new WebAssembly.Memory({ initial: 1 })
+      function setStatus(msg) {
+        var el = document.getElementById("runtime-status");
+        if (el) el.textContent = msg;
       }
-    };
 
-    fetch("%s")
-      .then(response => {
-        if (!response.ok) throw new Error("Could not load " + response.statusText);
-        return response.arrayBuffer();
-      })
-      .then(bytes => WebAssembly.instantiate(bytes, importObject))
-      .then(results => {
-        log("✅ WASM module instantiated successfully!");
-        if (results.instance.exports.main) {
-          const res = results.instance.exports.main();
-          log("Execution result: " + res);
+      if (typeof NilRuntime === "undefined") {
+        setStatus("nil_runtime.js missing: cannot start " + appName);
+        return;
+      }
+
+      NilRuntime.mount("#nil-app");
+      NilRuntime.bindCanvas("#nil-canvas");
+
+      var importObject = NilRuntime.makeImportObject();
+
+      function instantiate(bytes) {
+        return WebAssembly.instantiate(bytes, importObject);
+      }
+
+      function loadBytes() {
+        if (WebAssembly.instantiateStreaming) {
+          return fetch(wasmFile).then(function (response) {
+            if (!response.ok) throw new Error("Could not load " + response.statusText);
+            return WebAssembly.instantiateStreaming(response, importObject).then(function (results) {
+              return results;
+            });
+          }).catch(function () {
+            return fetch(wasmFile)
+              .then(function (response) {
+                if (!response.ok) throw new Error("Could not load " + response.statusText);
+                return response.arrayBuffer();
+              })
+              .then(instantiate);
+          });
         }
-      })
-      .catch(err => {
-        log("❌ Execution error: " + err.message);
-        document.getElementById("runtime-status").textContent = "Runtime Error";
-      });
+        return fetch(wasmFile)
+          .then(function (response) {
+            if (!response.ok) throw new Error("Could not load " + response.statusText);
+            return response.arrayBuffer();
+          })
+          .then(instantiate);
+      }
+
+      loadBytes()
+        .then(function (results) {
+          NilRuntime.attach(results.instance);
+          NilRuntime.log("WASM module instantiated successfully!");
+          if (results.instance.exports.main) {
+            var res = results.instance.exports.main();
+            NilRuntime.log("Execution result: " + res);
+            setStatus("Ran OK: " + res);
+          } else {
+            setStatus("Module has no main export");
+          }
+        })
+        .catch(function (err) {
+          NilRuntime.log("Execution error: " + (err && err.message));
+          setStatus("Runtime Error");
+        });
+    })();
   </script>
 </body>
 </html>
-`, appName, appName, wasmFilename)
+`, appName, appName, appName, appName, wasmFilename)
 }

@@ -1,5 +1,18 @@
 // Nilang Standard Library
 // Module: std/testing
+//
+// পরীক্ষা-সহায়ক — অ্যাসার্ট, মক, বেঞ্চমার্ক ও গোল্ডেন।
+//
+// বেঞ্চমার্ক-ঘড়ি instant.nowUnix() থেকে নেওয়া হয়, যাতে আমদানিকারীর
+// alias বিল্ট-ইন time()-কে ছায়া করলেও ঠিক থাকে।
+//
+// উদাহরণ:
+//
+//   import "std/testing" as t;
+//   t.assertEqual(2 + 2, 4, "যোগ");
+//   t.assertGolden("receipt", receiptText, t.goldenStore());
+
+import "std/time/instant" as instant;
 
 let assertTrue = fn(condition, message) {
     return assert(condition, message);
@@ -55,4 +68,101 @@ let assertContains = fn(value, target, message) {
     }
 
     return assert(contains(value, target), message);
+};
+
+// assertOk — Result Ok কি না।
+let assertOk = fn(result, message) {
+    if (message == null) {
+        message = "expected Ok, got Err";
+    }
+    return assert(isOk(result), message);
+};
+
+// assertErr — Result Err কি না।
+let assertErr = fn(result, message) {
+    if (message == null) {
+        message = "expected Err, got Ok";
+    }
+    return assert(isErr(result), message);
+};
+
+// assertSome — Optional Some কি না।
+let assertSome = fn(opt, message) {
+    if (message == null) {
+        message = "expected Some, got None";
+    }
+    return assert(isSome(opt), message);
+};
+
+// assertLen — অ্যারে/স্ট্রিং দৈর্ঘ্য।
+let assertLen = fn(value, expected, message) {
+    if (message == null) {
+        message = "expected length " + str(expected) + ", got " + str(len(value));
+    }
+    return assert(len(value) == expected, message);
+};
+
+// mockFn — ডাক-ইতিহাসসহ মক-ফাংশন {"box": ..., "fn": ...}।
+// ডাক-তালিকা mockCalls(m) দিয়ে পড়া হয়।
+// উদাহরণ: let m = mockFn(fn(x) { return x * 2; }); m["fn"](21); mockCalls(m); // [21]
+let mockFn = fn(factory) {
+    let box = {"calls": []};
+    let f = fn(arg) {
+        box["calls"] = push(box["calls"], arg);
+        return factory(arg);
+    };
+    return {
+        "box": box,
+        "fn": f
+    };
+};
+
+// mockCalls — মকের রেকর্ড-করা আর্গুমেন্টের তালিকা।
+let mockCalls = fn(m) {
+    return m["box"]["calls"];
+};
+
+// mockCallCount — মক কতবার ডাকা হয়েছে।
+let mockCallCount = fn(m) {
+    return len(mockCalls(m));
+};
+
+// mockValue — স্থির-মান মক।
+let mockValue = fn(value) {
+    return mockFn(fn(ignored) {
+        return value;
+    });
+};
+
+// benchmark — body-কে iters বার চালিয়ে {"name", "iters", "elapsedSec"} দেয়।
+let benchmark = fn(name, iters, body) {
+    let start = instant.nowUnix();
+    let i = 0;
+    while (i < iters) {
+        body();
+        i = i + 1;
+    }
+    return {
+        "name": name,
+        "iters": iters,
+        "elapsedSec": instant.nowUnix() - start
+    };
+};
+
+// goldenStore — ইন-মেমোরি গোল্ডেন-ভাণ্ডার {"snapshots": {...}}।
+let goldenStore = fn() {
+    return {
+        "snapshots": {}
+    };
+};
+
+// assertGolden — name-এর স্ন্যাপশট না থাকলে রেকর্ড করে (প্রথম-চালনা),
+// থাকলে সমতা যাচাই করে। CI-তে ভাণ্ডার সাধারণত ফাইল থেকে ভরা হয়।
+let assertGolden = fn(name, actual, store) {
+    let snaps = store["snapshots"];
+    if (snaps[name] == null) {
+        snaps[name] = actual;
+        return true;
+    }
+    return assertEqual(actual, snaps[name], "golden mismatch for " + name);
 };

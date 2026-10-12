@@ -111,6 +111,20 @@ type ServerCapabilities struct {
 	DocumentFormattingProvider bool                     `json:"documentFormattingProvider"`
 	HoverProvider              bool                     `json:"hoverProvider"`
 	CompletionProvider         *CompletionServerOptions `json:"completionProvider,omitempty"`
+	DefinitionProvider         bool                     `json:"definitionProvider,omitempty"`
+	ReferencesProvider         bool                     `json:"referencesProvider,omitempty"`
+	RenameProvider             bool                     `json:"renameProvider,omitempty"`
+	InlayHintProvider          bool                     `json:"inlayHintProvider,omitempty"`
+	SemanticTokensProvider     *SemanticTokensOptions   `json:"semanticTokensProvider,omitempty"`
+}
+
+type SemanticTokensOptions struct {
+	Legend SemanticTokensLegend `json:"legend"`
+	Full   bool                 `json:"full"`
+}
+
+type SemanticTokensLegend struct {
+	TokenTypes []string `json:"tokenTypes"`
 }
 
 type CompletionServerOptions struct {
@@ -201,4 +215,28 @@ type CompletionList struct {
 type CompletionParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 	Position     Position               `json:"position"`
+}
+
+// Definition
+type DefinitionParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+}
+
+// References
+type ReferencesParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+}
+
+// Rename
+type RenameParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	NewName      string                 `json:"newName"`
+}
+
+// Inlay hints
+type InlayHintParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }

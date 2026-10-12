@@ -14,6 +14,13 @@ let nilAstNode = fn(kind, token) {
     };
 };
 
+// nilParserTypeStops are the tokens that cannot continue a written type.
+//
+// A type is read until one of these, which is what lets List<String> and
+// Map<String, Int> read as one type while let x: Int = 1 stops at the =.
+// The set mirrors the Go parser's, because the parity test compares the two.
+let nilParserTypeStops = ["=", ";", ",", "}", ")"];
+
 let nilParse = fn(source) {
     let tokens = nilLex(source);
     let position = 0;
@@ -22,13 +29,46 @@ let nilParse = fn(source) {
     let current = fn() {
         return tokens[position];
     };
-
     let advance = fn() {
         let token = current();
         if (position < len(tokens) - 1) {
             position = position + 1;
         }
         return token;
+    };
+
+    // readTypeAnnotation consumes a written type, stopping at the first token
+    // that cannot continue one. It mirrors the Go parser's parseTypeAnnotation:
+    // the parity test compares the two parsers' output, so the stopping rule has
+    // to be the same rule and not merely a similar-looking one.
+    let readTypeAnnotation = fn() {
+        let parts = "";
+        while (current()["type"] != "EOF") {
+            let stopping = false;
+            let i = 0;
+            while (i < len(nilParserTypeStops)) {
+                if (current()["type"] == nilParserTypeStops[i]) {
+                    stopping = true;
+                }
+                i = i + 1;
+            }
+            if (stopping) {
+                return parts;
+            }
+            parts = parts + advance()["literal"];
+        }
+        return parts;
+    };
+
+    // readOptionalTypeAnnotation reads : Type when a colon is next, and
+    // nothing at all when it is not. A function may leave its parameters and
+    // its return type unannotated, and that is not an error.
+    let readOptionalTypeAnnotation = fn() {
+        if (current()["type"] != ":") {
+            return "";
+        }
+        advance();
+        return readTypeAnnotation();
     };
 
     let errorAt = fn(token, message) {
@@ -195,12 +235,14 @@ let nilParse = fn(source) {
             }
             expect("(");
             let parameters = [];
+            let parameterAnnotations = [];
             if (current()["type"] != ")") {
                 let parameterToken = expect("IDENT");
                 if (parameterToken != null) {
                     let parameter = nilAstNode("Identifier", parameterToken);
                     parameter["value"] = parameterToken["literal"];
                     parameters = push(parameters, parameter);
+                    parameterAnnotations = push(parameterAnnotations, readOptionalTypeAnnotation());
                 }
                 while (current()["type"] == ",") {
                     advance();
@@ -209,11 +251,36 @@ let nilParse = fn(source) {
                         let parameter = nilAstNode("Identifier", parameterToken);
                         parameter["value"] = parameterToken["literal"];
                         parameters = push(parameters, parameter);
+                        parameterAnnotations = push(parameterAnnotations, readOptionalTypeAnnotation());
                     }
                 }
             }
             expect(")");
             node["parameters"] = parameters;
+
+            // The return type annotation, absent unless `-> Type` was written.
+            // Both this and `parameterTypes` are reported so that the parity
+            // test notices when a function gains an annotation, rather than
+            // passing because neither side was compared on the field at all.
+            let returnType = "";
+            if (current()["type"] == "ARROW") {
+                advance();
+                let returnToken = current();
+                if (returnToken["type"] == "LBRACE" || returnToken["type"] == "SEMICOLON" || returnToken["type"] == "EOF") {
+                    return errorAt(returnToken, "`->` needs a type after it");
+                }
+                returnType = readTypeAnnotation();
+            }
+            node["returnType"] = returnType;
+
+            let parameterTypes = [];
+            let index = 0;
+            while (index < len(parameters)) {
+                parameterTypes = push(parameterTypes, parameterAnnotations[index]);
+                index = index + 1;
+            }
+            node["parameterTypes"] = parameterTypes;
+
             node["body"] = parseBlock();
             return node;
         }

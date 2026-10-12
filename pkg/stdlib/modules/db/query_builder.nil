@@ -1,7 +1,18 @@
 // Nilang Standard Library
 // Module: std/db/query_builder
 //
-// Declarative SQL query builder and parameter binding.
+// ঘোষণামূলক SQL কোয়েরি বিল্ডার ও প্যারামিটার বাইন্ডিং।
+//
+// উদাহরণ:
+//
+//   import "std/db/query_builder" as qb;
+//   let q = qb.new("orders");
+//   qb.select(q, ["id", "customer", "amount"]);
+//   qb.where(q, "amount", ">=", 100);
+//   qb.order(q, "id", false);
+//   qb.limit(q, 5);
+//   qb.buildSql(q);
+//   // "SELECT id, customer, amount FROM orders WHERE amount >= ? ORDER BY id ASC LIMIT 5"
 
 let new = fn(table) {
     return {
@@ -10,12 +21,20 @@ let new = fn(table) {
         "whereClauses": [],
         "whereParams": [],
         "limitVal": 0,
-        "orderBy": ""
+        "offsetVal": 0,
+        "orderBy": "",
+        "distinctFlag": false
     };
 };
 
 let select = fn(qb, cols) {
     qb["selectCols"] = cols;
+    return qb;
+};
+
+// distinct — SELECT DISTINCT চালু/বন্ধ করে।
+let distinct = fn(qb, flag) {
+    qb["distinctFlag"] = flag;
     return qb;
 };
 
@@ -26,8 +45,27 @@ let where = fn(qb, col, op, val) {
     return qb;
 };
 
+// whereIn — col IN (?, ?, ...) শর্ত যোগ করে।
+let whereIn = fn(qb, col, values) {
+    let marks = [];
+    let i = 0;
+    while (i < len(values)) {
+        marks = push(marks, "?");
+        qb["whereParams"] = push(qb["whereParams"], values[i]);
+        i = i + 1;
+    }
+    qb["whereClauses"] = push(qb["whereClauses"], col + " IN (" + join(marks, ", ") + ")");
+    return qb;
+};
+
 let limit = fn(qb, n) {
     qb["limitVal"] = n;
+    return qb;
+};
+
+// offset — LIMIT-এর সাথে OFFSET যোগ করে।
+let offset = fn(qb, n) {
+    qb["offsetVal"] = n;
     return qb;
 };
 
@@ -40,9 +78,22 @@ let order = fn(qb, col, desc) {
     return qb;
 };
 
+// countSql — একই শর্তে COUNT(*) কোয়েরি তৈরি করে।
+let countSql = fn(qb) {
+    let sql = "SELECT COUNT(*) AS total FROM " + qb["table"];
+    if (len(qb["whereClauses"]) > 0) {
+        sql = sql + " WHERE " + join(qb["whereClauses"], " AND ");
+    }
+    return sql;
+};
+
 let buildSql = fn(qb) {
+    let head = "SELECT ";
+    if (qb["distinctFlag"]) {
+        head = "SELECT DISTINCT ";
+    }
     let colsStr = join(qb["selectCols"], ", ");
-    let sql = "SELECT " + colsStr + " FROM " + qb["table"];
+    let sql = head + colsStr + " FROM " + qb["table"];
 
     if (len(qb["whereClauses"]) > 0) {
         sql = sql + " WHERE " + join(qb["whereClauses"], " AND ");
@@ -56,10 +107,48 @@ let buildSql = fn(qb) {
         sql = sql + " LIMIT " + str(qb["limitVal"]);
     }
 
+    if (qb["offsetVal"] > 0) {
+        sql = sql + " OFFSET " + str(qb["offsetVal"]);
+    }
+
     return sql;
 };
 
 let execute = fn(qb, conn) {
     let sql = buildSql(qb);
     return conn["query"](sql, qb["whereParams"]);
+};
+
+// count — COUNT(*) চালিয়ে সংখ্যা দেয়।
+let count = fn(qb, conn) {
+    let rows = conn["query"](countSql(qb), qb["whereParams"]);
+    if (len(rows) == 0) {
+        return 0;
+    }
+    return rows[0]["total"];
+};
+
+// placeholder — SQLite "?" কে ডায়ালেক্ট-উপযোগী চিহ্নে বদলায়।
+// "postgres" হলে $1, $2, ...; অন্য সব (sqlite/uil) হলে "?" অপরিবর্তিত।
+// উদাহরণ: placeholder("a = ? AND b = ?", "postgres") == "a = $1 AND b = $2"
+let placeholder = fn(sql, dialect) {
+    if (dialect != "postgres") {
+        return sql;
+    }
+    let parts = split(sql, "?");
+    if (len(parts) <= 1) {
+        return sql;
+    }
+    let out = first(parts);
+    let i = 1;
+    while (i < len(parts)) {
+        out = out + "$" + str(i) + parts[i];
+        i = i + 1;
+    }
+    return out;
+};
+
+// buildSqlFor — ডায়ালেক্ট-উপযোগী SQL (postgres হলে $n placeholder-সহ)।
+let buildSqlFor = fn(qb, dialect) {
+    return placeholder(buildSql(qb), dialect);
 };

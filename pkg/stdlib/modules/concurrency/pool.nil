@@ -1,0 +1,100 @@
+// Nilang Standard Library
+// Module: std/concurrency/pool
+//
+// সীমিত-সমান্তরাল worker pool — চ্যানেল + টাস্কের ওপর।
+//
+// নকশা: size সংখ্যক worker টাস্ক একবারই শুরু হয়; প্রতিটি jobs চ্যানেল
+// থেকে সূচক নিয়ে items[idx]-এ worker চালায় ও [সূচক, ফলাফল] জোড়া জমায়।
+// worker-রা শুধু স্থিতিশীল বাইন্ডিং (চ্যানেল, ফাংশন, অ্যারে) ধরে, তাই
+// লুপ-ভেরিয়েবল ক্যাপচারের কোনো ঝুঁকি নেই। ফলাফল সূচক-ক্রমে সাজিয়ে ফেরত যায়।
+//
+// উদাহরণ:
+//
+//   import "std/concurrency/pool" as pool;
+//   let squares = pool.map([1, 2, 3, 4], fn(x) { return x * x; }, 2);
+//   // squares == [1, 4, 9, 16]
+
+// runWorker — একটি worker-এর মূল লুপ (অভ্যন্তরীণ)।
+let runWorker = fn(jobs, items, worker) {
+    let acc = [];
+    let live = true;
+    while (live) {
+        let j = receive(jobs);
+        if (j == -1) {
+            live = false;
+        } else {
+            acc = push(acc, [j, worker(items[j])]);
+        }
+    }
+    return acc;
+};
+
+// startWorker — একটি worker টাস্ক শুরু করে (অভ্যন্তরীণ)।
+let startWorker = fn(jobs, items, worker) {
+    return task {
+        return runWorker(jobs, items, worker);
+    };
+};
+
+// map — items-এর প্রতিটিতে worker চালিয়ে ফলাফলের অ্যারে দেয় (ক্রম রক্ষা করে)।
+// size <= 0 হলে 1 ধরা হয়।
+let map = fn(items, worker, size) {
+    let n = len(items);
+    if (n == 0) {
+        return [];
+    }
+    let width = size;
+    if (width == null || width < 1) {
+        width = 1;
+    }
+    let jobs = Channel(n + width);
+    let i = 0;
+    while (i < n) {
+        send(jobs, i);
+        i = i + 1;
+    }
+    let s = 0;
+    while (s < width) {
+        send(jobs, -1);
+        s = s + 1;
+    }
+    let workers = [];
+    let w = 0;
+    while (w < width) {
+        workers = push(workers, startWorker(jobs, items, worker));
+        w = w + 1;
+    }
+    let pairs = [];
+    let k = 0;
+    while (k < len(workers)) {
+        let f = workers[k];
+        let acc = await f;
+        let m = 0;
+        while (m < len(acc)) {
+            pairs = push(pairs, acc[m]);
+            m = m + 1;
+        }
+        k = k + 1;
+    }
+    let ordered = [];
+    let t = 0;
+    while (t < n) {
+        let found = null;
+        let p = 0;
+        while (p < len(pairs)) {
+            if (pairs[p][0] == t) {
+                found = pairs[p][1];
+            }
+            p = p + 1;
+        }
+        ordered = push(ordered, found);
+        t = t + 1;
+    }
+    return ordered;
+};
+
+// runEach — প্রতিটি আইটেমে action চালায়, ফলাফল ফেলে দেয়, গণনা দেয়।
+let runEach = fn(items, action, size) {
+    let sink = map(items, action, size);
+    return len(sink);
+};

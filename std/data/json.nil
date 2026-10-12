@@ -1,7 +1,7 @@
 // Nilang Standard Library
 // Module: std/data/json
 //
-// Standard JSON serialization and deserialization via host runtime.
+// JSON এনকোড/ডিকোড — হোস্ট Go serializer-এর ওপর।
 
 let encode = fn(value) {
     return native("std.json.encode", value);

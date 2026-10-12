@@ -6,11 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
-	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/ui"
 )
 
@@ -19,30 +18,42 @@ type declarativeUIApp struct {
 	page      *object.Hash
 }
 
-func loadDeclarativeUI(source string) (*declarativeUIApp, error) {
+// loadDeclarativeUI parses, checks, and evaluates a declarative UI program.
+//
+// entryDir is the directory of the entry file. Relative imports resolve against
+// it, exactly as they do under `nil run`, which pushes the same directory onto
+// the evaluator's script stack. Without this a component that imports a sibling
+// module renders only when the process happens to be started from that
+// directory.
+func loadDeclarativeUI(source, entryDir string) (*declarativeUIApp, error) {
 	// Imported modules are cached process-wide; drop them so a running dev
 	// server recompiles edited files instead of serving a stale copy.
 	evaluator.ClearModuleCache()
-	l := lexer.New(source)
-	p := parser.New(l)
-	program := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		return nil, fmt.Errorf("parse errors: %s", strings.Join(p.Errors(), "; "))
+
+	if entryDir != "" {
+		evaluator.PushScriptDir(entryDir)
+		defer evaluator.PopScriptDir()
 	}
-	checker := typecheck.NewChecker()
-	if !checker.CheckProgram(program) {
-		diagnostics := make([]string, 0, len(checker.Diagnostics))
-		for _, diagnostic := range checker.Diagnostics {
-			diagnostics = append(diagnostics, diagnostic.String())
+
+	res := frontend.Check(source, frontend.Options{})
+	if len(res.ParseErrors) > 0 {
+		return nil, fmt.Errorf("parse errors: %s", strings.Join(res.ParseErrors, "; "))
+	}
+	if !res.OK {
+		msgs := make([]string, 0, len(res.Diagnostics))
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				msgs = append(msgs, d.String())
+			}
 		}
-		return nil, fmt.Errorf("type errors: %s", strings.Join(diagnostics, "; "))
+		return nil, fmt.Errorf("type errors: %s", strings.Join(msgs, "; "))
 	}
 
 	env := object.NewEnvironment()
 	for name, builtin := range evaluator.Builtins {
 		env.Set(name, builtin)
 	}
-	evaluated := evaluator.Eval(program, env)
+	evaluated := evaluator.Eval(res.Program, env)
 	if evalError, ok := evaluated.(*object.Error); ok {
 		return nil, fmt.Errorf("evaluation error: %s", evalError.Inspect())
 	}
@@ -196,7 +207,7 @@ func cmdRender() {
 			return
 		}
 
-		app, err = loadDeclarativeUI(string(code))
+		app, err = loadDeclarativeUI(string(code), filepath.Dir(entryFile))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "❌ %s-এ declarative UI লোড করা যায়নি: %s\n", entryFile, err)
 			return
@@ -336,7 +347,6 @@ func convertHashToPage(hash *object.Hash) *ui.Page {
 		title = "Alap Web App"
 	}
 	page := ui.NewPage(title)
-
 	if navObj := getHashObj(hash, "navigation"); navObj != nil {
 		if navHash, ok := navObj.(*object.Hash); ok {
 			brand := getHashStr(navHash, "brand")
@@ -357,7 +367,11 @@ func convertHashToPage(hash *object.Hash) *ui.Page {
 	if contentArr := getHashArr(hash, "content"); contentArr != nil {
 		for _, elem := range contentArr.Elements {
 			if elemHash, ok := elem.(*object.Hash); ok {
-				comp := convertHashToComponent(elemHash)
+				comp, diag := convertHashToComponent(elemHash)
+				if diag != nil {
+					fmt.Fprintf(os.Stderr, "⚠️  UI diagnostic %s: %s\n", diag.Code, diag.Message)
+					comp = ui.NewCard("Unsupported: "+diag.ComponentType, diag.Message)
+				}
 				if comp != nil {
 					page.Add(comp)
 				}
@@ -372,7 +386,7 @@ func convertHashToPage(hash *object.Hash) *ui.Page {
 	return page
 }
 
-func convertHashToComponent(hash *object.Hash) ui.Component {
+func convertHashToComponent(hash *object.Hash) (ui.Component, *ComponentDiagnostic) {
 	typ := getHashStr(hash, "type")
 	switch typ {
 	case "Dashboard":
@@ -388,7 +402,7 @@ func convertHashToComponent(hash *object.Hash) ui.Component {
 				}
 			}
 		}
-		return dash
+		return dash, nil
 
 	case "Table":
 		var headers []string
@@ -409,7 +423,7 @@ func convertHashToComponent(hash *object.Hash) ui.Component {
 				tbl.AddRow(cells...)
 			}
 		}
-		return tbl
+		return tbl, nil
 
 	case "Form":
 		title := getHashStr(hash, "title")
@@ -424,12 +438,12 @@ func convertHashToComponent(hash *object.Hash) ui.Component {
 				}
 			}
 		}
-		return form
+		return form, nil
 
 	case "Card":
 		title := getHashStr(hash, "title")
 		body := getHashStr(hash, "body")
-		return ui.NewCard(title, body)
+		return ui.NewCard(title, body), nil
 
 	case "Button":
 		button := ui.NewButton(getHashStr(hash, "id"), getHashStr(hash, "label"))
@@ -440,12 +454,41 @@ func convertHashToComponent(hash *object.Hash) ui.Component {
 		button.Variant = getHashStr(hash, "variant")
 		button.Disabled = getHashBool(hash, "disabled")
 		button.Style = getHashStr(hash, "style")
-		return button
+		return button, nil
 
 	default:
-		return nil
+		// U7 catalog passthrough: every registered catalog type renders as a
+		// generic card instead of being silently dropped (U0.4).
+		if typ != "" && isCatalogType(typ) {
+			title := getHashStr(hash, "title")
+			if title == "" {
+				title = typ
+			}
+			body := getHashStr(hash, "label")
+			if body == "" {
+				body = getHashStr(hash, "body")
+			}
+			if body == "" {
+				body = typ + " component"
+			}
+			return ui.NewCard(title, body), nil
+		}
+		return nil, &ComponentDiagnostic{
+			Code:          "UI0140",
+			Message:       fmt.Sprintf("unknown component type %q — no catalog entry; see docs/spec/UI_SPEC.md §7", typ),
+			ComponentType: typ,
+		}
 	}
 }
+
+// ComponentDiagnostic is the U0.4/U1.6 diagnostic for unbound component types.
+type ComponentDiagnostic struct {
+	Code          string
+	Message       string
+	ComponentType string
+}
+
+func (d *ComponentDiagnostic) Error() string { return d.Code + ": " + d.Message }
 
 func getHashStr(hash *object.Hash, key string) string {
 	val := getHashObj(hash, key)

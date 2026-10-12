@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/data"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/routing"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/server"
@@ -31,18 +30,22 @@ func main() {
 	}
 
 	if content, err := os.ReadFile(appNilPath); err == nil {
-		l := lexer.New(string(content))
-		p := parser.New(l)
-		prog := p.ParseProgram()
-		if len(p.Errors()) == 0 {
+		res := frontend.Check(string(content), frontend.Options{
+			Filename:  appNilPath,
+			SourceDir: filepath.Dir(appNilPath),
+		})
+		switch {
+		case len(res.ParseErrors) > 0:
+			fmt.Printf("⚠️ [Parser Warnings]: %v\n", res.ParseErrors)
+		case !res.OK:
+			fmt.Printf("⚠️ [Type Warnings]: %s\n", res.ErrSummary())
+		default:
 			env := object.NewEnvironment()
 			for name, builtin := range evaluator.Builtins {
 				env.Set(name, builtin)
 			}
-			evaluator.Eval(prog, env)
+			evaluator.Eval(res.Program, env)
 			fmt.Println("✅ [Nilang VM] Evaluated app.nil successfully.")
-		} else {
-			fmt.Printf("⚠️ [Parser Warnings]: %v\n", p.Errors())
 		}
 	}
 

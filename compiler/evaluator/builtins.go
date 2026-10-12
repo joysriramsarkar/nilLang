@@ -708,6 +708,39 @@ var Builtins = map[string]*object.Builtin{
 			return FALSE
 		},
 	},
+	"errValue": {
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `errValue`. got=%d, want=1", len(args))
+			}
+			r, ok := args[0].(*object.Result)
+			if !ok {
+				return newError("`errValue` expects a RESULT, got %s", args[0].Type())
+			}
+			if r.IsOk {
+				return newError("`errValue` on Ok returns nothing: the value is %s", r.Value.Inspect())
+			}
+			if r.Error == nil {
+				return NULL
+			}
+			return r.Error
+		},
+	},
+	"unreachable": {
+		Fn: func(args ...object.Object) object.Object {
+			// The message defaults to something that names the construct, so a
+			// `match` that reaches its non-exhaustive case says so even if the
+			// caller's own wording was lost.
+			msg := "reached code that was expected to be unreachable"
+			if len(args) > 0 {
+				msg = args[0].Inspect()
+			}
+			if len(args) > 1 {
+				return newError("wrong number of arguments to `unreachable`. got=%d, want=0..1", len(args))
+			}
+			return newError("%s", msg)
+		},
+	},
 	"isSome": {
 		Fn: func(args ...object.Object) object.Object {
 			if len(args) != 1 {
@@ -725,6 +758,21 @@ var Builtins = map[string]*object.Builtin{
 				return newError("wrong number of arguments to `isNone`. got=%d, want=1", len(args))
 			}
 			if o, ok := args[0].(*object.Optional); ok && !o.HasValue {
+				return TRUE
+			}
+			return FALSE
+		},
+	},
+	"isNull": {
+		// `??` and `?.` lower to a test against null, so both engines need this
+		// name. It is exported for the same reason `isSome` is: a developer
+		// writing `x ?? d` should be able to write `isNull(x)` when they want the
+		// question on its own.
+		Fn: func(args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("wrong number of arguments to `isNull`. got=%d, want=1", len(args))
+			}
+			if object.IsNull(args[0]) {
 				return TRUE
 			}
 			return FALSE

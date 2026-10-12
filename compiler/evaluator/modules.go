@@ -17,9 +17,8 @@ import (
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
 	"github.com/joysriramsarkar/nilLang/pkg/stdlib"
 )
 
@@ -225,11 +224,26 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 		return newError("cannot read module file '%s': %s", resolvedPath, err)
 	}
 
-	l := lexer.New(string(content))
-	p := parser.New(l)
-	prog := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		return newError("parse error in imported file %s: %s", resolvedPath, strings.Join(p.Errors(), "; "))
+	// Modules are type checked as part of the importing program, so a module
+	// load only needs to parse. Routing through the frontend gate keeps
+	// diagnostic codes and spans identical to top level sources.
+	res := frontend.Check(string(content), frontend.Options{
+		Filename:      resolvedPath,
+		SkipTypeCheck: true,
+	})
+	if len(res.ParseErrors) > 0 {
+		return newError("parse error in imported file %s: %s", resolvedPath, strings.Join(res.ParseErrors, "; "))
+	}
+
+	// The module is executed, so it needs the lowered form, exactly as a top
+	// level program does. Evaluating res.Program instead meant a module could not
+	// use `for`, `match`, `struct`, `enum` or `while let` — the evaluator reached
+	// nodes only the lowering pass rewrites and refused them as internal errors,
+	// which is a bug report in a language's own standard library waiting to
+	// happen.
+	prog := res.Lowered
+	if prog == nil {
+		prog = res.Program
 	}
 
 	// Push the imported file's directory so nested imports resolve relative to it
@@ -238,24 +252,32 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 
 	// Evaluate file in sub-environment
 	subEnv := object.NewEnclosedEnvironment(env)
-	res := Eval(prog, subEnv)
-	if isError(res) {
-		return res
+	evalRes := Eval(prog, subEnv)
+	if isError(evalRes) {
+		return evalRes
 	}
 
-	// Collect declared symbols into module hash
-	modPairs := make(map[object.HashKey]object.HashPair)
+	// Collect declared symbols into the module hash.
+	//
+	// Only exported names go in. A file that never uses `export` exports
+	// everything, so an existing module keeps working unchanged; a file that does
+	// use it exports exactly what it marked, and anything else stays inside.
+	exported, _ := ast.ExportedNames(prog)
+	modObj := object.NewHash(len(subEnv.Store()))
 	for k, v := range subEnv.Store() {
-		sk := &object.String{Value: k}
-		modPairs[sk.HashKey()] = object.HashPair{Key: sk, Value: v}
+		if !exported[k] {
+			continue
+		}
+		modObj.SetPair(&object.String{Value: k}, v)
 	}
-	if resHash, isHash := res.(*object.Hash); isHash {
-		for k, v := range resHash.Pairs {
-			modPairs[k] = v
+	if resHash, isHash := evalRes.(*object.Hash); isHash {
+		for _, pair := range resHash.OrderedPairs() {
+			if key, isString := pair.Key.(*object.String); isString && !exported[key.Value] {
+				continue
+			}
+			modObj.SetPair(pair.Key, pair.Value)
 		}
 	}
-
-	modObj := &object.Hash{Pairs: modPairs}
 
 	moduleCacheMu.Lock()
 	moduleCache[canonicalPath] = modObj
@@ -298,17 +320,25 @@ func evalStdlibImport(node *ast.ImportStatement, importPath string, env *object.
 		return newError("failed to read standard library module %q: %s", importPath, err)
 	}
 
-	l := lexer.New(content)
-	p := parser.New(l)
-	prog := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		return newError("parse error in standard library module %q: %s", importPath, strings.Join(p.Errors(), "; "))
+	res := frontend.Check(content, frontend.Options{
+		Filename:      importPath,
+		SkipTypeCheck: true,
+	})
+	if len(res.ParseErrors) > 0 {
+		return newError("parse error in standard library module %q: %s", importPath, strings.Join(res.ParseErrors, "; "))
+	}
+
+	// Lowered for the same reason a file module is: the stdlib is executed, so it
+	// runs on the same nodes every other executed program runs on.
+	prog := res.Lowered
+	if prog == nil {
+		prog = res.Program
 	}
 
 	subEnv := object.NewEnclosedEnvironment(env)
-	res := Eval(prog, subEnv)
-	if isError(res) {
-		return res
+	evalRes := Eval(prog, subEnv)
+	if isError(evalRes) {
+		return evalRes
 	}
 
 	modPairs := make(map[object.HashKey]object.HashPair)
@@ -316,7 +346,7 @@ func evalStdlibImport(node *ast.ImportStatement, importPath string, env *object.
 		sk := &object.String{Value: k}
 		modPairs[sk.HashKey()] = object.HashPair{Key: sk, Value: v}
 	}
-	if resHash, isHash := res.(*object.Hash); isHash {
+	if resHash, isHash := evalRes.(*object.Hash); isHash {
 		for k, v := range resHash.Pairs {
 			modPairs[k] = v
 		}
@@ -331,20 +361,40 @@ func evalStdlibImport(node *ast.ImportStatement, importPath string, env *object.
 	return bindModuleToEnv(node, modObj, importPath, env)
 }
 
+// bindModuleToEnv binds a module's exported names into the importing scope.
+//
+// A name the module does not export is an error rather than a silent null. The
+// old behaviour bound nothing at all and let the program fail later, at whatever
+// line happened to read it — which for a name that was merely private pointed at
+// the wrong mistake entirely. The distinction a developer needs is "this module
+// does not have that", not "this module has that and it is null".
 func bindModuleToEnv(node *ast.ImportStatement, modObj *object.Hash, importPath string, env *object.Environment) object.Object {
 	if node.Alias != nil {
 		env.Set(node.Alias.Value, modObj)
-	} else if len(node.Names) > 0 {
-		for _, ident := range node.Names {
-			k := &object.String{Value: ident.Value}
-			if pair, exists := modObj.Pairs[k.HashKey()]; exists {
-				env.Set(ident.Value, pair.Value)
-			}
-		}
-	} else {
+		return modObj
+	}
+
+	if len(node.Names) == 0 {
 		baseName := filepath.Base(importPath)
 		baseName = strings.TrimSuffix(baseName, filepath.Ext(baseName))
 		env.Set(baseName, modObj)
+		return modObj
+	}
+
+	var missing []string
+	for _, ident := range node.Names {
+		k := &object.String{Value: ident.Value}
+		pair, exists := modObj.Pairs[k.HashKey()]
+		if !exists {
+			missing = append(missing, ident.Value)
+			continue
+		}
+		env.Set(ident.Value, pair.Value)
+	}
+
+	if len(missing) > 0 {
+		return newError("%s does not export %s; a module only exports what it marks with export",
+			importPath, strings.Join(missing, ", "))
 	}
 
 	return modObj

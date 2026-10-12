@@ -1,0 +1,97 @@
+{
+  "name": "nilang-vscode",
+  "displayName": "Nilang",
+  "description": "Nilang language support: syntax, LSP client and debugging",
+  "version": "0.1.0",
+  "publisher": "nilang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages", "Debuggers"],
+  "activationEvents": [
+    "onLanguage:nilang"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "nilang",
+        "aliases": ["Nilang", "nilang"],
+        "extensions": [".nil"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nilang",
+        "scopeName": "source.nil",
+        "path": "./syntaxes/nilang.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Nilang",
+      "properties": {
+        "nilang.server.path": {
+          "type": "string",
+          "default": "nil",
+          "description": "Path to the `nil` binary (provides the LSP server)."
+        },
+        "nilang.server.args": {
+          "type": "array",
+          "default": ["lsp"],
+          "description": "Arguments to start the language server."
+        },
+        "nilang.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off"
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "nilang",
+        "label": "Nilang Debug",
+        "languages": ["nilang"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "The .nil file to debug."
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "nilang",
+            "request": "launch",
+            "name": "Debug current file",
+            "program": "${file}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Nilang: Launch",
+            "body": {
+              "type": "nilang",
+              "request": "launch",
+              "name": "Debug ${file}",
+              "program": "^\"\\${file}\""
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "lint": "node --check extension.js"
+  }
+}

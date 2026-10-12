@@ -1,0 +1,121 @@
+// Nilang Standard Library
+// Module: std/text/bn
+//
+// বাংলা লেখা-সহায়ক — অঙ্ক রূপান্তর, স্বাভাবিকীকরণ ও বঙ্গাব্দ।
+//
+// উদাহরণ:
+//
+//   import "std/text/bn" as bn;
+//   bn.toBnDigits("2026");     // "২০২৬"
+//   bn.toLatinDigits("২০২৬");  // "2026"
+//   bn.banglaYear(2026, 10, 12); // 1433 (অক্টোবর -> ১৪৩৩)
+
+// toBnDigits — লাতিন অঙ্ক 0-9 কে বাংলা ০-৯-এ বদলায়।
+let toBnDigits = fn(text) {
+    let s = str(text);
+    s = replace(s, "0", "০");
+    s = replace(s, "1", "১");
+    s = replace(s, "2", "২");
+    s = replace(s, "3", "৩");
+    s = replace(s, "4", "৪");
+    s = replace(s, "5", "৫");
+    s = replace(s, "6", "৬");
+    s = replace(s, "7", "৭");
+    s = replace(s, "8", "৮");
+    s = replace(s, "9", "৯");
+    return s;
+};
+
+// toLatinDigits — বাংলা অঙ্ককে লাতিনে ফেরত আনে।
+let toLatinDigits = fn(text) {
+    let s = str(text);
+    s = replace(s, "০", "0");
+    s = replace(s, "১", "1");
+    s = replace(s, "২", "2");
+    s = replace(s, "৩", "3");
+    s = replace(s, "৪", "4");
+    s = replace(s, "৫", "5");
+    s = replace(s, "৬", "6");
+    s = replace(s, "৭", "7");
+    s = replace(s, "৮", "8");
+    s = replace(s, "৯", "9");
+    return s;
+};
+
+// hasBnDigits — বাংলা অঙ্ক আছে কি না।
+let hasBnDigits = fn(text) {
+    let s = str(text);
+    let digits = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
+    let i = 0;
+    while (i < len(digits)) {
+        if (contains(s, digits[i])) {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+};
+
+// normalizeSpaces — বাড়তি ফাঁকা একটিতে নামায় ও দুই পাশ ছাঁটে।
+let normalizeSpaces = fn(text) {
+    let s = str(text);
+    let guard = 0;
+    while (contains(s, "  ")) {
+        s = replace(s, "  ", " ");
+        guard = guard + 1;
+        if (guard > 1000) {
+            return trim(s);
+        }
+    }
+    return trim(s);
+};
+
+// banglaYear — গ্রেগরীয় তারিখ থেকে বঙ্গাব্দ সন।
+// পহেলা বৈশাখ (১৪ এপ্রিল) থেকে নতুন বছর: এপ্রিলের ১৪-র আগে হলে -594, পরে -593।
+let banglaYear = fn(gyear, gmonth, gday) {
+    if (gmonth > 4) {
+        return gyear - 593;
+    }
+    if (gmonth < 4) {
+        return gyear - 594;
+    }
+    if (gday >= 14) {
+        return gyear - 593;
+    }
+    return gyear - 594;
+};
+
+// banglaYearText — বঙ্গাব্দ বাংলায় অঙ্কে, "বঙ্গাব্দ" সহ।
+// উদাহরণ: banglaYearText(2026, 10, 12) == "১৪৩৩ বঙ্গাব্দ"
+let banglaYearText = fn(gyear, gmonth, gday) {
+    return toBnDigits(banglaYear(gyear, gmonth, gday)) + " বঙ্গাব্দ";
+};
+
+// monthNameBn — গ্রেগরীয় মাসের বাংলা নাম।
+let monthNameBn = fn(month) {
+    let names = ["", "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
+    if (month < 1 || month > 12) {
+        return "";
+    }
+    return names[month];
+};
+
+// seasonNameBn — বাংলা ঋতুর নাম (মাস থেকে মোটামুটি)।
+let seasonNameBn = fn(month) {
+    if (month == 4 || month == 5) {
+        return "গ্রীষ্ম";
+    }
+    if (month == 6 || month == 7) {
+        return "বর্ষা";
+    }
+    if (month == 8 || month == 9) {
+        return "শরৎ";
+    }
+    if (month == 10 || month == 11) {
+        return "হেমন্ত";
+    }
+    if (month == 12 || month == 1) {
+        return "শীত";
+    }
+    return "বসন্ত";
+};

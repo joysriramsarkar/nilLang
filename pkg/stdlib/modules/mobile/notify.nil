@@ -1,0 +1,19 @@
+// Nilang Standard Library
+// Module: std/mobile/notify
+//
+// নোটিফিকেশন — হোস্টে সারি-ভুক্ত হয় (ডেস্কটপে স্টাব-সারি)।
+
+// send — এখনই পাঠানোর জন্য সারিতে দেয়, {"queued": true, "message": ...}।
+let send = fn(message) {
+    return native("std.mobile.notify", message);
+};
+
+// schedule — বিলম্বসহ নির্ধারণ করে (স্টাবে নির্ধারণ-বিবরণ ফেরত যায়)।
+let schedule = fn(message, delaySeconds) {
+    let receipt = send(message);
+    return {
+        "queued": receipt["queued"],
+        "message": receipt["message"],
+        "delaySeconds": delaySeconds
+    };
+};

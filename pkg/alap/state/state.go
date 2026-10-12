@@ -232,8 +232,11 @@ func (c *Computed[T]) Watch(fn func(newVal T)) {
 
 // Effect registers an automatic side-effect
 type Effect struct {
-	action func()
-	stop   chan struct{}
+	action   func()
+	stop     chan struct{}
+	once     sync.Once
+	mu       sync.Mutex
+	disposed bool
 }
 
 // NewEffect runs an action whenever dependencies trigger
@@ -244,6 +247,35 @@ func NewEffect(action func()) *Effect {
 	}
 	action() // Run once immediately
 	return e
+}
+
+// Dispose tears the effect down exactly once (U2.3). Late or duplicate
+// Dispose calls are safe. Rerun/trigger paths must select on e.stop.
+func (e *Effect) Dispose() {
+	e.once.Do(func() {
+		e.mu.Lock()
+		e.disposed = true
+		e.mu.Unlock()
+		close(e.stop)
+	})
+}
+
+// Stopped reports whether Dispose has been called.
+func (e *Effect) Stopped() bool {
+	select {
+	case <-e.stop:
+		return true
+	default:
+		return false
+	}
+}
+
+// RunIfLive runs action unless the effect was disposed.
+func (e *Effect) RunIfLive() {
+	if e.Stopped() {
+		return
+	}
+	e.action()
 }
 
 // ─── VIRTUAL DOM DIFF PATCH ─────────────────────────────────────────────────

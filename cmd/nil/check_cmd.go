@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/pkg/alap/ai"
 	"github.com/joysriramsarkar/nilLang/pkg/config"
 	"github.com/joysriramsarkar/nilLang/pkg/oracle"
@@ -16,8 +16,16 @@ import (
 
 func cmdCheck() {
 	targetPath := "."
-	if len(os.Args) >= 3 {
-		targetPath = os.Args[2]
+	ciMode := false
+	for _, arg := range os.Args[2:] {
+		switch arg {
+		case "--ci", "--strict", "-ci":
+			ciMode = true
+		default:
+			if len(arg) > 0 && arg[0] != '-' && targetPath == "." {
+				targetPath = arg
+			}
+		}
 	}
 
 	fmt.Println("🛡️  NilLang & Alap Architectural Verification (docs/spec/ARCHITECTURE.md)")
@@ -112,16 +120,38 @@ func cmdCheck() {
 			continue
 		}
 
-		l := lexer.New(string(codeBytes))
-		p := parser.New(l)
-		program := p.ParseProgram()
-
-		if len(p.Errors()) > 0 {
-			for _, parseErr := range p.Errors() {
-				totalErrors = append(totalErrors, fmt.Sprintf("%s: সিনট্যাক্স এরর: %s", file, parseErr))
+		res := frontend.Check(string(codeBytes), frontend.Options{
+			Filename:  file,
+			SourceDir: filepath.Dir(file),
+		})
+		if len(res.ParseErrors) > 0 {
+			for _, d := range res.Diagnostics {
+				totalErrors = append(totalErrors, fmt.Sprintf("%s: সিনট্যাক্স এরর: %s", file, d.String()))
 			}
 			continue
 		}
+		if !res.OK {
+			for _, d := range res.Diagnostics {
+				switch d.Severity {
+				case diagnostics.SeverityError:
+					totalErrors = append(totalErrors, fmt.Sprintf("%s: টাইপ ত্রুটি: %s", file, d.String()))
+				case diagnostics.SeverityWarning:
+					totalWarnings = append(totalWarnings, fmt.Sprintf("%s: %s", file, d.String()))
+				}
+			}
+			continue
+		}
+		// Warnings are collected whether or not the file also failed. They used to
+		// be gathered only inside the `if !res.OK` branch, so a file whose only
+		// remark was a warning reported nothing at all — the one case where a
+		// warning is most worth reading is a file that compiles.
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityWarning {
+				totalWarnings = append(totalWarnings, fmt.Sprintf("%s: %s", file, d.String()))
+			}
+		}
+
+		program := res.Program
 
 		// Walk AST and inspect for AI hallucinations / invalid member calls
 		walkAST(program, func(node ast.Node) {
@@ -166,6 +196,11 @@ func cmdCheck() {
 	if len(totalWarnings) > 0 {
 		for _, w := range totalWarnings {
 			fmt.Printf("   ⚠️ %s\n", w)
+		}
+		// L9.4: --ci turns warnings into a failure for pipelines.
+		if ciMode {
+			fmt.Printf("\n❌ CI মোড: %d টি warning থাকায় ব্যর্থ।\n", len(totalWarnings))
+			os.Exit(1)
 		}
 	}
 

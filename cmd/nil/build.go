@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
+	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/hir"
-	"github.com/joysriramsarkar/nilLang/compiler/lexer"
+	"github.com/joysriramsarkar/nilLang/compiler/llvm"
 	"github.com/joysriramsarkar/nilLang/compiler/mir"
-	"github.com/joysriramsarkar/nilLang/compiler/parser"
-	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
+	"github.com/joysriramsarkar/nilLang/compiler/toolchain"
 	"github.com/joysriramsarkar/nilLang/compiler/wasm"
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	"github.com/joysriramsarkar/nilLang/pkg/compiler"
@@ -90,18 +91,259 @@ var allPlatforms = []PlatformTarget{
 	},
 }
 
+// printTargets lists every target the compiler can emit for.
+//
+// The list is sorted by the name a developer types, so it reads the same way every
+// time — a target list whose order came from a Go map is a list nobody can find
+// anything in twice.
+func printTargets() {
+	fmt.Println("Nilang build targets")
+	fmt.Println()
+	fmt.Printf("  %-22s %-10s %-10s %s\n", "TARGET", "OS", "ARCH", "TRIPLE")
+	fmt.Printf("  %s\n", strings.Repeat("-", 74))
+
+	for _, t := range llvm.AllTargets() {
+		marker := ""
+		if t.IsNative() {
+			marker = "  (host)"
+		}
+		fmt.Printf("  %-22s %-10s %-10s %s%s\n", t.ID, t.OS, t.Arch, t.Triple, marker)
+	}
+
+	fmt.Println()
+	fmt.Println("Choose one with:  nil build --target <name>")
+	fmt.Println("Cross-compilation needs an LLVM toolchain; see --print-toolchain.")
+}
+
+// printToolchain reports which external tools the compiler found.
+//
+// It is the command to run *after* installing LLVM, and the command to run before
+// filing a bug about a build that will not start. A missing tool is named here
+// with the path that was searched, because "not found" without the path sends the
+// reader looking in the wrong directory.
+func printToolchain() {
+	fmt.Println("Nilang LLVM toolchain")
+	fmt.Println()
+
+	tc := toolchain.DiscoverToolchain(llvm.TargetHost)
+	fmt.Printf("  host target:  %s (%s)\n", llvm.TargetHost.ID, llvm.TargetHost.Triple)
+	fmt.Println()
+
+	// The columns are the *capabilities*, not a checkmark.
+	//
+	// A single ✔ next to a tool says "this program exists" and the reader takes it
+	// to mean "this program can build my project". Those are different questions
+	// with different answers on a real machine: an LLVM install on Windows ships a
+	// clang that reads IR and cannot compile C or link, and a report that said ✔
+	// once would send the user to find the problem somewhere other than where it
+	// is.
+	fmt.Printf("  %-10s  %-12s  %-6s  %-8s\n", "tool", "reads IR", "comp C", "links")
+	for _, report := range tc.Capabilities() {
+		if !report.Installed {
+			// A row of dashes says "we looked and did not find it" while looking
+			// like a row of answers. One word in the tool column says the same
+			// thing and cannot be misread.
+			fmt.Printf("  %-10s  not found\n", report.Tool)
+			continue
+		}
+		fmt.Printf("  %-10s  %-12s  %-6s  %-8s\n",
+			report.Tool, mark(report.ReadsIR), mark(report.CompilesC), mark(report.Links))
+	}
+
+	fmt.Println()
+	fmt.Println("  paths:")
+	for _, report := range tc.Capabilities() {
+		if !report.Installed {
+			continue
+		}
+		fmt.Printf("    %-10s %s\n", report.Tool, report.Path)
+		// The version goes on its own line because clang's is longer than the
+		// table is wide, and truncating it would leave out the part that
+		// distinguishes one install from another.
+		if report.Version != "" {
+			fmt.Printf("                 %s\n", report.Version)
+		}
+	}
+
+	fmt.Println()
+	if !tc.Ready() {
+		fmt.Print(tc.Describe())
+		return
+	}
+	if !tc.LinkReady() {
+		fmt.Print(tc.LinkAdvice())
+		return
+	}
+	fmt.Println("Ready to build native binaries.")
+	fmt.Println("Emitting LLVM IR needs no toolchain at all; see: nil build --emit-llvm")
+}
+
+// mark renders a capability as something a reader can scan down a column.
+//
+// Yes and no rather than ✔ and ✘: the report is read by people whose terminal
+// renders the second pair as monochrome boxes, and a column of boxes answers
+// nothing.
+func mark(yes bool) string {
+	if yes {
+		return "yes"
+	}
+	return "no"
+}
+
+// requireToolchain returns the toolchain or exits with the message explaining how
+// to fix what is missing.
+//
+// It exits rather than returning an error because every caller would otherwise
+// have to decide whether to exit, print, or continue — and a build that continued
+// without a compiler produces a confusing failure much further on instead of a
+// clear one here.
+func requireToolchain(target llvm.Target) toolchain.Toolchain {
+	tc := toolchain.DiscoverToolchain(target)
+	if !tc.Ready() {
+		fmt.Fprint(os.Stderr, tc.Describe())
+		os.Exit(1)
+	}
+	return tc
+}
+
+// emitLLVM compiles a source file to textual LLVM IR and prints it.
+//
+// It needs no toolchain. Emitting IR is what this compiler does; turning it into a
+// binary is what somebody else's program does. Separating them means the IR can be
+// read, diffed, and checked on a machine with no LLVM installed at all — which is
+// also the only way to review what the backend produces without trusting it.
+func emitLLVM(flag string) string {
+	args := os.Args[2:]
+	var file, outPath string
+
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--emit-llvm=") {
+			outPath = strings.TrimPrefix(arg, "--emit-llvm=")
+			continue
+		}
+		if arg == flag || strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if file == "" {
+			file = arg
+		}
+	}
+	if file == "" {
+		fmt.Fprintln(os.Stderr, "❌ --emit-llvm needs a source file")
+		os.Exit(1)
+	}
+	if outPath == "" {
+		fmt.Fprintln(os.Stderr, "❌ --emit-llvm=<file.ll> needs an output path")
+		os.Exit(1)
+	}
+
+	source, err := os.ReadFile(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ ফাইল পড়তে সমস্যা: %s\n", err)
+		os.Exit(1)
+	}
+
+	res := frontend.Check(string(source), frontend.Options{
+		Filename:  file,
+		SourceDir: filepath.Dir(file),
+	})
+	if len(res.ParseErrors) > 0 {
+		fmt.Fprintf(os.Stderr, "❌ সিনট্যাক্স ত্রুটি:\n%s\n", strings.Join(res.ParseErrors, "\n"))
+		os.Exit(1)
+	}
+	if !res.OK {
+		fmt.Fprintln(os.Stderr, "❌ টাইপ ত্রুটি:")
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				fmt.Fprintf(os.Stderr, "   %s\n", d.String())
+			}
+		}
+		os.Exit(1)
+	}
+
+	optimized := hir.NewOptimizer().Optimize(hir.NewLowerer().LowerProgram(res.Lowered))
+	mirProg := mir.NewLowerer().LowerHIR(optimized)
+	mir.NewOptimizer().OptimizeProgram(mirProg)
+
+	text, err := llvm.NewEmitter(llvm.TargetHost).Emit(mirProg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ LLVM IR তৈরিতে সমস্যা: %s\n", err)
+		os.Exit(1)
+	}
+
+	if outPath == "" {
+		fmt.Print(text)
+		return ""
+	}
+	// Written as bytes rather than printed and redirected: a shell redirect on
+	// Windows writes UTF-16 with a byte-order mark, and LLVM rejects a module
+	// that starts with one with an encoding error that says nothing about the IR.
+	if err := os.WriteFile(outPath, []byte(text), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ লেখা যায়নি: %s\n", err)
+		os.Exit(1)
+	}
+	return outPath
+}
+
 func cmdBuild() {
 	startTime := time.Now()
+
+	// `--print-targets` answers "what can this build for?" without building
+	// anything.
+	//
+	// It is deliberately a flag on `build` rather than its own command: a target
+	// list is a property of the compiler, not a separate tool, and a person who
+	// types `nil build` and asks what it can do should not have to guess a second
+	// word for the answer.
+	for _, arg := range os.Args[2:] {
+		switch {
+		case arg == "--print-targets":
+			printTargets()
+			return
+		case arg == "--print-toolchain":
+			printToolchain()
+			return
+		case arg == "--emit-llvm", strings.HasPrefix(arg, "--emit-llvm="):
+			out := emitLLVM(arg)
+			if out != "" {
+				fmt.Printf("wrote %s\n", out)
+			}
+			return
+		}
+	}
 
 	// Parse command-line target flags
 	var requestedTargets []string
 	allOS := false
+	sizeFlag := false
 
 	// Find project directory (current directory by default, or overridden by arg)
 	projectDir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ কারেন্ট ডিরেক্টরি পেতে সমস্যা: %s\n", err)
 		os.Exit(1)
+	}
+
+	// `nil build --aot` produces a native executable rather than the default
+	// artefacts. It is checked here rather than further down because it changes what
+	// the rest of the command is *for*: a native build is one file, and the
+	// per-target bundle path below would produce a directory of things that are not
+	// what the flag asked for.
+	//
+	// The project directory is read from the command line rather than from
+	// `os.Getwd`, because the argument loop that would normally resolve `--dir` has
+	// not run yet — and a build that ignored `--dir` would succeed in the wrong
+	// directory, which is worse than one that failed.
+	if hasAOTFlag(os.Args[2:]) {
+		directory := projectDirFrom(os.Args[2:])
+		if directory == "" {
+			directory = projectDir
+		}
+		out := buildAOT(directory, aotOutputPath(os.Args[2:]), keepsModule(os.Args[2:]))
+		if out == "" {
+			os.Exit(1)
+		}
+		return
 	}
 
 	for i := 2; i < len(os.Args); i++ {
@@ -121,6 +363,8 @@ func cmdBuild() {
 		} else if (arg == "--target" || arg == "-target") && i+1 < len(os.Args) {
 			requestedTargets = append(requestedTargets, os.Args[i+1])
 			i++
+		} else if arg == "--size" {
+			sizeFlag = true
 		} else if !strings.HasPrefix(arg, "-") {
 			if fi, statErr := os.Stat(rawArg); statErr == nil && fi.IsDir() {
 				candidate := filepath.Join(rawArg, "nil.json")
@@ -315,6 +559,15 @@ func cmdBuild() {
 					Type: "Android APK",
 				})
 				fmt.Printf("   ✅ %-30s -> %s (%s) [%s]\n", plat.DisplayName, apkName, formatSize(res.Size), signLabel)
+				// L8.3: `nil build android --size` prints the section
+				// breakdown against the <10MB budget.
+				if sizeFlag {
+					if rep, repErr := android.ReportSize(res.Path); repErr == nil {
+						fmt.Printf("\n%s\n", rep.String())
+					} else {
+						fmt.Fprintf(os.Stderr, "   ⚠️ size report ব্যর্থ: %v\n", repErr)
+					}
+				}
 				continue
 			}
 
@@ -520,22 +773,25 @@ func buildWASM(cfg *config.ProjectConfig, projectDir string) {
 		os.Exit(1)
 	}
 
-	l := lexer.New(string(srcBytes))
-	p := parser.New(l)
-	prog := p.ParseProgram()
-	if len(p.Errors()) > 0 {
-		fmt.Fprintf(os.Stderr, "❌ সিনট্যাক্স এরর:\n%s\n", strings.Join(p.Errors(), "\n"))
+	res := frontend.Check(string(srcBytes), frontend.Options{
+		Filename:  entryPath,
+		SourceDir: filepath.Dir(entryPath),
+	})
+	if len(res.ParseErrors) > 0 {
+		fmt.Fprintf(os.Stderr, "❌ সিনট্যাক্স এরর:\n%s\n", strings.Join(res.ParseErrors, "\n"))
 		os.Exit(1)
 	}
-
-	checker := typecheck.NewChecker()
-	if !checker.CheckProgram(prog) {
+	if !res.OK {
 		fmt.Fprintln(os.Stderr, "❌ টাইপ ত্রুটি:")
-		for _, diagnostic := range checker.Diagnostics {
-			fmt.Fprintf(os.Stderr, "   %s\n", diagnostic.String())
+		for _, d := range res.Diagnostics {
+			if d.Severity == diagnostics.SeverityError {
+				fmt.Fprintf(os.Stderr, "   %s\n", d.String())
+			}
 		}
 		os.Exit(1)
 	}
+	printWarnings(res.Diagnostics)
+	prog := backendProgram(res)
 
 	lowerer := hir.NewLowerer()
 	hProg := lowerer.LowerProgram(prog)
@@ -561,11 +817,16 @@ func buildWASM(cfg *config.ProjectConfig, projectDir string) {
 
 	_ = os.WriteFile(wasmFile, mod.Binary, 0644)
 	_ = os.WriteFile(watFile, []byte(mod.WAT), 0644)
+	_ = os.WriteFile(filepath.Join(outDir, "nil_runtime.js"), []byte(wasm.NilRuntimeJS()), 0644)
 	htmlContent := wasm.GenerateBrowserHarness(cfg.Name, "app.wasm")
 	_ = os.WriteFile(htmlFile, []byte(htmlContent), 0644)
 
-	fmt.Println("✅ WebAssembly বিল্ড সফল হয়েছে:")
+	// WASM stays labelled experimental per ADR-0004: the backend runs real
+	// programs now, but aggregates have no linear-memory ABI yet and host
+	// builtins beyond puts are stubs.
+	fmt.Println("✅ WebAssembly বিল্ড সফল হয়েছে (experimental — ADR-0004):")
 	fmt.Printf("  • WASM বাইনারি: %s (%d bytes)\n", wasmFile, len(mod.Binary))
 	fmt.Printf("  • WAT টেক্সট:   %s\n", watFile)
+	fmt.Printf("  • রানটাইম ব্রিজ: %s\n", filepath.Join(outDir, "nil_runtime.js"))
 	fmt.Printf("  • HTML প্রিভিউ:  %s\n", htmlFile)
 }

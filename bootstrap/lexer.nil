@@ -137,7 +137,10 @@ let nilLex = fn(source) {
                                 let tokens = push(tokens, nilLexerToken(tokenType, literal, tokenLine, tokenColumn));
                             } else {
                                 let two = ch + peek();
-                                if (two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" || two == "+=" || two == "-=") {
+                                // `->` and `=>` are lexed as one token each, so that a
+                                // return type and a match arm separator cannot be
+                                // misread as a minus, an equals, and a comparison.
+                                if (two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" || two == "+=" || two == "-=" || two == "->" || two == "=>" ) {
                                     advance();
                                     advance();
                                     let tokens = push(tokens, nilLexerToken(two, two, tokenLine, tokenColumn));

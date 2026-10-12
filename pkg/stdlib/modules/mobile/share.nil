@@ -1,0 +1,23 @@
+// Nilang Standard Library
+// Module: std/mobile/share
+//
+// শেয়ার-শিট — লেখা/লিংক ভাগাভাগি (স্টাবে শেয়ার-বিবরণ ফেরত যায়)।
+
+// text — লেখা ভাগ করে, শেয়ার-বিবরণ দেয়।
+let text = fn(content) {
+    return {
+        "kind": "text",
+        "content": content,
+        "shared": true
+    };
+};
+
+// link — URL ভাগ করে।
+let link = fn(url, title) {
+    return {
+        "kind": "link",
+        "url": url,
+        "title": title,
+        "shared": true
+    };
+};

@@ -1,16 +1,50 @@
 // Nilang Standard Library
 // Module: std/text/encoding
 //
-// UTF-8 is the canonical source/string representation in Nilang.
+// UTF-8-ই নীলাং-এর প্রামাণিক উপস্থাপন। এই মডিউলে রূপান্তর-সহায়ক।
 
+// utf8 — মানকে UTF-8 লেখায় রাখে (ইতিমধ্যে লেখা হলে অপরিবর্তিত)।
 let utf8 = fn(value) {
     return value;
 };
 
+// text — যেকোনো মানকে লেখায় রূপান্তর করে।
 let text = fn(value) {
     return str(value);
 };
 
+// byteLength — বাইট-দৈর্ঘ্য।
+// দ্রষ্টব্য: len() রুন গোনে; UTF-8-এ বাংলা অক্ষর ৩ বাইট করে।
+// ASCII-এর জন্য byteLength == len।
 let byteLength = fn(value) {
     return len(value);
+};
+
+// lines — লেখাকে লাইনে ভাগ করে।
+let lines = fn(value) {
+    return split(value, "\n");
+};
+
+// words — ফাঁকা দিয়ে শব্দে ভাগ করে (খালি টুকরো বাদে)।
+let words = fn(value) {
+    let raw = split(value, " ");
+    let out = [];
+    let i = 0;
+    while (i < len(raw)) {
+        if (raw[i] != "") {
+            out = push(out, raw[i]);
+        }
+        i = i + 1;
+    }
+    return out;
+};
+
+// wordCount — শব্দ-সংখ্যা।
+let wordCount = fn(value) {
+    return len(words(value));
+};
+
+// joinLines — লাইনের অ্যারে "\n" দিয়ে জোড়ে।
+let joinLines = fn(lines) {
+    return join(lines, "\n");
 };

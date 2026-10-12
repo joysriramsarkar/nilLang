@@ -1,23 +1,70 @@
 // Nilang Standard Library
 // Module: std/time/duration
+//
+// সময়কাল — সেকেন্ড-ভিত্তিক পূর্ণসংখ্যা গণিত।
 
+// একক (সেকেন্ডে)।
 const SECOND = 1;
 const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 86400;
+const WEEK = 604800;
 
+// seconds — সেকেন্ড-সংখ্যাকে সময়কালে রাখে।
 let seconds = fn(value) {
     return value;
 };
 
+// minutes — মিনিট থেকে সেকেন্ডে।
 let minutes = fn(value) {
     return value * MINUTE;
 };
 
+// hours — ঘণ্টা থেকে সেকেন্ডে।
 let hours = fn(value) {
     return value * HOUR;
 };
 
+// days — দিন থেকে সেকেন্ডে।
 let days = fn(value) {
     return value * DAY;
+};
+
+// weeks — সপ্তাহ থেকে সেকেন্ডে।
+let weeks = fn(value) {
+    return value * WEEK;
+};
+
+// millis — মিলিসেকেন্ড থেকে সেকেন্ডে (পূর্ণসংখ্যা ভাগ)।
+let millis = fn(value) {
+    return value / 1000;
+};
+
+// toMinutes — সেকেন্ড থেকে মিনিটে।
+let toMinutes = fn(d) {
+    return d / MINUTE;
+};
+
+// toHours — সেকেন্ড থেকে ঘণ্টায়।
+let toHours = fn(d) {
+    return d / HOUR;
+};
+
+// toDays — সেকেন্ড থেকে দিনে।
+let toDays = fn(d) {
+    return d / DAY;
+};
+
+// formatBn — "৩ দিন ৪ ঘণ্টা" আকারে বাংলা বিবরণ।
+let formatBn = fn(d) {
+    if (d < 60) {
+        return str(d) + " সেকেন্ড";
+    }
+    if (d < 3600) {
+        return str(d / 60) + " মিনিট";
+    }
+    if (d < 86400) {
+        return str(d / 3600) + " ঘণ্টা";
+    }
+    return str(d / 86400) + " দিন";
 };

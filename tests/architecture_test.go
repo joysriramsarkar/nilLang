@@ -132,6 +132,7 @@ func TestCoreFreezeContract(t *testing.T) {
 		"MEMORY_MODEL.md",
 		"MODULE_SYSTEM.md",
 		"SEMANTICS.md",
+		"SYNTACTIC_DIAGNOSTICS.md",
 		"TYPE_SYSTEM.md",
 	}
 	for _, specification := range requiredSpecifications {

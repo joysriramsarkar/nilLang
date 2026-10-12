@@ -140,11 +140,19 @@ func DetectBestBackend() BackendType {
 }
 
 func isVulkanAvailable() bool {
-	// In production: check for vulkan library
-	return true
+	// U4.6: explicit, overridable detection instead of a hardcoded true.
+	// Real driver probing needs cgo/vulkan headers; until then the result is
+	// deterministic and forced via env for tests/devices.
+	if v, ok := lookupBackendEnv("NIL_VULKAN"); ok {
+		return v
+	}
+	return false
 }
 
 func isMetalAvailable() bool {
-	// In production: check for Metal framework
+	// U4.6: same policy as Vulkan (was a silent false).
+	if v, ok := lookupBackendEnv("NIL_METAL"); ok {
+		return v
+	}
 	return false
 }

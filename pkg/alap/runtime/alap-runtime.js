@@ -1,19 +1,24 @@
 /**
- * Alap Web Enterprise Runtime v1.0
- * Provides client-side hydration, reactive state management, DOM reconciliation,
- * and real-time WebSocket / SSE live event binding.
+ * Alap UI Unified Browser Runtime v2.0 (ADR-0005: single keyed-patch runtime)
+ *
+ * This is the ONLY client runtime served by nil dev (see /alap-runtime.js).
+ * It combines:
+ *  - keyed incremental DOM patching (applyPatches: REPLACE/TEXT/PROPS/
+ *    INSERT_CHILD/REMOVE_CHILD/MOVE), mirroring Go pkg/alap/ui Diff,
+ *  - reactive state store with data-alap-text / data-alap-bind hydration,
+ *  - event delegation that POSTs to /__alap/event and applies PATCH responses.
  */
-(function () {
+
+(function (window, document) {
   'use strict';
 
-  console.log('⚡ [Alap Web] Initializing client-side runtime...');
+  console.log('[Alap UI] Initializing unified keyed-patch runtime v2.0...');
 
-  const initialState = window.__NILANG_INITIAL_STATE__ || {};
-  const listeners = {};
+  var initialState = window.__NILANG_INITIAL_STATE__ || {};
+  var listeners = {};
 
-  // Reactive State Store
-  const state = new Proxy({ ...initialState }, {
-    set(target, prop, value) {
+  var state = new Proxy(Object.assign({}, initialState), {
+    set: function (target, prop, value) {
       target[prop] = value;
       notifyPropertyChange(prop, value);
       return true;
@@ -21,168 +26,197 @@
   });
 
   function notifyPropertyChange(prop, value) {
-    // 1. Update bound text elements: [data-alap-text="prop"]
-    document.querySelectorAll(`[data-alap-text="${prop}"]`).forEach(el => {
+    document.querySelectorAll('[data-alap-text="' + prop + '"]').forEach(function (el) {
       el.textContent = value;
     });
-
-    // 2. Update bound input values: [data-alap-bind="prop"]
-    document.querySelectorAll(`[data-alap-bind="${prop}"]`).forEach(el => {
-      if (el.value !== undefined && el.value !== String(value)) {
-        el.value = value;
-      }
+    document.querySelectorAll('[data-alap-bind="' + prop + '"]').forEach(function (el) {
+      if (el.value !== undefined && el.value !== String(value)) el.value = value;
     });
-
-    // 3. Dispatch to registered event listeners
-    if (listeners[prop]) {
-      listeners[prop].forEach(fn => fn(value));
-    }
+    if (listeners[prop]) listeners[prop].forEach(function (fn) { fn(value); });
   }
 
-  // Event Bus
   function on(eventName, callback) {
-    if (!listeners[eventName]) {
-      listeners[eventName] = [];
-    }
+    if (!listeners[eventName]) listeners[eventName] = [];
     listeners[eventName].push(callback);
   }
 
   function emit(eventName, payload) {
-    if (listeners[eventName]) {
-      listeners[eventName].forEach(fn => fn(payload));
-    }
+    if (listeners[eventName]) listeners[eventName].forEach(function (fn) { fn(payload); });
   }
 
   function syncState(nextState) {
-    Object.keys(state).forEach(key => {
+    Object.keys(state).forEach(function (key) {
       if (!(key in nextState)) delete state[key];
     });
     Object.assign(state, nextState);
   }
 
-  async function dispatchAction(action, payload) {
-    const request = { event: action };
-    if (payload !== undefined) request.payload = payload;
-    const response = await fetch('/__alap/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    });
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(`NilLang event ${action} failed: ${message}`);
+  function resolveNodeByPath(root, path) {
+    var current = root;
+    for (var i = 0; i < path.length; i++) {
+      if (!current || !current.childNodes || current.childNodes.length <= path[i]) return null;
+      current = current.childNodes[path[i]];
     }
-
-    const documentUpdate = new DOMParser().parseFromString(await response.text(), 'text/html');
-    const currentRoot = document.querySelector('[data-alap-root]');
-    const nextRoot = documentUpdate.querySelector('[data-alap-root]');
-    if (!currentRoot || !nextRoot) {
-      throw new Error('NilLang event response did not contain an Alap root');
-    }
-    currentRoot.replaceWith(document.importNode(nextRoot, true));
-
-    const stateElement = documentUpdate.getElementById('__NILANG_STATE__');
-    if (stateElement) syncState(JSON.parse(stateElement.textContent));
-    hydrateDOM();
-    emit('action:' + action, { state });
+    return current;
   }
 
-  // DOM Event Hydration
-  function hydrateDOM() {
-    // Hydrate click handlers
-    document.querySelectorAll('[data-alap-click]').forEach(el => {
-      const action = el.getAttribute('data-alap-click');
-      const payloadData = el.getAttribute('data-alap-payload');
-      el.addEventListener('click', async () => {
-        el.disabled = true;
-        try {
-          const payload = payloadData === null ? undefined : JSON.parse(payloadData);
-          await dispatchAction(action, payload);
-        } catch (error) {
-          el.disabled = false;
-          console.error(error);
+  function createDOMNode(vnode) {
+    if (!vnode) return document.createTextNode('');
+    if (vnode.type === 'TEXT') return document.createTextNode(vnode.text || '');
+    var el = document.createElement(vnode.tag || 'div');
+    if (vnode.id) el.id = vnode.id;
+    if (vnode.key) el.setAttribute('data-key', vnode.key);
+    if (vnode.attrs) {
+      Object.entries(vnode.attrs).forEach(function (kv) {
+        var k = kv[0], v = kv[1];
+        if (k === 'class') el.className = v;
+        else if (k === 'style') el.style.cssText = v;
+        else el.setAttribute(k, v);
+      });
+    }
+    if (vnode.events) {
+      Object.entries(vnode.events).forEach(function (kv) {
+        el.setAttribute('data-alap-' + kv[0], kv[1]);
+      });
+    }
+    if (vnode.children) {
+      for (var i = 0; i < vnode.children.length; i++) el.appendChild(createDOMNode(vnode.children[i]));
+    }
+    return el;
+  }
+
+  function applyPatches(rootElement, patches) {
+    if (!rootElement || !Array.isArray(patches)) return;
+    for (var i = 0; i < patches.length; i++) {
+      var patch = patches[i];
+      var target = null;
+      if (patch.node_id) target = document.getElementById(patch.node_id);
+      if (!target && patch.path) target = resolveNodeByPath(rootElement, patch.path);
+      if (!target) target = rootElement;
+      switch (patch.type) {
+        case 'REPLACE': {
+          var newEl = createDOMNode(patch.vnode);
+          if (target.parentNode) target.parentNode.replaceChild(newEl, target);
+          break;
         }
-      });
-    });
-
-    // Hydrate two-way inputs
-    document.querySelectorAll('[data-alap-bind]').forEach(el => {
-      const prop = el.getAttribute('data-alap-bind');
-      if (state[prop] !== undefined) {
-        el.value = state[prop];
-      }
-      el.addEventListener('input', (e) => {
-        state[prop] = e.target.value;
-      });
-    });
-
-    console.log('✅ [Alap Web] Hydrated DOM nodes with reactive listeners');
-  }
-
-  // Real-time WebSocket connection
-  function connectWebSocket(wsUrl) {
-    const url = wsUrl || (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/live';
-    try {
-      const ws = new WebSocket(url);
-      ws.onopen = () => console.log('📡 [Alap Web] Real-time WebSocket connected');
-      ws.onmessage = (msg) => {
-        try {
-          const data = JSON.parse(msg.data);
-          if (data.type && data.payload) {
-            emit(data.type, data.payload);
-            if (data.type === 'state_update') {
-              Object.assign(state, data.payload);
-            }
+        case 'TEXT':
+          target.textContent = patch.text || '';
+          break;
+        case 'PROPS':
+          if (patch.props && target.nodeType === 1) {
+            Object.entries(patch.props).forEach(function (kv) {
+              if (kv[1] === '') target.removeAttribute(kv[0]);
+              else if (kv[0] === 'class') target.className = kv[1];
+              else if (kv[0] === 'style') target.style.cssText = kv[1];
+              else target.setAttribute(kv[0], kv[1]);
+            });
           }
-        } catch (e) {
-          console.warn('[Alap Web] Non-JSON WS message:', msg.data);
+          break;
+        case 'INSERT_CHILD':
+          target.insertBefore(
+            createDOMNode(patch.vnode),
+            target.childNodes[patch.index] || null
+          );
+          break;
+        case 'REMOVE_CHILD':
+          if (target.childNodes && target.childNodes.length > patch.index) {
+            target.removeChild(target.childNodes[patch.index]);
+          }
+          break;
+        case 'MOVE': {
+          if (target.childNodes && target.childNodes.length > patch.from) {
+            var moved = target.childNodes[patch.from];
+            target.removeChild(moved);
+            target.insertBefore(moved, target.childNodes[patch.to] || null);
+          }
+          break;
         }
-      };
-      ws.onclose = () => {
-        console.log('📡 [Alap Web] WS closed, reconnecting in 3s...');
-        setTimeout(() => connectWebSocket(wsUrl), 3000);
-      };
-      return ws;
-    } catch (err) {
-      console.warn('⚠️ [Alap Web] WS connection failed:', err);
-      return null;
+      }
     }
   }
 
-  // Real-time Server-Sent Events (SSE)
-  function connectSSE(sseUrl) {
-    const url = sseUrl || '/events/live';
-    if (!window.EventSource) return null;
-
-    try {
-      const es = new EventSource(url);
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          emit('sse_message', data);
-        } catch (_) {}
-      };
-      return es;
-    } catch (e) {
-      return null;
+  function applyPatchResponse(payload) {
+    // Server may answer an event with {patches, state} (preferred, ADR-0005)
+    // or with a full HTML document (legacy fallback).
+    if (payload && Array.isArray(payload.patches)) {
+      var root = document.querySelector('[data-alap-root]');
+      applyPatches(root, payload.patches);
+      if (payload.state) syncState(payload.state);
+      hydrateDOM();
+      return true;
     }
+    return false;
   }
 
-  // Public Alap Client API
-  window.__ALAP__ = {
-    state,
-    on,
-    emit,
+  function dispatchAction(action, payload) {
+    var request = { event: action };
+    if (payload !== undefined) request.payload = payload;
+    return fetch('/__alap/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/html' },
+      body: JSON.stringify(request)
+    }).then(function (response) {
+      if (!response.ok) throw new Error('NilLang event ' + action + ' failed: ' + response.status);
+      var contentType = response.headers.get('Content-Type') || '';
+      if (contentType.indexOf('application/json') !== -1) {
+        return response.json().then(function (data) {
+          if (!applyPatchResponse(data)) throw new Error('Unknown patch response');
+          emit('action:' + action, { state: state });
+        });
+      }
+      // Legacy HTML fallback: full-root replace (deprecated path).
+      return response.text().then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var currentRoot = document.querySelector('[data-alap-root]');
+        var nextRoot = doc.querySelector('[data-alap-root]');
+        if (!currentRoot || !nextRoot) throw new Error('Event response missing Alap root');
+        currentRoot.replaceWith(document.importNode(nextRoot, true));
+        var stateElement = doc.getElementById('__NILANG_STATE__');
+        if (stateElement) syncState(JSON.parse(stateElement.textContent));
+        hydrateDOM();
+        emit('action:' + action, { state: state });
+      });
+    });
+  }
+
+  function hydrateDOM() {
+    document.querySelectorAll('[data-alap-click]').forEach(function (el) {
+      if (el.__alapHydrated) return;
+      el.__alapHydrated = true;
+      var action = el.getAttribute('data-alap-click');
+      var payloadData = el.getAttribute('data-alap-payload');
+      el.addEventListener('click', function () {
+        el.disabled = true;
+        var payload = payloadData === null ? undefined : JSON.parse(payloadData);
+        dispatchAction(action, payload).catch(function (err) {
+          el.disabled = false;
+          console.error(err);
+        });
+      });
+    });
+    document.querySelectorAll('[data-alap-bind]').forEach(function (el) {
+      if (el.__alapHydrated) return;
+      el.__alapHydrated = true;
+      var prop = el.getAttribute('data-alap-bind');
+      if (state[prop] !== undefined) el.value = state[prop];
+      el.addEventListener('input', function (e) { state[prop] = e.target.value; });
+    });
+  }
+
+  window.AlapRuntime = {
+    version: '2.0.0',
+    state: state,
+    on: on,
+    emit: emit,
+    syncState: syncState,
+    resolveNodeByPath: resolveNodeByPath,
+    createDOMNode: createDOMNode,
+    applyPatches: applyPatches,
     dispatch: dispatchAction,
-    hydrate: hydrateDOM,
-    connectWebSocket,
-    connectSSE,
+    hydrate: hydrateDOM
   };
+  window.__ALAP__ = window.AlapRuntime;
 
-  // Run initial hydration after DOM load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', hydrateDOM);
-  } else {
-    hydrateDOM();
-  }
-})();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hydrateDOM);
+  else hydrateDOM();
+})(window, document);

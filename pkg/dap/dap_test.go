@@ -54,9 +54,22 @@ func (c *dapClient) send(t *testing.T, seq int, command string, args map[string]
 	fmt.Fprintf(c.conn, "Content-Length: %d\r\n\r\n%s", len(data), data)
 }
 
+// dapReadTimeout bounds a single read.
+//
+// Five seconds was long enough when the DAP tests were the only thing running and
+// short enough to fail under load. The failure is not a timeout of the debug
+// adapter — it is a timeout of *this* deadline, and it arrives as an error naming
+// the read rather than the session, which sends the reader looking at the wrong
+// place.
+//
+// Thirty seconds is still a bound: a session that genuinely stalls hangs the test
+// rather than passing it, which is what an unbounded read would do. A test that
+// fails is cheap; a test that hangs holds a machine and reports nothing.
+const dapReadTimeout = 30 * time.Second
+
 func (c *dapClient) read(t *testing.T) map[string]any {
 	t.Helper()
-	c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	c.conn.SetReadDeadline(time.Now().Add(dapReadTimeout))
 	length := -1
 	for {
 		line, err := c.r.ReadString('\n')
