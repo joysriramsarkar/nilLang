@@ -1,0 +1,7 @@
+// Test: For loop over array
+let items = [10, 20, 30];
+let sum = 0;
+for x in items {
+    sum = sum + x;
+}
+println(sum);

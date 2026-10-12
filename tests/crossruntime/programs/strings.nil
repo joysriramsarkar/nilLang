@@ -1,0 +1,8 @@
+// Test: String operations
+let greeting = "Hello, NilLang!";
+println(greeting);
+let name = "World";
+let msg = "Hello, " + name + "!";
+println(msg);
+let count = len(greeting);
+println(count);

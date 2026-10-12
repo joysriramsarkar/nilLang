@@ -13,6 +13,17 @@ func TestParseCapability(t *testing.T) {
 		{"Network", CapNetwork, false},
 		{"filesystem", CapFilesystem, false},
 		{"GPU", CapGPU, false},
+		// The inline vocabulary must be accepted too: a manifest that grants
+		// "stdout" (needed by puts/println) is valid as far as this package
+		// is concerned, whatever casing or separators are used.
+		{"stdout", "stdout", false},
+		{"STDOUT", "stdout", false},
+		{"std_err", "stderr", false},
+		{"clock", "clock", false},
+		{"Environment", "environment", false},
+		// pkg/capability calls location "GPS"; accept both spellings.
+		{"location", CapGPS, false},
+		{"gps", CapGPS, false},
 		{"invalid_cap", "", true},
 	}
 
@@ -25,6 +36,13 @@ func TestParseCapability(t *testing.T) {
 		if !tc.wantErr && got != tc.want {
 			t.Errorf("ParseCapability(%q) = %v, want %v", tc.input, got, tc.want)
 		}
+	}
+}
+
+func TestParseCapabilityRejectsBareInlineNamesWhenResourceIsWrong(t *testing.T) {
+	// A resource name that is not in either vocabulary must still fail.
+	if _, err := ParseCapability("definitely-not-a-capability"); err == nil {
+		t.Errorf("expected an error for an unknown capability name")
 	}
 }
 
@@ -51,5 +69,25 @@ func TestVerifyProfileCapabilities(t *testing.T) {
 	resOS := VerifyProfileCapabilities("os", osCaps)
 	if !resOS.Valid {
 		t.Errorf("expected OS profile to allow all caps, got: %v", resOS.Violations)
+	}
+
+	// Inline process capabilities are allowed on every profile, including the
+	// most restrictive ones — stdout printing is not a profile-gated resource.
+	webInline := []Type{"stdout", "stderr", "stdin", "clock", "environment", "random"}
+	resWebInline := VerifyProfileCapabilities("web", webInline)
+	if !resWebInline.Valid {
+		t.Errorf("expected web profile to allow inline capabilities, got: %v", resWebInline.Violations)
+	}
+	for _, want := range webInline {
+		found := false
+		for _, a := range resWebInline.Allowed {
+			if a == string(want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected inline capability %q in Allowed, got %v", want, resWebInline.Allowed)
+		}
 	}
 }

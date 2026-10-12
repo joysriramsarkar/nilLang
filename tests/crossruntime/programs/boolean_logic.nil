@@ -1,0 +1,11 @@
+// Test: Boolean logic
+println(true && false);
+println(true || false);
+println(!true);
+println(!false);
+let a = 5;
+let b = 10;
+println(a < b);
+println(a > b);
+println(a == b);
+println(a != b);

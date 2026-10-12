@@ -1,0 +1,7 @@
+// Test: Optional type
+let someVal = Some(42);
+let noneVal = None();
+println(isSome(someVal));
+println(isNone(noneVal));
+println(unwrapOr(someVal, 0));
+println(unwrapOr(noneVal, 99));

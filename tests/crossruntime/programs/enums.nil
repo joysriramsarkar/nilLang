@@ -1,0 +1,8 @@
+// Test: Enum definitions and variants
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+let c = Green;
+println(c);

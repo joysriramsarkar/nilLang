@@ -43,6 +43,60 @@ var AllCapabilities = []Type{
 	CapScanner,
 }
 
+// Inline capabilities are the process-local names that appear next to the code
+// that needs them in a nil.json manifest (see compiler/capability/names.go and
+// compiler/capability/manifest.go). They are not profile-gated hardware or
+// system resources: every profile can print to stdout, read the clock, or
+// access the environment.
+//
+// Two vocabularies describe capabilities in this codebase and they must
+// interoperate. This package uses capitalised resource names such as
+// "Filesystem"; compiler/capability uses lowercase names such as "stdout". A
+// manifest written by hand, or produced by `nil init`, may use either, so both
+// must be accepted by the build-time profile check.
+var inlineCapabilities = []Type{
+	"core", "stdout", "stderr", "stdin", "clock", "environment",
+	"random", "clipboard", "device", "notifications", "ui", "async",
+}
+
+// resourceAliases maps spellings that differ between the two vocabularies onto
+// this package's canonical resource type. The compiler vocabulary calls GPS
+// "location"; accept both.
+var resourceAliases = map[string]Type{
+	"location": CapGPS,
+	"gps":      CapGPS,
+}
+
+// normalizeName lowercases a capability name and drops '-', '_' and spaces so
+// that "File-System", "file_system" and "Filesystem" collapse to one spelling.
+func normalizeName(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, "_", "")
+	s = strings.ReplaceAll(s, " ", "")
+	return s
+}
+
+// inlineCapability returns the canonical inline capability for name, if it is
+// one. Matching ignores case and separators.
+func inlineCapability(name string) (Type, bool) {
+	norm := normalizeName(name)
+	for _, c := range inlineCapabilities {
+		if string(c) == norm {
+			return c, true
+		}
+	}
+	return "", false
+}
+
+// IsInline reports whether name is a process-local inline capability rather
+// than a profile-gated resource. Exposed so callers can present the two
+// vocabularies consistently.
+func IsInline(name string) bool {
+	_, ok := inlineCapability(name)
+	return ok
+}
+
 // PermissionLevel defines access permission level for a capability
 type PermissionLevel string
 
@@ -75,7 +129,12 @@ func NewCapabilitySet(caps ...Type) CapabilitySet {
 	return set
 }
 
-// ParseCapability converts a string to a valid Type
+// ParseCapability converts a string to a valid Type.
+//
+// Both capability vocabularies are accepted: the capitalised resource names in
+// AllCapabilities ("Filesystem", "Network") and the lowercase inline names used
+// inline in a manifest ("stdout", "clock"). Matching ignores case and treats
+// '-', '_' and spaces as equivalent.
 func ParseCapability(s string) (Type, error) {
 	norm := strings.TrimSpace(s)
 	for _, c := range AllCapabilities {
@@ -83,7 +142,13 @@ func ParseCapability(s string) (Type, error) {
 			return c, nil
 		}
 	}
-	return "", fmt.Errorf("unknown capability: %q (valid: %v)", s, AllCapabilities)
+	if c, ok := resourceAliases[normalizeName(norm)]; ok {
+		return c, nil
+	}
+	if c, ok := inlineCapability(norm); ok {
+		return c, nil
+	}
+	return "", fmt.Errorf("unknown capability: %q (valid: %v, inline: %v)", s, AllCapabilities, inlineCapabilities)
 }
 
 // Has checks if a capability is present and allowed
@@ -246,6 +311,12 @@ func VerifyProfileCapabilities(profile string, requested []Type) *VerificationRe
 	}
 
 	for _, capReq := range requested {
+		// Inline process-local capabilities (stdout, clock, environment, ...)
+		// are available on every profile; skip the resource matrix for them.
+		if _, inline := inlineCapability(string(capReq)); inline {
+			res.Allowed = append(res.Allowed, string(capReq))
+			continue
+		}
 		perm, supported := matrix[capReq]
 		if !supported || perm == PermDenied {
 			res.Valid = false

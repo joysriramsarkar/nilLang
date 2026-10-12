@@ -1,0 +1,7 @@
+// Test: String interpolation
+let name = "NilLang";
+let version = 1;
+let info = "Language: \(name), Version: \(version)";
+println(info);
+let expr = "1 + 2 = \(1 + 2)";
+println(expr);

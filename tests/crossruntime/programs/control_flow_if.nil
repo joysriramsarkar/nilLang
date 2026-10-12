@@ -1,0 +1,12 @@
+// Test: If-else control flow
+let x = 10;
+if (x > 5) {
+    println("big");
+} else {
+    println("small");
+}
+if (x < 5) {
+    println("tiny");
+} else {
+    println("not tiny");
+}

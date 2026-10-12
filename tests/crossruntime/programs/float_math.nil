@@ -1,0 +1,9 @@
+// Test: Floating point arithmetic
+let pi = 3.14159;
+let r = 2.0;
+let area = pi * r * r;
+println(area);
+let half = 1.0 / 2.0;
+println(half);
+let mixed = 1.5 + 2;
+println(mixed);

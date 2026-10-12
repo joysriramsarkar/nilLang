@@ -1,0 +1,10 @@
+// Test: Struct definitions and field access
+struct Point {
+    x: Int,
+    y: Int
+}
+let p = Point { x: 3, y: 4 };
+println(p.x);
+println(p.y);
+let q = Point { x: 10, y: 20 };
+println(q.x + q.y);

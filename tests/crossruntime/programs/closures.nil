@@ -1,0 +1,9 @@
+// Test: Closures
+fn makeAdder(x) {
+    return fn(y) {
+        return x + y;
+    };
+}
+let addTen = makeAdder(10);
+println(addTen(5));
+println(addTen(20));
