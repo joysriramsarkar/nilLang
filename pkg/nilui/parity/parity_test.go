@@ -73,8 +73,13 @@ func TestParity(t *testing.T) {
 
 // TestPerfBudget is the CI perf gate (U14.10): full-frame raster + layout
 // workload must fit the 60Hz budget at p95.
+//
+// The budget scales under `-race` (see perf_scale_race.go): instrumented
+// timing cannot assert native frame times, but it can still catch a large
+// regression, and the raw numbers are always logged so the trend is visible.
 func TestPerfBudget(t *testing.T) {
-	ft := render.NewFrameTimer(render.Budget60Hz * time.Nanosecond)
+	budget := time.Duration(float64(render.Budget60Hz) * perfBudgetScale())
+	ft := render.NewFrameTimer(budget)
 	s := render.NewSurface(390, 844)
 	dl := &render.DisplayList{}
 	for i := 0; i < 200; i++ {
@@ -86,9 +91,9 @@ func TestPerfBudget(t *testing.T) {
 			s.Execute(dl)
 		})
 	}
-	t.Logf("perf: %s", ft.Report())
-	if ft.P95() > render.Budget60Hz*time.Nanosecond {
-		t.Fatalf("frame over 60Hz budget: %s", ft.Report())
+	t.Logf("perf: %s (scale %.0fx)", ft.Report(), perfBudgetScale())
+	if ft.P95() > budget {
+		t.Fatalf("frame over budget: %s (scale %.0fx)", ft.Report(), perfBudgetScale())
 	}
 }
 
