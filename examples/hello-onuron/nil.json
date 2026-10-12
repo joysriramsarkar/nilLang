@@ -4,6 +4,7 @@
   "author": "Joysriram Sarkar",
   "description": "Hello World application for Onuron OS",
   "entry": "src/main.nil",
+  "capabilities": ["stdout"],
   "targets": [
     "onuron",
     "linux"

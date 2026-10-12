@@ -4,6 +4,7 @@
   "author": "Joysriram Sarkar",
   "description": "Cross-device communication demonstration over SoftBus protocol",
   "entry": "src/main.nil",
+  "capabilities": ["stdout"],
   "targets": [
     "onuron",
     "linux"
