@@ -41,7 +41,7 @@ func init() {
 						done <- object.RuntimeErrorf(object.CategoryTaskFaulted, "task panicked: %v", r)
 					}
 				}()
-				done <- applyFunction(fn, []object.Object{})
+				done <- applyFunction(fn, []object.Object{}, dotenv(fn))
 			}()
 			select {
 			case result := <-done:

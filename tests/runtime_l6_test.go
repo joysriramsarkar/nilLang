@@ -196,9 +196,9 @@ func TestL6PureRejectsEffectfulCall(t *testing.T) {
 // test installs exactly as `nil run` does; it is reset afterwards so the
 // default (ungated) behaviour returns for every other test.
 func TestL6CapabilityDenialAgreesAcrossEngines(t *testing.T) {
-	previous := evaluator.CapabilityChecker
-	evaluator.CapabilityChecker = compilercap.GrantChecker(nil)
-	defer func() { evaluator.CapabilityChecker = previous }()
+	previous := evaluator.GetCapabilityChecker()
+	evaluator.SetCapabilityChecker(compilercap.GrantChecker(nil))
+	defer func() { evaluator.SetCapabilityChecker(previous) }()
 
 	for _, source := range []string{
 		`writeFile("l6_denied.txt", "x");`,
@@ -222,9 +222,9 @@ func TestL6CapabilityDenialAgreesAcrossEngines(t *testing.T) {
 
 // L6.4 — a granted capability runs in both engines.
 func TestL6CapabilityGrantRunsInBothEngines(t *testing.T) {
-	previous := evaluator.CapabilityChecker
-	evaluator.CapabilityChecker = compilercap.GrantChecker([]string{compilercap.Stdout})
-	defer func() { evaluator.CapabilityChecker = previous }()
+	previous := evaluator.GetCapabilityChecker()
+	evaluator.SetCapabilityChecker(compilercap.GrantChecker([]string{compilercap.Stdout}))
+	defer func() { evaluator.SetCapabilityChecker(previous) }()
 
 	requireValue(t, `println("l6"); 42;`, "42")
 	if err := runWithCapabilities(t, `println("l6");`, []string{compilercap.Stdout}); err != nil {
@@ -274,6 +274,31 @@ func TestL6DivZeroAgreesAcrossEngines(t *testing.T) {
 // L6.6 — unbounded recursion agrees on FrameOverflow, not StackOverflow.
 func TestL6DeepRecursionIsFrameOverflow(t *testing.T) {
 	requireCategory(t, `fn f(n) { return f(n + 1); } f(0);`, object.CategoryFrameOverflow)
+}
+
+// L6.1 — concurrent tasks must not share evaluator call depth or purity.
+//
+// Depth and purity used to live in package globals, so tasks evaluating
+// function calls on their own goroutines raced on them (found by `go test
+// -race`: concurrent applyFunction calls read and wrote one counter). They
+// now travel in the environment chain, so each task counts its own. This
+// test spawns several tasks that all call functions — including a pure one
+// alongside effectful builtins — and requires both engines to agree. Under
+// -race it fails if any evaluator state is shared again.
+func TestL6ConcurrentTasksCountTheirOwnDepth(t *testing.T) {
+	requireValue(t, `
+fn add(a, b) { return a + b; }
+pure fn psq(n) { return n * n; }
+let t1 = task { add(1, 2); };
+let t2 = task { add(10, 20); };
+let t3 = task { psq(5); };
+let t4 = task { add(psq(2), psq(3)); };
+let r1 = await t1;
+let r2 = await t2;
+let r3 = await t3;
+let r4 = await t4;
+r1 + r2 + r3 + r4;
+`, "71")
 }
 
 // L6.6 — a single frame larger than the operand stack is StackOverflow in

@@ -112,12 +112,16 @@ func setHashField(h *object.Hash, key string, v object.Object) {
 // invokeNilangFn calls a Nilang function value from a builtin. Only
 // *object.Function (evaluator engine) is invocable here; a VM *object.Closure
 // carries bytecode and needs a VM handle, so it reports a diagnostic.
+//
+// Depth and purity come from the function's own environment: reactive
+// callbacks run without a dynamic caller in scope, so the lexical chain is
+// what there is.
 func invokeNilangFn(fn object.Object, args ...object.Object) object.Object {
 	switch fn.(type) {
 	case *object.Function:
-		return applyFunction(fn, args)
+		return applyFunction(fn, args, dotenv(fn))
 	case *object.Builtin:
-		return applyFunction(fn, args)
+		return applyFunction(fn, args, dotenv(fn))
 	default:
 		return newError("reactivity: computed/effect/batch callbacks need the evaluator engine; got %s (VM closures cannot be invoked from a builtin)", fn.Type())
 	}

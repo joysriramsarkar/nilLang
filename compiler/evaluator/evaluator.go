@@ -27,15 +27,39 @@ var (
 // here, so a denied operation fails with CategoryCapabilityDenied — the same
 // category the VM reports for the same program. Tests set and reset it
 // around the denied cases they assert on.
-var CapabilityChecker func(operation string) error
-
-// pureDepth counts the pure functions on the current call stack (L6.3).
 //
-// It is atomic rather than plain because task bodies evaluate on their own
-// goroutines while sharing the process. A nonzero depth means an effectful
-// call — a capability-gated builtin or a non-pure function — is a runtime
-// E0202, the dynamic half of the static check the type checker performs.
-var pureDepth atomic.Int64
+// The holder is atomic, not a plain variable: task bodies evaluate on their
+// own goroutines and can outlive whatever installed the checker (a test's
+// deferred restore runs while a straggler from an earlier case still reads
+// it). A plain variable races that read against the next write. Install with
+// SetCapabilityChecker and read with GetCapabilityChecker; direct assignment
+// cannot be made race-free.
+var capabilityChecker atomic.Pointer[capabilityCheckFunc]
+
+// capabilityCheckFunc is the function type the atomic holder points at. A
+// named type because atomic.Pointer needs an addressable value to store.
+type capabilityCheckFunc func(operation string) error
+
+// SetCapabilityChecker installs the process-wide capability gate, replacing
+// any previous one. A nil checker restores the historical behaviour where
+// every builtin runs.
+func SetCapabilityChecker(checker func(operation string) error) {
+	if checker == nil {
+		capabilityChecker.Store(nil)
+		return
+	}
+	fn := capabilityCheckFunc(checker)
+	capabilityChecker.Store(&fn)
+}
+
+// GetCapabilityChecker returns the installed gate, or nil when every builtin
+// runs.
+func GetCapabilityChecker() func(operation string) error {
+	if p := capabilityChecker.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
 
 // evalTaskRootMu guards the lazy root scope below.
 var evalTaskRootMu sync.Mutex
@@ -84,21 +108,26 @@ func BuiltinName(fn *object.Builtin) (string, bool) {
 
 // checkBuiltinCall enforces the capability sandbox (L6.4) and the pure
 // context (L6.3) on a builtin call. It returns nil when the call may run.
-func checkBuiltinCall(fn *object.Builtin) object.Object {
-	if CapabilityChecker == nil && pureDepth.Load() == 0 {
+//
+// Purity comes from the caller's environment, not a counter: two tasks have
+// two call stacks, and a shared counter would let one task's purity forbid
+// another's effects.
+func checkBuiltinCall(fn *object.Builtin, env *object.Environment) object.Object {
+	checker := GetCapabilityChecker()
+	if checker == nil && envPureDepth(env) == 0 {
 		return nil
 	}
 	name, ok := BuiltinName(fn)
 	if !ok {
 		return nil
 	}
-	if pureDepth.Load() > 0 && compbuiltin.IsEffectful(name) {
+	if envPureDepth(env) > 0 && compbuiltin.IsEffectful(name) {
 		return runtimeError(object.CategoryTypeError,
 			"E0202: cannot call effectful builtin %q inside a pure function", name)
 	}
-	if CapabilityChecker != nil {
+	if checker != nil {
 		if class, known := compbuiltin.Classify(name); known && class.Gated {
-			if err := CapabilityChecker(name); err != nil {
+			if err := checker(name); err != nil {
 				return object.RuntimeErrorWrapf(object.CategoryCapabilityDenied, err,
 					"capability denied: %s requires [%s]: %s", name, class.Requires, err)
 			}
@@ -429,7 +458,7 @@ func evalNode(node ast.Node, env *object.Environment) object.Object {
 		if len(args) == 1 && isError(args[0]) {
 			return args[0]
 		}
-		return applyFunction(function, args)
+		return applyFunction(function, args, env)
 	case *ast.ArrayLiteral:
 		elements := evalExpressions(node.Elements, env)
 		if len(elements) == 1 && isError(elements[0]) {
@@ -911,37 +940,44 @@ func runtimeError(category object.ErrorCategory, format string, a ...interface{}
 // here is what makes the two engines agree on which programs overflow.
 const evalCallDepthLimit = 1024
 
-// callDepth tracks the current evaluator call depth.
-var callDepth int
-
-// EvalWithDepthLimit is Eval with an explicit call depth bound.
-//
-// It exists for embedders and tests that need a different bound than the package
-// default, such as a mobile host with a smaller goroutine stack. A limit of zero
-// or less uses the package default.
-func EvalWithDepthLimit(node ast.Node, env *object.Environment, limit int) object.Object {
-	if limit <= 0 {
-		return Eval(node, env)
+// envCallDepth, envPureDepth and envDepthLimit read one evaluation chain's
+// counters, tolerating a nil environment (built-in calls made outside any
+// program start at depth zero with the default limit).
+func envCallDepth(env *object.Environment) int {
+	if env == nil {
+		return 0
 	}
-
-	callDepth++
-	defer func() { callDepth-- }()
-
-	if callDepth > limit {
-		return runtimeError(object.CategoryFrameOverflow,
-			"call frame depth exceeded %d", limit)
-	}
-
-	return evalNode(node, env)
+	return env.CallDepth
 }
 
-// ResetDepth returns the evaluator's call depth counter to zero.
+func envPureDepth(env *object.Environment) int {
+	if env == nil {
+		return 0
+	}
+	return env.PureDepth
+}
+
+func envDepthLimit(env *object.Environment) int {
+	if env != nil && env.DepthLimit > 0 {
+		return env.DepthLimit
+	}
+	return evalCallDepthLimit
+}
+
+// dotenv returns the environment a function value carries for depth and
+// purity purposes: a closure's defining environment, or nil for builtins,
+// which have none.
 //
-// A panic recovered by an embedder can leave the counter elevated, which would
-// make later programs hit the limit early. Calling this after a recovered panic
-// restores the invariant.
-func ResetDepth() {
-	callDepth = 0
+// It is used where a Nilang function is invoked without a dynamic caller
+// environment in scope — component dispatch, reactive callbacks, timeouts.
+// The lexical chain undercounts the dynamic one, which errs toward allowing
+// the call; the overflow limit still bounds every chain that grows through
+// ordinary calls, which is the one that can exhaust a goroutine stack.
+func dotenv(fn object.Object) *object.Environment {
+	if function, ok := fn.(*object.Function); ok {
+		return function.Env
+	}
+	return nil
 }
 
 func isError(obj object.Object) bool {
@@ -965,7 +1001,7 @@ func evalExpressions(exps []ast.Expression, env *object.Environment) []object.Ob
 	return result
 }
 
-func applyFunction(fn object.Object, args []object.Object) object.Object {
+func applyFunction(fn object.Object, args []object.Object, env *object.Environment) object.Object {
 	if fn == nil {
 		return newError("attempted to call an invalid expression")
 	}
@@ -974,31 +1010,33 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 		// A non-pure function called while a pure one is on the stack
 		// contradicts the pure declaration: the call may perform an effect
 		// the declaration promised it would not (runtime E0202, L6.3).
-		if pureDepth.Load() > 0 && !fn.IsPure {
+		if envPureDepth(env) > 0 && !fn.IsPure {
 			return runtimeError(object.CategoryTypeError,
 				"E0202: cannot call side-effecting function inside a pure function")
 		}
-		// Count the frame before recursing so that unbounded user recursion
-		// reports FrameOverflow instead of exhausting the goroutine stack. This
-		// mirrors the VM's MaxFrames, which is what lets both engines agree on
-		// which programs overflow.
-		if callDepth >= evalCallDepthLimit {
-			return runtimeError(object.CategoryFrameOverflow,
-				"call frame depth exceeded %d", evalCallDepthLimit)
-		}
-		callDepth++
-		defer func() { callDepth-- }()
-
-		if fn.IsPure {
-			pureDepth.Add(1)
-			defer pureDepth.Add(-1)
-		}
-
+		// The frame extends the caller's environment, so depth counts the
+		// dynamic chain on this goroutine — concurrent tasks count their own
+		// (a shared counter was a data race), and unbounded user recursion
+		// reports FrameOverflow instead of exhausting the goroutine stack.
+		// This mirrors the VM's MaxFrames, which is what lets both engines
+		// agree on which programs overflow.
 		extendedEnv := extendFunctionEnv(fn, args)
+		extendedEnv.CallDepth = envCallDepth(env) + 1
+		extendedEnv.PureDepth = envPureDepth(env)
+		extendedEnv.DepthLimit = envDepthLimit(env)
+		if fn.IsPure {
+			extendedEnv.PureDepth++
+		}
+		limit := extendedEnv.DepthLimit
+		if extendedEnv.CallDepth > limit {
+			return runtimeError(object.CategoryFrameOverflow,
+				"call frame depth exceeded %d", limit)
+		}
+
 		evaluated := Eval(fn.Body, extendedEnv)
 		return unwrapReturnValue(evaluated)
 	case *object.Builtin:
-		if gated := checkBuiltinCall(fn); gated != nil {
+		if gated := checkBuiltinCall(fn, env); gated != nil {
 			return gated
 		}
 		return fn.Fn(args...)

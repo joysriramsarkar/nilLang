@@ -323,9 +323,9 @@ func executeSource(source string, sourceDir string, useVM bool, granted []string
 	// does: a denied builtin fails with CategoryCapabilityDenied rather than
 	// running. The conservative pre-scan above stays as the early refusal
 	// with the `--vm` hint; this is the enforcement underneath it.
-	previousChecker := evaluator.CapabilityChecker
-	evaluator.CapabilityChecker = capability.GrantChecker(granted)
-	defer func() { evaluator.CapabilityChecker = previousChecker }()
+	previousChecker := evaluator.GetCapabilityChecker()
+	evaluator.SetCapabilityChecker(capability.GrantChecker(granted))
+	defer func() { evaluator.SetCapabilityChecker(previousChecker) }()
 
 	result2 := evaluator.Eval(program, env)
 	if result2 != nil {

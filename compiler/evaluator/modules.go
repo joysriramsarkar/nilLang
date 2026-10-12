@@ -494,7 +494,7 @@ func evalComponentLiteral(node *ast.ComponentLiteral, env *object.Environment) o
 			}
 			handlerArgs = []object.Object{payload}
 		}
-		result := applyFunction(function, handlerArgs)
+		result := applyFunction(function, handlerArgs, dotenv(function))
 		if isError(result) {
 			return result
 		}

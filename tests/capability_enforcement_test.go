@@ -284,9 +284,9 @@ func TestEvaluatorIsGatedWhenACheckerIsInstalled(t *testing.T) {
 
 	// With the manifest's checker installed the same program is refused with
 	// the same category the VM reports.
-	previous := evaluator.CapabilityChecker
-	evaluator.CapabilityChecker = compilercap.GrantChecker(nil)
-	defer func() { evaluator.CapabilityChecker = previous }()
+	previous := evaluator.GetCapabilityChecker()
+	evaluator.SetCapabilityChecker(compilercap.GrantChecker(nil))
+	defer func() { evaluator.SetCapabilityChecker(previous) }()
 
 	dir2 := t.TempDir()
 	res2 := evalSource(t, sourceFor(dir2))

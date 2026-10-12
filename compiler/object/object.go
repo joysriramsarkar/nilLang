@@ -506,6 +506,30 @@ type Environment struct {
 	constants map[string]bool
 	outer     *Environment
 
+	// CallDepth counts the function frames on this evaluation chain (L6.3).
+	//
+	// It lives here rather than in a package counter because task bodies run
+	// on their own goroutines: a shared counter is a data race, and worse, a
+	// shared budget — one task's depth would spend another's. Each function
+	// call extends the caller's environment with depth+1, so concurrent chains
+	// count independently and sequential calls reuse the parent's count.
+	// Only freshly created environments are ever written; a shared parent is
+	// read, never mutated, which is what keeps this race-free.
+	CallDepth int
+
+	// PureDepth counts the pure functions on this evaluation chain (L6.3).
+	// Same placement rationale as CallDepth: purity is a property of the
+	// dynamic call stack, and two tasks have two stacks. A task spawned
+	// inside a pure function inherits its purity, so an effectful call
+	// inside still reports E0202 — while a concurrent impure task is
+	// unaffected by it.
+	PureDepth int
+
+	// DepthLimit bounds this chain; 0 selects evalCallDepthLimit. Carried so
+	// an embedder can bound one evaluation without moving a global that
+	// every other evaluation shares.
+	DepthLimit int
+
 	// mu guards the store because task bodies run on their own goroutines
 	// while sharing their parent's bindings (L6.2). A task reads its
 	// parent's variables and assigns through to them; without the lock a
@@ -522,6 +546,13 @@ func NewEnvironment() *Environment {
 func NewEnclosedEnvironment(outer *Environment) *Environment {
 	env := NewEnvironment()
 	env.outer = outer
+	if outer != nil {
+		// The chain's counters travel with it: a child starts where its
+		// parent is, and only the child's own frame or purity adds to them.
+		env.CallDepth = outer.CallDepth
+		env.PureDepth = outer.PureDepth
+		env.DepthLimit = outer.DepthLimit
+	}
 	return env
 }
 
