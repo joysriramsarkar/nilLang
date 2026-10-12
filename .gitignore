@@ -35,3 +35,6 @@ coverage/
 
 # Dependency cache
 **/vendor/
+
+# Local planning docs (not for upstream)
+পরিকল্পনা/

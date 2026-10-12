@@ -11,13 +11,22 @@
  * *specification*: every integral float keeps its `.0`, and an integer is printed
  * without one. `TestTheRuntimeAgreesWithTheInterpreters` is what holds them to it.
  *
- * # Why the buffer is a stack array
+ * # Why the buffer is heap-allocated
  *
- * A fixed 8KB buffer, not a growable one. Rendering does not allocate, so it cannot
- * trigger a collection, so it cannot free the value it is reading — which is the
- * property a growable buffer would give up. A value too large for the buffer is
- * truncated rather than rendered in full; `print` is for reading, not for
- * serialising.
+ * A fixed 8KB buffer, not a growable one. Rendering does not allocate Nilang
+ * values, so it cannot trigger a collection, so it cannot free the value it is
+ * reading — which is the property a growable buffer would give up. A raw byte
+ * buffer from `malloc` keeps that property: the collector only traces Nilang
+ * heap objects, so bytes it cannot see cannot disturb it. A value too large
+ * for the buffer is truncated rather than rendered in full; `print` is for
+ * reading, not for serialising.
+ *
+ * Heap rather than stack, because an 8KB stack frame forces compilers
+ * targeting MSVC to emit a `___chkstk_ms` stack probe, and that symbol comes
+ * from compiler-rt — which is not linked on every machine that can compile
+ * this file (notably a bare clang + MSVC link). A `print` that compiles but
+ * does not link is worse than a `malloc` on a cold path: the allocation
+ * happens once per printed value and is freed before returning.
  */
 
 #include "nil.h"
@@ -26,6 +35,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* The print buffer size. Heap-allocated per call (see above); the frame of
+ * `nil_print`/`nil_println` stays small so no platform needs a stack probe. */
+#define PRINT_BUFFER_SIZE 8192
 
 /* render_into appends a value's text and returns how much it wrote.
  *
@@ -271,18 +284,28 @@ int64_t nil_render(NilValue value, char *buffer, int64_t capacity) {
 }
 
 void nil_print(NilValue value) {
-  char buffer[8192];
+  char *buffer = (char *)malloc(PRINT_BUFFER_SIZE);
+  if (buffer == NULL) {
+    fputs("<print: out of memory>\n", stderr);
+    return;
+  }
   int truncated = 0;
-  render_into(value, buffer, sizeof(buffer), 0, &truncated);
+  render_into(value, buffer, PRINT_BUFFER_SIZE, 0, &truncated);
   fputs(buffer, stdout);
+  free(buffer);
 }
 
 void nil_println(NilValue value) {
-  char buffer[8192];
+  char *buffer = (char *)malloc(PRINT_BUFFER_SIZE);
+  if (buffer == NULL) {
+    fputs("<print: out of memory>\n", stderr);
+    return;
+  }
   int truncated = 0;
-  render_into(value, buffer, sizeof(buffer), 0, &truncated);
+  render_into(value, buffer, PRINT_BUFFER_SIZE, 0, &truncated);
   fputs(buffer, stdout);
   fputc('\n', stdout);
+  free(buffer);
 }
 
 /* ── Interpolation ────────────────────────────────────────────────────── */
