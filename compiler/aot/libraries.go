@@ -3,6 +3,9 @@ package aot
 import (
 	"fmt"
 	"strings"
+
+	"github.com/joysriramsarkar/nilLang/compiler/llvm"
+	"github.com/joysriramsarkar/nilLang/compiler/nilcore"
 )
 
 // libraryFlags turns library names into linker arguments.
@@ -98,6 +101,54 @@ func sortStrings(values []string) {
 		}
 		values[j+1] = value
 	}
+}
+
+// runtimeLibraryNames names the system libraries the runtime itself needs
+// linked on the target, before any project library. It delegates to the
+// runtime's own package, because the need (`sqrt`, `round`, `pow` live in
+// `libm` on unix and in the C runtime on Windows) is a property of the
+// runtime's sources, and a second list here would agree with it until the day
+// the runtime called something new.
+//
+// A link that omits it fails on Linux with `undefined reference to 'sqrt'`;
+// a link that keeps it on Windows fails on MSVC with `LNK1181: cannot open
+// input file 'm.lib'`, because no such library exists there. Both failures
+// were found by running the same suite on both.
+func runtimeLibraryNames(targetOS llvm.OS) []string {
+	return nilcore.RuntimeLibraries(string(targetOS))
+}
+
+// RuntimeLinkFlags are the linker flags the runtime itself needs on the
+// target, ready to append to a link line that already holds the runtime's
+// objects. Callers that link `nilcore` objects without going through
+// `Build` — the FFI self-test is one — need exactly these and nothing else.
+func RuntimeLinkFlags(targetOS llvm.OS) []string {
+	return nilcore.RuntimeLinkFlags(string(targetOS))
+}
+
+// effectiveLibraries merges what the project asked for with what the runtime
+// needs, dropping what the platform must not see.
+//
+// A project that declares `"libraries": ["m"]` (the documented spelling for
+// `sin`) keeps working everywhere: unix links it once — the deduplication in
+// `libraryFlags` collapses the project's `m` and the runtime's — and Windows
+// drops it, because MSVC has no `m.lib` (its math is in the C runtime) and
+// mingw links its math implicitly. Dropping rather than translating, because
+// there is nothing to translate to: any spelling of `m` on Windows names a
+// file that does not exist.
+func effectiveLibraries(targetOS llvm.OS, requested []string) []string {
+	merged := append(append([]string(nil), requested...), runtimeLibraryNames(targetOS)...)
+	if targetOS != llvm.OSWindows {
+		return merged
+	}
+	kept := merged[:0]
+	for _, name := range merged {
+		if trimLibraryName(name) == "m" {
+			continue
+		}
+		kept = append(kept, name)
+	}
+	return kept
 }
 
 // LibraryAdvice is what the build says about the libraries it was given.

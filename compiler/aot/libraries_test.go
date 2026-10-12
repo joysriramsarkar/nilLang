@@ -3,6 +3,8 @@ package aot
 import (
 	"strings"
 	"testing"
+
+	"github.com/joysriramsarkar/nilLang/compiler/llvm"
 )
 
 // TestALibraryNameBecomesALinkFlag is the whole of what `nil.json`'s libraries
@@ -57,6 +59,48 @@ func TestTheLinkOrderIsFixed(t *testing.T) {
 
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("the order is %q, wanted %q", got, want)
+	}
+}
+
+// TestTheRuntimeBringsItsOwnMathLibrary is why a program that never heard of
+// `libm` still links `sqrt` on Linux, and why the same build works on Windows.
+//
+// The runtime calls `sqrt`, `round` and `pow`. On unix those live in `libm`,
+// which nothing links by default, so the toolchain adds it. On Windows the
+// math lives in the C runtime — MSVC has no `m.lib` at all (`LNK1181`), and
+// mingw links its math implicitly — so `m` in any spelling is dropped. Both
+// halves were found the same way: the same suite linking on both platforms.
+func TestTheRuntimeBringsItsOwnMathLibrary(t *testing.T) {
+	for _, targetOS := range []llvm.OS{llvm.OSLinux, llvm.OSMacOS, llvm.OSAndroid, llvm.OSOnuron} {
+		got := libraryFlags(effectiveLibraries(targetOS, nil))
+		if strings.Join(got, " ") != "-lm" {
+			t.Errorf("effectiveLibraries(%s, nil) = %q, wanted [-lm]", targetOS, got)
+		}
+	}
+
+	got := libraryFlags(effectiveLibraries(llvm.OSWindows, nil))
+	if len(got) != 0 {
+		t.Errorf("effectiveLibraries(windows, nil) = %q, wanted nothing", got)
+	}
+
+	// A project that declares "m" (the documented spelling for `sin`) gets one
+	// copy on unix and none on Windows — never two, never a missing file.
+	unix := libraryFlags(effectiveLibraries(llvm.OSLinux, []string{"m", "libm.so"}))
+	if strings.Join(unix, " ") != "-lm" {
+		t.Errorf("unix merge = %q, wanted [-lm]", unix)
+	}
+	windows := libraryFlags(effectiveLibraries(llvm.OSWindows, []string{"m", "-lm", "pthread"}))
+	if strings.Join(windows, " ") != "-lpthread" {
+		t.Errorf("windows merge = %q, wanted [-lpthread]", windows)
+	}
+
+	// The ready-to-append flags carry the same answer for callers that link
+	// the runtime's objects directly, without going through Build.
+	if flags := RuntimeLinkFlags(llvm.OSLinux); strings.Join(flags, " ") != "-lm" {
+		t.Errorf("RuntimeLinkFlags(linux) = %q, wanted [-lm]", flags)
+	}
+	if flags := RuntimeLinkFlags(llvm.OSWindows); len(flags) != 0 {
+		t.Errorf("RuntimeLinkFlags(windows) = %q, wanted nothing", flags)
 	}
 }
 

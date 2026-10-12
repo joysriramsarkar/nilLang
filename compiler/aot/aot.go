@@ -211,7 +211,7 @@ func Build(ir string, target llvm.Target, tc toolchain.Toolchain, options Option
 	// rather than a duplicate-symbol error.
 	linkArgs := append([]string{"-o", options.OutputPath, objectPath}, library.Objects...)
 	linkArgs = append(linkArgs, options.ExtraObjects...)
-	linkArgs = append(linkArgs, libraryFlags(options.Libraries)...)
+	linkArgs = append(linkArgs, libraryFlags(effectiveLibraries(target.OS, options.Libraries))...)
 	linkArgs = append(linkArgs, options.ExtraFlags...)
 	if output, err := toolchain.RunTool(linker, linkArgs...); err != nil {
 		return nil, fmt.Errorf("linking the program:\n%s", clean(output, err))

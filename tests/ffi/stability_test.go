@@ -120,6 +120,10 @@ func TestBothCompilersAgreeOnTheRuntimesLayout(t *testing.T) {
 	}
 	linkArgs := append(append([]string{}, objects...), library.Objects...)
 	linkArgs = append(linkArgs, "-o", executable)
+	// The runtime's objects bring the runtime's own library needs (`sqrt` lives
+	// in libm on unix); without them the probes fail to link for a reason that
+	// has nothing to do with layout.
+	linkArgs = append(linkArgs, nilcore.RuntimeLinkFlags(string(llvm.TargetHost.OS))...)
 	if out, err := toolchain.RunTool(cc, linkArgs...); err != nil {
 		t.Fatalf("the probes did not link:\n%s", strings.TrimSpace(out))
 	}
@@ -352,6 +356,7 @@ int main(void) {
 	}
 	linkArgs := append([]string{object}, library.Objects...)
 	linkArgs = append(linkArgs, "-o", executable)
+	linkArgs = append(linkArgs, nilcore.RuntimeLinkFlags(string(llvm.TargetHost.OS))...)
 	if out, err := toolchain.RunTool(cc, linkArgs...); err != nil {
 		t.Fatalf("the probe did not link:\n%s", strings.TrimSpace(out))
 	}

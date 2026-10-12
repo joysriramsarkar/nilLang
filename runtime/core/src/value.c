@@ -25,6 +25,14 @@
  * language imposes, which is why it is not something the compiler has to know.
  */
 
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+/* `_POSIX_C_SOURCE` before any system header, so `nanosleep` is declared when
+ * compiling strictly: with `-std=c11` and no feature macro, glibc's <time.h>
+ * hides it and modern compilers refuse the implicit declaration. Windows
+ * needs none of this — it sleeps with `Sleep` from <windows.h> below. */
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "nil.h"
 #include "nil_internal.h"
 

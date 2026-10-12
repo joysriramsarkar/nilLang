@@ -62,6 +62,10 @@ func TestTheFFIPassesItsOwnTest(t *testing.T) {
 		"-o", binary,
 		ffiSelfTestPath(t),
 	}, library.Objects...)
+	// The runtime's own objects need its own libraries: `sqrt` and friends
+	// live in libm on unix, and a self-test that links the runtime is a
+	// program that links the runtime.
+	args = append(args, nilcore.RuntimeLinkFlags(string(llvm.TargetHost.OS))...)
 
 	if output, err := toolchain.RunTool(cc, args...); err != nil {
 		t.Fatalf("compiling the FFI self-test:\n%s", output)

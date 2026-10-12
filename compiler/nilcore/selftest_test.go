@@ -104,6 +104,10 @@ func runSelfTest(t *testing.T, tc toolchain.Toolchain) Result {
 		"-o", binary,
 		SelfTestPath(),
 	}, library.Objects...)
+	// The runtime's own objects need its own libraries (`sqrt` lives in libm
+	// on unix); without them the self-test fails to link for a reason that
+	// has nothing to do with what it checks.
+	args = append(args, RuntimeLinkFlags(runtime.GOOS)...)
 
 	if output, err := toolchain.RunTool(cc, args...); err != nil {
 		t.Fatalf("compiling the self-test:\n%s", output)
@@ -308,6 +312,7 @@ int main(void) {
 
 	args := append([]string{"-O1", "-std=c11", "-I", IncludeDir(), "-o", binary, source},
 		library.Objects...)
+	args = append(args, RuntimeLinkFlags(runtime.GOOS)...)
 	if output, err := toolchain.RunTool(cc, args...); err != nil {
 		t.Fatalf("compiling the probe:\n%s", output)
 	}
@@ -395,6 +400,7 @@ func TestTheRuntimeReportsFailuresByExitCode(t *testing.T) {
 			}
 			args := append([]string{"-O1", "-std=c11", "-I", IncludeDir(), "-o", binary, source},
 				library.Objects...)
+			args = append(args, RuntimeLinkFlags(runtime.GOOS)...)
 			if output, err := toolchain.RunTool(cc, args...); err != nil {
 				t.Fatalf("compiling:\n%s", output)
 			}
@@ -458,6 +464,7 @@ func TestTheRuntimeLinksWithoutAWritableSourceTree(t *testing.T) {
 	}
 
 	args := append([]string{"-I", IncludeDir(), "-o", binary, main}, library.Objects...)
+	args = append(args, RuntimeLinkFlags(runtime.GOOS)...)
 	if output, err := toolchain.RunTool(cc, args...); err != nil {
 		t.Fatalf("linking against the runtime:\n%s", output)
 	}
