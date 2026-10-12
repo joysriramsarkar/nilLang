@@ -437,14 +437,17 @@ type futureResult struct {
 }
 
 type Future struct {
-	done         chan futureResult
-	completeOnce sync.Once
-	awaitOnce    sync.Once
-	result       futureResult
+	mu sync.Mutex
+	// done is closed when the Future completes. A closed channel reports
+	// readiness to every receiver without consuming anything, which is what
+	// lets Resolved ask without stealing the result Await is owed.
+	done      chan struct{}
+	result    futureResult
+	completed bool
 }
 
 func NewFuture() *Future {
-	return &Future{done: make(chan futureResult, 1)}
+	return &Future{done: make(chan struct{})}
 }
 
 func (f *Future) Type() ObjectType { return FUTURE_OBJ }
@@ -460,6 +463,8 @@ func (f *Future) Inspect() string  { return "future" }
 func (f *Future) Resolved() (Object, bool) {
 	select {
 	case <-f.done:
+		f.mu.Lock()
+		defer f.mu.Unlock()
 		return f.result.Value, true
 	default:
 		return nil, false
@@ -467,12 +472,19 @@ func (f *Future) Resolved() (Object, bool) {
 }
 
 func (f *Future) Complete(value Object, err error) {
-	f.completeOnce.Do(func() {
-		f.done <- futureResult{Value: value, Err: err}
-	})
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.completed {
+		return
+	}
+	f.result = futureResult{Value: value, Err: err}
+	f.completed = true
+	close(f.done)
 }
 func (f *Future) Await() (Object, error) {
-	f.awaitOnce.Do(func() { f.result = <-f.done })
+	<-f.done
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.result.Value, f.result.Err
 }
 
