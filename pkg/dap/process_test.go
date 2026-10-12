@@ -95,7 +95,13 @@ func TestNilDAPProcess(t *testing.T) {
 	send(4, "configurationDone", nil)
 	send(5, "continue", map[string]any{"threadId": 1})
 
-	drain(t, msgs, 30*time.Second, func(m map[string]any) bool {
+	// Generous timeouts: this test builds the real `nil` binary and drives a
+	// DAP session against it as a child process. On a cold CI runner the
+	// build alone can take tens of seconds, and the session handshake
+	// (initialize → launch → setBreakpoints → configurationDone → continue)
+	// crosses several process boundaries. A tight timeout here fails a
+	// working chain for being observed slowly.
+	drain(t, msgs, 90*time.Second, func(m map[string]any) bool {
 		switch m["type"] {
 		case "response":
 			if m["success"] != true {
@@ -121,7 +127,7 @@ func TestNilDAPProcess(t *testing.T) {
 
 	// Read the program state at the breakpoint.
 	send(6, "variables", map[string]any{"variablesReference": 2})
-	drain(t, msgs, 15*time.Second, func(m map[string]any) bool {
+	drain(t, msgs, 30*time.Second, func(m map[string]any) bool {
 		if m["type"] != "response" || m["command"] != "variables" {
 			return false
 		}
