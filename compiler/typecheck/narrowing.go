@@ -5,7 +5,8 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/types"
 )
 
-// Narrowing: `Ok`, `Err`, `unwrap`, and `unwrapOr`.
+// Narrowing: `Ok`, `Err`, `unwrap`, `unwrapOr` — and the sequence builtins
+// `first`, `last`, `rest`, `push`.
 //
 // # What it buys
 //
@@ -32,6 +33,22 @@ import (
 // CodeNotNarrowable is reported when a narrowing builtin is applied to a value
 // that carries nothing to narrow.
 const CodeNotNarrowable = "E0112"
+
+// elementOfArray is the element type of an Array/List type, or nil when the
+// type is not an array at all. It answers the same question for `first`,
+// `last`, `rest` and `push` that payloadOf answers for `unwrap`: what the
+// value already carries, so the checker can report it instead of `Any`.
+func elementOfArray(t types.Type) types.Type {
+	if t == nil {
+		return nil
+	}
+	if g, ok := t.(*types.GenericType); ok && (g.Base == "Array" || g.Base == "List") {
+		if len(g.Parameters) == 1 && g.Parameters[0] != nil {
+			return g.Parameters[0]
+		}
+	}
+	return nil
+}
 
 // narrowingMessage explains why a narrowing call cannot narrow, naming the type
 // so the reader does not have to go and look up what `Any` meant in context.
@@ -88,6 +105,33 @@ func (c *Checker) narrowingResult(name string, argTypes []types.Type, registered
 			payload = argTypes[0]
 		}
 		return &types.GenericType{Base: "Result", Parameters: []types.Type{payload, types.Any}}
+
+	case "first", "last":
+		// `first([1, 2])` is `Int`, not `Any`: the array literal already
+		// inferred its element type, and throwing that away forces every
+		// downstream use back through dynamic checking.
+		if len(argTypes) == 0 {
+			return registered
+		}
+		if elem := elementOfArray(argTypes[0]); elem != nil {
+			return elem
+		}
+		return registered
+
+	case "rest", "push":
+		// Both produce an array of the same shape they consumed: `rest`
+		// drops the head, `push` appends. Returning the receiver's own type
+		// keeps chains like `result = push(result, x)` precisely typed.
+		// The element is deliberately NOT checked against the element type:
+		// the run time accepts heterogeneous pushes, so rejecting them here
+		// would refuse programs that run.
+		if len(argTypes) == 0 {
+			return registered
+		}
+		if a := argTypes[0]; a != nil && elementOfArray(a) != nil {
+			return a
+		}
+		return registered
 	}
 
 	return registered
@@ -167,7 +211,7 @@ func (c *Checker) applyNarrowing(e *ast.CallExpression, fnSig *types.FunctionTyp
 	}
 
 	switch ident.Value {
-	case "unwrap", "unwrapOr", "Ok", "Err", "Some", "None":
+	case "unwrap", "unwrapOr", "Ok", "Err", "Some", "None", "first", "last", "rest", "push":
 	default:
 		return fnSig
 	}
@@ -186,6 +230,24 @@ func (c *Checker) applyNarrowing(e *ast.CallExpression, fnSig *types.FunctionTyp
 		if !isNarrowable(argTypes[0]) && !isUnknown(argTypes[0]) {
 			c.report(CodeNotNarrowable,
 				narrowingMessage(ident.Value, argTypes[0]),
+				e.Token.Line, e.Token.Column)
+			return fnSig
+		}
+	}
+
+	// `first`, `last`, `rest` and `push` all require an array receiver. The
+	// run time rejects anything else ("argument to `first` must be ARRAY"),
+	// so a receiver that is definitely not an array is a static error too.
+	// An unknown (`Any`) receiver stays silent: it may hold an array at run
+	// time, and the dynamic check decides then.
+	switch ident.Value {
+	case "first", "last", "rest", "push":
+		if len(argTypes) == 0 || argTypes[0] == nil {
+			return fnSig
+		}
+		if elementOfArray(argTypes[0]) == nil && !isUnknown(argTypes[0]) {
+			c.report(CodeNotNarrowable,
+				ident.Value+" expects an Array, got "+argTypes[0].String(),
 				e.Token.Line, e.Token.Column)
 			return fnSig
 		}
