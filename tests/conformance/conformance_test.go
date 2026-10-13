@@ -1369,10 +1369,6 @@ var conformanceCases = []ConformanceCase{
 		// Evaluator and VM return 3: the inner `let x = 2` shadows the
 		// outer binding (SEMANTICS.md §3.1), so result is 2 and x stays 1.
 		Expected: int64(3),
-		// The AOT backend lowers names without scopes, so it still merges
-		// the two bindings and prints 4. Scoped MIR lowering is P1 work;
-		// until then this case is recorded skipped, not silently passing.
-		SkipAOT: "AOT has no lowering for block-scoped shadowing yet",
 	},
 	{
 		Name: "Function Sees Global Variable",

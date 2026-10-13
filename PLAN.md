@@ -28,5 +28,6 @@
 - [x] 13 Oct: P0.1 grammar table (`compiler/parser/grammar_table_test.go`, commit `5afc0ce`)।
 - [x] 13 Oct: P0.2 entry rejection (`pkg/compiler/entry_rejection_test.go`, commit `164dc02`)।
 - [x] 13 Oct: P0.3 sequence narrowing + Any audit (commit `bed3844`)।
-- [x] 13 Oct: P0.4 scope freeze — block shadowing (checker+evaluator+VM), app transparency, per-pass loop bindings (fresh cells), unified scope corpus — নিচে।
-- [ ] P1 canonical HIR→MIR + scoped MIR lowering (AOT block-scoping gap recorded: SkipAOT)।
+- [x] 13 Oct: P0.4 scope freeze — block shadowing (checker+evaluator+VM), app transparency, per-pass loop bindings (fresh cells), unified scope corpus — commit `8d9eef3`।
+- [x] 13 Oct: P1 scoped MIR lowering — MIR lowerer-এ scope-aware versioning (`x$1` শুধু shadow-এ; straight-line dump অপরিবর্তিত); evaluator+VM+MIR+AOT/LLVM তিন... চার ইঞ্জিন shadow-এ agree — নিচে।
+- [ ] P1 follow-up: MIR backends-এ loop per-iteration cells + WASM parity matrix।

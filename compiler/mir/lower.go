@@ -13,6 +13,21 @@ type Lowerer struct {
 	currentFn    *Function
 	currentBlock *BasicBlock
 
+	// scopes maps source names to the MIR names currently bound, innermost
+	// frame last. A `let` that shadows an outer binding gets a versioned
+	// name (`x$1`); every other declaration keeps its spelling, so programs
+	// without shadowing lower exactly as before.
+	//
+	// `$` can never collide with user code: Nilang identifiers hold letters,
+	// digits and `_` only. It is also safe for the backends: `$` is legal in
+	// LLVM identifiers and idiomatic in WAT names, and the VM treats MIR
+	// names as opaque strings.
+	scopes []map[string]string
+
+	// versionCounter numbers shadow versions. It never resets: two shadows
+	// of one name must stay distinct even after both scopes close.
+	versionCounter int
+
 	// lastStatement is the operand an expression statement produced, and nil for
 	// any other kind of statement.
 	//
@@ -29,6 +44,52 @@ func (l *Lowerer) newTemp() Operand {
 	id := l.tempCounter
 	l.tempCounter++
 	return TempOperand{ID: id}
+}
+
+// pushScope opens a `{ ... }` scope: lets inside shadow instead of
+// overwriting, matching the type checker and the two Go engines.
+func (l *Lowerer) pushScope() {
+	l.scopes = append(l.scopes, map[string]string{})
+}
+
+// popScope closes the innermost scope, revealing shadowed bindings again.
+func (l *Lowerer) popScope() {
+	l.scopes = l.scopes[:len(l.scopes)-1]
+}
+
+// lookup resolves a source name to the MIR name currently bound, or "" when
+// no scope binds it (a global lowered before any scope opened, or a name the
+// backend resolves itself, such as a function).
+func (l *Lowerer) lookup(name string) (string, bool) {
+	for i := len(l.scopes) - 1; i >= 0; i-- {
+		if v, ok := l.scopes[i][name]; ok {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// declare binds a freshly declared name in the current scope. A name already
+// bound in a strictly-outer scope is shadowed under a versioned name; every
+// other declaration — including same-scope redeclaration, which reuses one
+// binding exactly like the direct compiler — keeps its spelling.
+func (l *Lowerer) declare(name string) string {
+	for i := len(l.scopes) - 2; i >= 0; i-- {
+		if _, ok := l.scopes[i][name]; ok {
+			v := fmt.Sprintf("%s$%d", name, l.versionCounter)
+			l.versionCounter++
+			l.scopes[len(l.scopes)-1][name] = v
+			return v
+		}
+	}
+	l.scopes[len(l.scopes)-1][name] = name
+	return name
+}
+
+// bind records an already-lowered name (a function parameter) in the current
+// scope without versioning: parameters are the ABI, not shadowing.
+func (l *Lowerer) bind(name string) {
+	l.scopes[len(l.scopes)-1][name] = name
 }
 
 func (l *Lowerer) newBlock(name string) *BasicBlock {
@@ -59,6 +120,10 @@ func (l *Lowerer) terminate(term Terminator) {
 func (l *Lowerer) LowerHIR(p *hir.Program) *Program {
 	prog := NewProgram()
 	l.currentProg = prog
+
+	// The root scope: top-level declarations bind here, and every nested
+	// scope resolves through it.
+	l.pushScope()
 
 	mainFn := &Function{
 		Name:   "main",
@@ -211,9 +276,13 @@ func (l *Lowerer) lowerStatement(stmt hir.Statement) {
 
 	case *hir.LetStmt:
 		valOp := l.lowerExpression(s.Value)
-		l.emit(StoreVarInst{Name: s.Name, Src: valOp})
+		l.emit(StoreVarInst{Name: l.declare(s.Name), Src: valOp})
 
 	case *hir.BlockStmt:
+		// A block is a scope: lets inside shadow instead of overwriting,
+		// matching the type checker and the two Go engines.
+		l.pushScope()
+		defer l.popScope()
 		// A block that *is* the program's value — what the HIR optimizer leaves
 		// behind after folding `if (10 > 5) { 100 } else { 200 }` down to the
 		// surviving arm — has to report that arm's value as its own.
@@ -260,11 +329,13 @@ func (l *Lowerer) lowerStatement(stmt hir.Statement) {
 		// Then block
 		l.currentBlock = thenBB
 		l.lastStatement = nil
+		l.pushScope()
 		if s.Consequence != nil {
 			for _, st := range s.Consequence.Statements {
 				l.lowerStatement(st)
 			}
 		}
+		l.popScope()
 		if l.lastStatement != nil {
 			l.emit(AssignInst{Dest: mergeValue, Src: l.lastStatement})
 		}
@@ -276,11 +347,13 @@ func (l *Lowerer) lowerStatement(stmt hir.Statement) {
 		// Else block
 		l.currentBlock = elseBB
 		l.lastStatement = nil
+		l.pushScope()
 		if s.Alternative != nil {
 			for _, st := range s.Alternative.Statements {
 				l.lowerStatement(st)
 			}
 		}
+		l.popScope()
 		if l.lastStatement != nil {
 			l.emit(AssignInst{Dest: mergeValue, Src: l.lastStatement})
 		}
@@ -337,11 +410,13 @@ func (l *Lowerer) lowerStatement(stmt hir.Statement) {
 
 		// Body block
 		l.currentBlock = bodyBB
+		l.pushScope()
 		if s.Body != nil {
 			for _, st := range s.Body.Statements {
 				l.lowerStatement(st)
 			}
 		}
+		l.popScope()
 		if l.currentBlock.Terminator == nil {
 			l.terminate(JumpTerminator{Target: condBB.ID})
 		}
@@ -363,7 +438,15 @@ func (l *Lowerer) lowerAssignment(s *hir.AssignStmt) {
 
 	switch target := s.Target.(type) {
 	case *hir.VarRef:
-		l.emit(StoreVarInst{Name: target.Name, Src: value})
+		// An assignment writes the currently bound version, so a shadowed
+		// name updates the shadow and an outer name updates the outer
+		// binding — never a stale slot. Unmapped names keep their spelling
+		// (parameters and globals the backend resolves itself).
+		if v, ok := l.lookup(target.Name); ok {
+			l.emit(StoreVarInst{Name: v, Src: value})
+		} else {
+			l.emit(StoreVarInst{Name: target.Name, Src: value})
+		}
 
 	case *hir.IndexExpr:
 		container := l.lowerExpression(target.Left)
@@ -399,6 +482,7 @@ func (l *Lowerer) lowerAssignment(s *hir.AssignStmt) {
 func (l *Lowerer) lowerComponentFunction(name string, parameters []string, body *hir.BlockStmt) string {
 	outerFunction := l.currentFn
 	outerBlock := l.currentBlock
+	outerDepth := len(l.scopes)
 	// A function body's last expression is the *function's* value, not the value of
 	// whatever statement declared the function. Saving and restoring it is what
 	// keeps `fn f() { g(); }` from making the enclosing program's answer be
@@ -408,6 +492,12 @@ func (l *Lowerer) lowerComponentFunction(name string, parameters []string, body 
 	function := &Function{Name: name, Params: append([]string(nil), parameters...), Blocks: []*BasicBlock{}}
 	l.currentFn = function
 	l.currentBlock = l.newBlock("bb_" + name)
+	// Parameters bind raw in the function's own frame; body lets that shadow
+	// them (or outer names) version from there.
+	l.pushScope()
+	for _, p := range parameters {
+		l.bind(p)
+	}
 	// A block's value is its last statement's value, whatever kind that statement
 	// is. The evaluator says so — `evalBlockStatement` returns whatever the last
 	// statement produced — and so does the VM, which leaves it on the stack.
@@ -437,6 +527,7 @@ func (l *Lowerer) lowerComponentFunction(name string, parameters []string, body 
 	l.currentFn = outerFunction
 	l.currentBlock = outerBlock
 	l.lastStatement = outerStatement
+	l.scopes = l.scopes[:outerDepth]
 	return name
 }
 
@@ -508,6 +599,14 @@ func (l *Lowerer) lowerExpression(expr hir.Expression) Operand {
 			return VarOperand{Name: e.Name}
 		}
 
+		// A shadowed name reads its current version; anything else keeps its
+		// spelling for the backend to resolve (parameters, globals).
+		if v, ok := l.lookup(e.Name); ok {
+			t := l.newTemp()
+			l.emit(LoadVarInst{Dest: t, Name: v})
+			return t
+		}
+
 		t := l.newTemp()
 		l.emit(LoadVarInst{Dest: t, Name: e.Name})
 		return t
@@ -533,19 +632,24 @@ func (l *Lowerer) lowerExpression(expr hir.Expression) Operand {
 			l.emit(AssignInst{Dest: l.newTemp(), Src: ConstOperand{Value: nil}})
 			return l.lastDestination()
 		}
+		l.pushScope()
 		for _, st := range e.Statements {
 			if _, isExpr := st.(*hir.ExprStmt); isExpr {
 				continue
 			}
 			l.lowerStatement(st)
 		}
+		// The value expression reads block bindings, so it lowers before the
+		// scope closes; otherwise a shadowed name would resolve outside.
 		for i := len(e.Statements) - 1; i >= 0; i-- {
 			if st, isExpr := e.Statements[i].(*hir.ExprStmt); isExpr {
 				dest := l.lowerExpression(st.Expr)
+				l.popScope()
 				l.emit(AssignInst{Dest: l.newTemp(), Src: dest})
 				return l.lastDestination()
 			}
 		}
+		l.popScope()
 		l.emit(AssignInst{Dest: l.newTemp(), Src: ConstOperand{Value: nil}})
 		return l.lastDestination()
 
@@ -639,9 +743,14 @@ func (l *Lowerer) lowerExpression(expr hir.Expression) Operand {
 
 		prevFn := l.currentFn
 		prevBB := l.currentBlock
+		prevDepth := len(l.scopes)
 
 		l.currentFn = fn
 		l.currentBlock = l.newBlock("bb_entry")
+		l.pushScope()
+		for _, p := range fn.Params {
+			l.bind(p)
+		}
 
 		// The same rule as a component function's body: a block's value is its
 		// last statement's value. This is the path a top-level `fn` takes — the
@@ -667,6 +776,7 @@ func (l *Lowerer) lowerExpression(expr hir.Expression) Operand {
 		l.currentFn = prevFn
 		l.currentBlock = prevBB
 		l.lastStatement = outerStatement
+		l.scopes = l.scopes[:prevDepth]
 
 		return VarOperand{Name: fnName}
 
