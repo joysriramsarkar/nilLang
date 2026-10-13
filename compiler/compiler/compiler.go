@@ -157,7 +157,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.AppStatement:
-		return c.Compile(node.Body)
+		// An app body is deliberately NOT a scope (see the checker): compile
+		// its statements directly instead of going through BlockStatement,
+		// which would forget the bindings on exit.
+		if node.Body != nil {
+			for _, s := range node.Body.Statements {
+				if err := c.Compile(s); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		return nil
 
 	case *ast.ImportStatement:
 		return c.compileImport(node)
@@ -442,12 +453,20 @@ func (c *Compiler) Compile(node ast.Node) error {
 		return fmt.Errorf("a range expression is only valid in a `for` loop header")
 
 	case *ast.BlockStatement:
+		// A block is a scope: `let` inside shadows instead of overwriting
+		// the enclosing binding, matching the type checker (which rejects
+		// reads of block locals from outside). Slot indices keep growing —
+		// LeaveBlock forgets names, never reuses slots — so emitted code
+		// stays valid after the restore.
+		c.symbolTable.EnterBlock()
 		for _, s := range node.Statements {
 			err := c.Compile(s)
 			if err != nil {
+				c.symbolTable.LeaveBlock()
 				return err
 			}
 		}
+		c.symbolTable.LeaveBlock()
 
 	case *ast.LetStatement:
 		if node.Value == nil {
@@ -479,24 +498,26 @@ func (c *Compiler) Compile(node ast.Node) error {
 		} else {
 			symbol, _ = c.symbolTable.Resolve(node.Name.Value)
 		}
+		c.markLoopFreshIfTopLevelLoop(node.Name.Value, symbol)
 
 		if symbol.Scope == GlobalScope {
-			c.emit(code.OpSetGlobal, symbol.Index)
+			c.emit(c.loopAwareSetGlobal(), symbol.Index)
 		} else {
-			c.emit(code.OpSetLocal, symbol.Index)
+			c.emit(c.loopAwareSetLocal(), symbol.Index)
 		}
 
 	case *ast.StateDeclaration:
 		symbol := c.symbolTable.Define(node.Name.Value)
+		c.markLoopFreshIfTopLevelLoop(node.Name.Value, symbol)
 		if node.Value == nil {
 			c.emit(code.OpNull)
 		} else if err := c.Compile(node.Value); err != nil {
 			return err
 		}
 		if symbol.Scope == GlobalScope {
-			c.emit(code.OpSetGlobal, symbol.Index)
+			c.emit(c.loopAwareSetGlobal(), symbol.Index)
 		} else {
-			c.emit(code.OpSetLocal, symbol.Index)
+			c.emit(c.loopAwareSetLocal(), symbol.Index)
 		}
 
 	case *ast.ComponentLiteral:
@@ -983,12 +1004,46 @@ func (c *Compiler) bindInlinedImport(node *ast.ImportStatement, importPath strin
 	return nil
 }
 
+// markLoopFresh records a top-level loop-body binding as per-pass fresh (see
+// Symbol.LoopFresh). It runs at `let`/`state` compile time, when the compiler
+// knows both the scope (global) and the context (inside a loop body).
+func (c *Compiler) markLoopFreshIfTopLevelLoop(name string, symbol Symbol) {
+	if symbol.Scope == GlobalScope && len(c.loops) > 0 {
+		if existing, ok := c.symbolTable.store[name]; ok {
+			existing.LoopFresh = true
+			c.symbolTable.store[name] = existing
+		}
+	}
+}
+
 func (c *Compiler) emitSymbolStore(symbol Symbol) {
 	if symbol.Scope == GlobalScope {
 		c.emit(code.OpSetGlobal, symbol.Index)
 	} else {
 		c.emit(code.OpSetLocal, symbol.Index)
 	}
+}
+
+// loopAwareSetLocal picks the store opcode for a `let`/`state` declaration:
+// inside a loop body each pass declares a fresh binding (SEMANTICS.md §4.2
+// rule 2), so the Fresh variant replaces a captured cell instead of writing
+// through it. Outside loops the plain store keeps today's behavior exactly,
+// including same-scope redeclaration reusing one slot.
+func (c *Compiler) loopAwareSetLocal() code.Opcode {
+	if len(c.loops) > 0 {
+		return code.OpSetLocalFresh
+	}
+	return code.OpSetLocal
+}
+
+// loopAwareSetGlobal is the top-level counterpart: loop-body bindings live in
+// fresh global slots (one per name, restored after the block), and each pass
+// installs a fresh cell when the previous pass's value was captured.
+func (c *Compiler) loopAwareSetGlobal() code.Opcode {
+	if len(c.loops) > 0 {
+		return code.OpSetGlobalFresh
+	}
+	return code.OpSetGlobal
 }
 
 // moduleBaseName derives the implicit binding name of an import path,
@@ -1029,6 +1084,16 @@ func (c *Compiler) loadSymbolForCapture(s Symbol) {
 		// The VM's pushClosure will then detect it's already a cell and
 		// share the pointer, giving both closures the same mutable cell.
 		c.emit(code.OpGetFreeCell, s.Index)
+		return
+	}
+
+	if s.Scope == GlobalScope && s.LoopFresh {
+		// A top-level loop-body binding lives in a shared global slot with
+		// a fresh cell per pass. Box in place (idempotently) so the new
+		// closure shares the current pass's cell — the global analogue of
+		// OpBoxLocal, and what makes per-iteration capture work at top
+		// level too.
+		c.emit(code.OpBoxGlobal, s.Index)
 		return
 	}
 

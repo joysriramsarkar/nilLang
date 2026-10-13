@@ -115,6 +115,23 @@ const (
 	OpTask
 	OpAwait
 	OpSetIndex
+
+	// OpSetLocalFresh / OpSetGlobalFresh store a `let` (re-)declaration
+	// inside a loop body.
+	//
+	// A loop re-executes its body, so each pass declares a fresh binding
+	// (SEMANTICS.md §4.2 rule 2: a closure created in the body captures that
+	// pass's value). A plain store would write through the shared cell and
+	// merge every pass into one binding. The Fresh variants replace the cell
+	// when the slot already holds one, and store plainly otherwise — so
+	// passes without any capture pay one type assertion and nothing else.
+	OpSetLocalFresh
+	OpSetGlobalFresh
+
+	// OpBoxGlobal is OpBoxLocal for the globals array: wrap the slot in a
+	// shared *CaptureCell in place (idempotently) and push the cell. Only
+	// top-level loop-body bindings (Symbol.LoopFresh) ever take this path.
+	OpBoxGlobal
 )
 
 type Definition struct {
@@ -169,6 +186,9 @@ var definitions = map[Opcode]*Definition{
 	OpTask:             {"OpTask", []int{}},
 	OpAwait:            {"OpAwait", []int{}},
 	OpSetIndex:         {"OpSetIndex", []int{}},
+	OpSetLocalFresh:    {"OpSetLocalFresh", []int{1}},
+	OpSetGlobalFresh:   {"OpSetGlobalFresh", []int{2}},
+	OpBoxGlobal:        {"OpBoxGlobal", []int{2}},
 }
 
 func Lookup(op byte) (*Definition, error) {

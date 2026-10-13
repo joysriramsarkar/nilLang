@@ -176,12 +176,18 @@ Global Scope
 - Outer bindings are shadowed when an inner scope declares a binding with the identical name:
   ```nil
   let x = 10;
-  {
+  if (true) {
       let x = 20; // Shadows outer x within this block
       x + 5;      // 25
   }
   x;              // 10 (outer binding unchanged)
   ```
+  (A bare `{ ... }` block is not a statement; the example uses `if` so it runs
+  as written. All three legs — checker, evaluator, VM — agree: conformance
+  evidence is `TestScopeCorpusAgreesAcrossEngines` in `tests/scope_corpus_test.go`.)
+
+- An `app` body is deliberately transparent rather than scoped: its bindings
+  are program-level (`app H { let ax = 9; } ax;` is 9 on every engine).
 
 ### 3.2 Closure Capture
 Functions capture identifiers referenced from enclosing scopes (free variables).
@@ -295,6 +301,12 @@ duplicated work. Two details of that lowering are load bearing:
 - **`break` and `continue` are not lowered away.** They become jumps in the VM and
   signal values in the evaluator. The only way to lower them would be a flag plus
   conditional jumps, which is more code for identical behaviour.
+- **Each pass declares its loop bindings fresh.** The evaluator gives the body a
+  new environment per pass; the VM stores `let`/`state` declarations in a loop
+  body with fresh-cell opcodes (`OpSetLocalFresh` inside functions,
+  `OpSetGlobalFresh` at top level) and shares the current pass's cell at
+  closure creation (`OpBoxGlobal` for top-level bindings, `OpBoxLocal` for
+  locals). Passes without any capture pay one type test and no allocation.
 
 ### 4.3 `while let`
 

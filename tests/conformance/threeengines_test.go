@@ -155,6 +155,15 @@ func TestThreeEnginesAgree(t *testing.T) {
 				return
 			}
 
+			// A case the AOT backend cannot run yet is recorded skipped, with
+			// the reason asserted by reportAgreement below. This is for missing
+			// backend capabilities only: the two Go engines above must already
+			// agree before a case may land here.
+			if tc.SkipAOT != "" {
+				skipped["aot: "+tc.SkipAOT] = append(skipped["aot: "+tc.SkipAOT], tc.Name)
+				t.Skip("aot: " + tc.SkipAOT)
+			}
+
 			if reason := unsupportedReason(tc.Source); reason != "" {
 				skipped[reason] = append(skipped[reason], tc.Name)
 				t.Skip(reason)
@@ -239,6 +248,12 @@ func predicted(reason string) bool {
 		return true
 	}
 	if strings.Contains(reason, "error cases") {
+		return true
+	}
+	// A per-case recorded AOT gap (ConformanceCase.SkipAOT): the two Go
+	// engines agree and the ahead-of-time backend lacks a named capability.
+	// The reason names the missing capability, so un-naming it fails loudly.
+	if strings.Contains(reason, "AOT has no lowering for block-scoped shadowing yet") {
 		return true
 	}
 	if strings.Contains(reason, "no linker") || strings.Contains(reason, "no C compiler") {

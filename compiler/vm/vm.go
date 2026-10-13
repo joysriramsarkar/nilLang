@@ -565,7 +565,15 @@ func (vm *VM) Run() error {
 			}
 			mu := vm.ensureGlobalsMu()
 			mu.Lock()
-			vm.globals[globalIndex] = val
+			// A loop-body `let` at top level stores a fresh cell per pass
+			// (OpSetGlobalFresh). An assignment to that name must go through
+			// the current cell, mirroring OpSetLocal, or the closure holding
+			// it would never observe the write.
+			if cell, ok := vm.globals[globalIndex].(*object.CaptureCell); ok {
+				cell.Value = val
+			} else {
+				vm.globals[globalIndex] = val
+			}
 			mu.Unlock()
 
 		case code.OpGetGlobal:
@@ -576,6 +584,12 @@ func (vm *VM) Run() error {
 			mu.Lock()
 			global := vm.globals[globalIndex]
 			mu.Unlock()
+			// Unwrap per-pass loop cells transparently: arithmetic and calls
+			// must see the value, never the cell. Only loop-body `let`
+			// bindings at top level ever hold cells here.
+			if cell, ok := global.(*object.CaptureCell); ok {
+				global = cell.Value
+			}
 			err := vm.push(global)
 			if err != nil {
 				return err
@@ -780,6 +794,71 @@ func (vm *VM) Run() error {
 				vm.stack[addr] = cell
 			}
 
+			if err := vm.push(cell); err != nil {
+				return err
+			}
+
+		case code.OpSetLocalFresh:
+			localIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentFrame().ip += 1
+
+			val, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			frame := vm.currentFrame()
+			addr := frame.basePointer + int(localIndex)
+			if addr >= StackSize {
+				return errInvalidBytecode("local index out of bounds")
+			}
+			// A `let` inside a loop body declares a fresh binding on every
+			// pass (SEMANTICS.md §4.2 rule 2). If a closure captured the
+			// previous pass's cell, writing through it would merge all
+			// passes into one binding — so a held cell is replaced with a
+			// new one, while a plain value stores exactly like OpSetLocal.
+			if _, ok := vm.stack[addr].(*object.CaptureCell); ok {
+				cell := &object.CaptureCell{Value: val}
+				vm.allocateObject(cell)
+				vm.stack[addr] = cell
+			} else {
+				vm.stack[addr] = val
+			}
+
+		case code.OpSetGlobalFresh:
+			globalIndex := code.ReadUint16(ins[ip+1:])
+			vm.currentFrame().ip += 2
+
+			val, err := vm.pop()
+			if err != nil {
+				return err
+			}
+			mu := vm.ensureGlobalsMu()
+			mu.Lock()
+			if _, ok := vm.globals[globalIndex].(*object.CaptureCell); ok {
+				cell := &object.CaptureCell{Value: val}
+				vm.allocateObject(cell)
+				vm.globals[globalIndex] = cell
+			} else {
+				vm.globals[globalIndex] = val
+			}
+			mu.Unlock()
+
+		case code.OpBoxGlobal:
+			globalIndex := code.ReadUint16(ins[ip+1:])
+			vm.currentFrame().ip += 2
+
+			mu := vm.ensureGlobalsMu()
+			mu.Lock()
+			// Mirror OpBoxLocal: box in place so the slot and every closure
+			// created this pass share one cell. Keeping an existing cell is
+			// what keeps same-pass siblings shared.
+			cell, alreadyBoxed := vm.globals[globalIndex].(*object.CaptureCell)
+			if !alreadyBoxed {
+				cell = &object.CaptureCell{Value: vm.globals[globalIndex]}
+				vm.allocateObject(cell)
+				vm.globals[globalIndex] = cell
+			}
+			mu.Unlock()
 			if err := vm.push(cell); err != nil {
 				return err
 			}

@@ -25,5 +25,8 @@
 
 ## এই সেশনে
 - [x] 13 Oct: `go test ./compiler/... ./pkg/...` সবুজ (Phase 0)।
-- [x] 13 Oct: P0.1 grammar table (`compiler/parser/grammar_table_test.go`, commit `5afc0ce`) — EBNF §3 productions pinned; E0102 যাচাই করে দেখা গেছে আগে থেকেই implemented+tested (`typecheck.go:541`); বাকি P0.1 (E0102-এর বাইরে) সম্পূর্ণ।
-- [ ] P0.2 single parse-and-check frontend (পরের আইটেম)।
+- [x] 13 Oct: P0.1 grammar table (`compiler/parser/grammar_table_test.go`, commit `5afc0ce`)।
+- [x] 13 Oct: P0.2 entry rejection (`pkg/compiler/entry_rejection_test.go`, commit `164dc02`)।
+- [x] 13 Oct: P0.3 sequence narrowing + Any audit (commit `bed3844`)।
+- [x] 13 Oct: P0.4 scope freeze — block shadowing (checker+evaluator+VM), app transparency, per-pass loop bindings (fresh cells), unified scope corpus — নিচে।
+- [ ] P1 canonical HIR→MIR + scoped MIR lowering (AOT block-scoping gap recorded: SkipAOT)।

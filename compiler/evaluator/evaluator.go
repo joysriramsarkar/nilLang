@@ -212,7 +212,21 @@ func evalNode(node ast.Node, env *object.Environment) object.Object {
 	case *ast.BlockStatement:
 		return evalBlockStatement(node, env)
 	case *ast.AppStatement:
-		return Eval(node.Body, env)
+		// An app body is deliberately NOT a scope (see the checker): evaluate
+		// its statements in this environment instead of enclosing a block one.
+		if node.Body != nil {
+			for _, s := range node.Body.Statements {
+				result := Eval(s, env)
+				if result != nil {
+					switch result.Type() {
+					case object.RETURN_VALUE_OBJ, object.ERROR_OBJ,
+						object.BREAK_SIGNAL_OBJ, object.CONTINUE_SIGNAL_OBJ:
+						return result
+					}
+				}
+			}
+		}
+		return NULL
 	case *ast.ExpressionStatement:
 		return Eval(node.Expression, env)
 	case *ast.ReturnStatement:
@@ -521,10 +535,16 @@ func evalProgram(program *ast.Program, env *object.Environment) object.Object {
 // last value: in { if (x) { break; } work(); } the work() after the
 // reak must not run. Checking only the final value would let it.
 func evalBlockStatement(block *ast.BlockStatement, env *object.Environment) object.Object {
+	// A block is a scope: `let` inside shadows instead of overwriting the
+	// enclosing binding, matching the type checker (which rejects reads of
+	// block locals from outside). Assignments still walk outward via Assign.
+	// The program root never reaches here (evalProgram loops directly), so
+	// top-level bindings stay global.
+	scoped := object.NewEnclosedEnvironment(env)
 	var result object.Object
 
 	for _, statement := range block.Statements {
-		result = Eval(statement, env)
+		result = Eval(statement, scoped)
 
 		if result != nil {
 			switch result.Type() {

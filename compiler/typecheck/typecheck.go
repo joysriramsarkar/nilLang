@@ -398,6 +398,10 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 
 	case *ast.AppStatement:
 		if s.Body != nil {
+			// An app body is deliberately NOT a scope: its bindings are
+			// program-level (tests pin `app H { let ax = 9; } ax;` and
+			// `app Hello { state count } count;`). The evaluator and the VM
+			// treat it the same way — see below.
 			for _, nested := range s.Body.Statements {
 				c.checkStatement(nested)
 			}

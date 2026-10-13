@@ -132,7 +132,7 @@ let nilParse = fn(source) {
         expressions = push(expressions, parseExpression(0));
         while (current()["type"] == ",") {
             advance();
-            let expressions = push(expressions, parseExpression(0));
+            expressions = push(expressions, parseExpression(0));
         }
         expect(endToken);
         return expressions;

@@ -97,8 +97,8 @@ func TestWhileLoop(t *testing.T) {
 let x = 0;
 let sum = 0;
 while (x < 5) {
-	let sum = sum + x;
-	let x = x + 1;
+	sum = sum + x;
+	x = x + 1;
 }
 sum;
 `

@@ -15,6 +15,15 @@ type Symbol struct {
 	Scope    SymbolScope
 	Index    int
 	Constant bool
+	// LoopFresh marks a top-level loop-body binding. Each pass declares a
+	// fresh binding (SEMANTICS.md §4.2 rule 2), so a closure created inside
+	// the body must capture that pass's cell rather than reading the shared
+	// slot live. Resolve free-converts marked globals; the VM installs a
+	// fresh cell per pass (OpSetGlobalFresh) and shares the current one at
+	// creation (OpBoxGlobal). Plain top-level bindings are unmarked: they
+	// keep direct shared-global access, which is what makes top-level
+	// mutation through closures work.
+	LoopFresh bool
 	// Module is the import generation that defined the binding.
 	//
 	// Every `import` of a file module inlines that module's top-level
@@ -46,6 +55,64 @@ type SymbolTable struct {
 	// the same names. Enclosed (function-local) scopes inherit the value at
 	// creation; locals never collide across modules anyway.
 	ModuleGen int
+
+	// Block scopes are tracked, not chained: a `{ ... }` block reuses this
+	// table's instruction stream and frame, so a fresh table would restart
+	// slot numbering at zero and collide with the enclosing locals. Instead
+	// EnterBlock/LeaveBlock snapshot and restore the name bindings while
+	// slot indices keep growing monotonically (see Define).
+	savedStack []savedBinding
+	blockMarks []int
+}
+
+// savedBinding records one name overwritten (or introduced) inside a block so
+// LeaveBlock can restore the enclosing binding.
+type savedBinding struct {
+	name string
+	old  Symbol
+	had  bool
+}
+
+// EnterBlock opens a `{ ... }` scope in the current table. Every Define until
+// the matching LeaveBlock shadows instead of reusing, even for a name the
+// enclosing scope already binds.
+func (s *SymbolTable) EnterBlock() {
+	s.blockMarks = append(s.blockMarks, len(s.savedStack))
+}
+
+// LeaveBlock closes the innermost open block, forgetting its bindings and
+// revealing the shadowed ones. Slot indices are NOT rewound: code already
+// emitted references them, and the frame is sized for the high-water mark.
+func (s *SymbolTable) LeaveBlock() {
+	if len(s.blockMarks) == 0 {
+		return
+	}
+	mark := s.blockMarks[len(s.blockMarks)-1]
+	s.blockMarks = s.blockMarks[:len(s.blockMarks)-1]
+	for i := len(s.savedStack) - 1; i >= mark; i-- {
+		sb := s.savedStack[i]
+		if sb.had {
+			s.store[sb.name] = sb.old
+		} else {
+			delete(s.store, sb.name)
+		}
+	}
+	s.savedStack = s.savedStack[:mark]
+}
+
+// inBlock reports whether a `{ ... }` scope is open in this table.
+func (s *SymbolTable) inBlock() bool {
+	return len(s.blockMarks) > 0
+}
+
+// recordBlockDefine remembers the binding a block-scoped Define is about to
+// shadow (or the absence of one) so LeaveBlock can undo it.
+func (s *SymbolTable) recordBlockDefine(name string) {
+	if existing, ok := s.store[name]; ok {
+		s.savedStack = append(s.savedStack, savedBinding{name: name, old: existing, had: true})
+	} else {
+		s.savedStack = append(s.savedStack, savedBinding{name: name, had: false})
+	}
 }
 
 func NewSymbolTable() *SymbolTable {
@@ -81,9 +148,14 @@ func NewEnclosedSymbolTable(outer *SymbolTable) *SymbolTable {
 // keeps slots defined since the import began).
 func (s *SymbolTable) Define(name string) Symbol {
 	if existing, ok := s.store[name]; ok && existing.Scope != BuiltinScope {
-		if s.Outer != nil || existing.Module == s.ModuleGen {
+		if !s.inBlock() && (s.Outer != nil || existing.Module == s.ModuleGen) {
 			return existing
 		}
+	}
+	if s.inBlock() {
+		// Inside a block a declaration always shadows: recording first keeps
+		// LeaveBlock able to reveal the outer binding (or builtin) again.
+		s.recordBlockDefine(name)
 	}
 	symbol := Symbol{Name: name, Index: s.numDefinitions, Module: s.ModuleGen}
 	if s.Outer == nil {
@@ -99,11 +171,25 @@ func (s *SymbolTable) Define(name string) Symbol {
 
 func (s *SymbolTable) DefineConst(name string) Symbol {
 	if existing, ok := s.store[name]; ok && existing.Scope != BuiltinScope {
-		if s.Outer != nil || existing.Module == s.ModuleGen {
+		if !s.inBlock() && (s.Outer != nil || existing.Module == s.ModuleGen) {
 			existing.Constant = true
 			s.store[name] = existing
 			return existing
 		}
+	}
+	if s.inBlock() {
+		s.recordBlockDefine(name)
+		// Create directly rather than via Define: Define would record the
+		// same binding a second time (harmless but noisy).
+		symbol := Symbol{Name: name, Index: s.numDefinitions, Module: s.ModuleGen, Constant: true}
+		if s.Outer == nil {
+			symbol.Scope = GlobalScope
+		} else {
+			symbol.Scope = LocalScope
+		}
+		s.store[name] = symbol
+		s.numDefinitions++
+		return symbol
 	}
 	symbol := s.Define(name)
 	symbol.Constant = true
@@ -137,7 +223,12 @@ func (s *SymbolTable) Resolve(name string) (Symbol, bool) {
 			return obj, ok
 		}
 
-		if obj.Scope == GlobalScope || obj.Scope == BuiltinScope {
+		// Loop-fresh globals are the exception to direct global access: a
+		// closure must capture the current pass's cell (see LoopFresh).
+		if obj.Scope == GlobalScope && !obj.LoopFresh {
+			return obj, ok
+		}
+		if obj.Scope == BuiltinScope {
 			return obj, ok
 		}
 

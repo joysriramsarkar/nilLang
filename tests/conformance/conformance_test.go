@@ -33,6 +33,12 @@ type ConformanceCase struct {
 	// ExpectCategory is the object.ErrorCategory both engines must report when
 	// the case expects an error. Empty skips the cross-engine category check.
 	ExpectCategory object.ErrorCategory
+
+	// SkipAOT is non-empty when the ahead-of-time backend cannot run this
+	// case yet; its value is the recorded reason, asserted by the ratchet in
+	// threeengines_test.go. A case lands here for a missing backend
+	// capability, never to hide a disagreement between the two Go engines.
+	SkipAOT string
 }
 
 // errorMessageOf extracts the message from either error shape the evaluator can
@@ -1360,9 +1366,13 @@ var conformanceCases = []ConformanceCase{
 			}
 			result + x;
 			`,
-		// Evaluator and VM both return 4 because block-scope let x=2
-		// assigns to the same slot as outer x in the VM's flat locals.
-		Expected: int64(4),
+		// Evaluator and VM return 3: the inner `let x = 2` shadows the
+		// outer binding (SEMANTICS.md §3.1), so result is 2 and x stays 1.
+		Expected: int64(3),
+		// The AOT backend lowers names without scopes, so it still merges
+		// the two bindings and prints 4. Scoped MIR lowering is P1 work;
+		// until then this case is recorded skipped, not silently passing.
+		SkipAOT: "AOT has no lowering for block-scoped shadowing yet",
 	},
 	{
 		Name: "Function Sees Global Variable",
@@ -2121,13 +2131,13 @@ var conformanceCases = []ConformanceCase{
 		Expected: int64(20),
 	},
 	{
-		Name: "While Loop Increment With Let Rebinding",
+		Name: "While Loop Increment With Accumulation",
 		Source: `
 			let i = 0;
 			let total = 0;
 			while (i < 5) {
-				let total = total + i;
-				let i = i + 1;
+				total = total + i;
+				i = i + 1;
 			}
 			total;
 			`,
