@@ -24,4 +24,6 @@
 - `go test ./...` সবুজ (Linux/macOS/Windows); fuzz/watch-তালিকার টেস্ট স্থিতিশীল; স্পেক-বদলে conformance ফিক্সচার একসাথে।
 
 ## এই সেশনে
-- [ ] `go test ./compiler/... ./pkg/...` চালিয়ে ফলাফল রেকর্ড (কোড বদল নয়, freeze সম্মান করে)।
+- [x] 13 Oct: `go test ./compiler/... ./pkg/...` সবুজ (Phase 0)।
+- [x] 13 Oct: P0.1 grammar table (`compiler/parser/grammar_table_test.go`, commit `5afc0ce`) — EBNF §3 productions pinned; E0102 যাচাই করে দেখা গেছে আগে থেকেই implemented+tested (`typecheck.go:541`); বাকি P0.1 (E0102-এর বাইরে) সম্পূর্ণ।
+- [ ] P0.2 single parse-and-check frontend (পরের আইটেম)।
