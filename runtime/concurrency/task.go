@@ -118,6 +118,25 @@ func (t *Task) Spawn(action func(ctx context.Context) (object.Object, error)) *T
 
 // Cancel cancels this task and cascades the cancellation to all descendants.
 //
+// CollectFutures returns the futures of this scope and all descendants.
+//
+// The VM's root set includes them so an in-flight task's future — and through
+// it, a completed result not yet awaited — survives collection (MEMORY_MODEL.md
+// §2.1 item 4). Children are snapshotted under lock and walked without holding
+// it, the same discipline as Cancel: a collection must never deadlock against
+// a task completing concurrently.
+func (t *Task) CollectFutures() []*object.Future {
+	t.mu.Lock()
+	out := []*object.Future{t.future}
+	children := append([]*Task(nil), t.children...)
+	t.mu.Unlock()
+
+	for _, child := range children {
+		out = append(out, child.CollectFutures()...)
+	}
+	return out
+}
+
 // Cancellation flows strictly downward: a parent cancels its children, never
 // the reverse. An earlier version propagated a child's Cancel to its parent,
 // which re-cancelled the child, which re-cancelled the parent — unbounded

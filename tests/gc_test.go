@@ -354,3 +354,78 @@ func TestGCRootSetIncludesGlobals(t *testing.T) {
 		t.Error("the global hash is missing from the root set")
 	}
 }
+
+// TestGCRootSetIncludesTaskFutures backs MEMORY_MODEL.md §2.1 item 4: every
+// future in the scheduler tree is a root, so an in-flight task's result
+// cannot be swept before it is awaited. (Component trees live host-side, not
+// in the VM; native handles are rooted by the collector itself.)
+func TestGCRootSetIncludesTaskFutures(t *testing.T) {
+	res := evalSource(t, `let a = task { 1; }; let b = task { 2; }; await a; await b;`)
+	if !res.OK {
+		t.Fatalf("source rejected: %s", res.ErrSummary())
+	}
+	machine, err := compileToVM(res.Program)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if err := machine.Run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	scopes := machine.TaskChildScopes()
+	if len(scopes) != 2 {
+		t.Fatalf("want 2 spawned scopes, got %d", len(scopes))
+	}
+	want := map[*object.Future]bool{}
+	for _, scope := range scopes {
+		for _, fut := range scope.CollectFutures() {
+			want[fut] = true
+		}
+	}
+	roots := machine.GCRoots()
+	for fut := range want {
+		found := false
+		for _, root := range roots {
+			if root == fut {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("a task future is missing from the root set")
+		}
+	}
+}
+
+// TestTaskResultsSurviveCollectionUnderPressure runs tasks while the heap
+// collects repeatedly, proving live task state survives real collections.
+func TestTaskResultsSurviveCollectionUnderPressure(t *testing.T) {
+	source := `
+let a = task { let xs = [1, 2, 3]; len(xs); };
+let b = task { let ys = [4, 5]; len(ys); };
+let result = (await a) + (await b);
+`
+	res := evalSource(t, source)
+	if !res.OK {
+		t.Fatalf("source rejected: %s", res.ErrSummary())
+	}
+	machine, err := compileToVM(res.Program)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	heap := gc.NewHeap(4)
+	machine.EnableGC(heap)
+
+	if err := machine.Run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if heap.Collector().Collections == 0 {
+		t.Error("no collection ran despite crossing the threshold")
+	}
+	result := globalByName(t, machine, "result")
+	integer, ok := result.(*object.Integer)
+	if !ok || integer.Value != 5 {
+		t.Errorf("got %v (%T), want 5; task results must survive collection", result, result)
+	}
+}

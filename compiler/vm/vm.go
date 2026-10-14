@@ -85,6 +85,10 @@ type VM struct {
 	// per 256 instructions keeps the steady-state cost to a counter bump.
 	cancelCounter uint64
 
+	// allocCounter spaces root-set refreshes the same way: rebuilding the
+	// set on every allocation would rescan the globals on every allocation.
+	allocCounter uint64
+
 	// taskChildren records the scopes OpTask spawns, in spawn order. It
 	// exists for the debugger and for tests: the scope is what carries the
 	// tree relationship a fault or a cancellation travels through.
@@ -175,6 +179,14 @@ func (vm *VM) allocateObject(obj object.Object) {
 	if !vm.gcTracking || obj == nil {
 		return
 	}
+	// Threshold collections inside Track use the registered roots, so the set
+	// is rebuilt periodically — same 256-cadence as the cancellation polls.
+	// Fresh frames (calls) and freshly spawned task scopes otherwise enter the
+	// tracked world invisible until the next manual collection.
+	vm.allocCounter++
+	if vm.allocCounter&0xFF == 0 {
+		vm.Heap.SetRoots(vm.GCRoots())
+	}
 	vm.Heap.Track(obj)
 }
 
@@ -214,6 +226,17 @@ func (vm *VM) GCRoots() []object.Object {
 
 	if vm.lastPoppedStackElem != nil {
 		roots = append(roots, vm.lastPoppedStackElem)
+	}
+
+	// In-flight tasks hold futures whose results may not be awaited yet. A
+	// future referenced nowhere else — spawned and forgotten until joined —
+	// is still live state, so the scheduler's whole tree is walked.
+	if vm.taskScope != nil {
+		for _, fut := range vm.taskScope.CollectFutures() {
+			if fut != nil {
+				roots = append(roots, fut)
+			}
+		}
 	}
 
 	return roots
@@ -1697,6 +1720,11 @@ func (vm *VM) runClosureShared(closure *object.Closure, scope *concurrency.Task)
 		cancellable:       true,
 		NativeCallHandler: vm.NativeCallHandler,
 		CapabilityChecker: vm.CapabilityChecker,
+		// A task body allocates into the same managed heap: without this a
+		// program under collection would have its task allocations invisible
+		// to the collector while the parent's are tracked.
+		Heap:       vm.Heap,
+		gcTracking: vm.gcTracking,
 	}
 	if err := child.push(closure); err != nil {
 		return nil, err
