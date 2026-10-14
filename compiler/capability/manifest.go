@@ -100,6 +100,10 @@ var builtinRequirements = map[string]Requirement{
 	"println": {Stdout},
 	"puts":    {Stdout},
 	"input":   {Stdin},
+	// clear emits ANSI escape codes to the terminal — no capability needed,
+	// but the name must be KNOWN so the compiler emits OpNativeCall instead
+	// of a closure call the VM cannot resolve.
+	"clear": {},
 
 	// Process and environment.
 	"exec":  {Process},

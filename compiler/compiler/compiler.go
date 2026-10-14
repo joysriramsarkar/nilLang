@@ -1354,8 +1354,7 @@ func (c *Compiler) gatedBuiltinCall(node *ast.CallExpression) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	class, known := builtin.Classify(ident.Value)
-	if !known || !class.Gated {
+	if _, known := builtin.Classify(ident.Value); !known {
 		return "", false
 	}
 	if sym, found := c.symbolTable.Resolve(ident.Value); found && sym.Scope != BuiltinScope {
