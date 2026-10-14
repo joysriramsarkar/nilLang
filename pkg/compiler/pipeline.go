@@ -134,7 +134,10 @@ func (p *Pipeline) Compile() error {
 		}
 		summary := res.ErrSummary()
 		if summary == "" {
-			summary = fmt.Sprintf("compilation failed with %d error(s)", len(p.errors))
+			// Defensive and unreachable in practice: the gate was red but
+			// named nothing. Coded as internal so it can never be mistaken
+			// for a user error with a missing code.
+			summary = fmt.Sprintf("[E0000] compilation failed with %d error(s)", len(p.errors))
 		}
 		return fmt.Errorf("%s", summary)
 	}
@@ -169,7 +172,9 @@ func (p *Pipeline) Compile() error {
 	if p.backend == BackendMir {
 		bc, err := CompileViaMir(res.Lowered)
 		if err != nil {
-			return fmt.Errorf("MIR bytecode compilation failed: %w", err)
+			// The gate passed, so a backend failure is an internal fault,
+			// not a user error: code it as one.
+			return fmt.Errorf("[E0000] MIR bytecode compilation failed: %w", err)
 		}
 		p.bytecode = bc
 		return nil
@@ -180,7 +185,7 @@ func (p *Pipeline) Compile() error {
 	comp.SourceDir = filepath.Dir(p.filename)
 	comp.LoadModule = loadModuleAST
 	if err := comp.Compile(program); err != nil {
-		return fmt.Errorf("bytecode compilation failed: %w", err)
+		return fmt.Errorf("[E0000] bytecode compilation failed: %w", err)
 	}
 
 	p.bytecode = comp.Bytecode()
@@ -214,14 +219,6 @@ func (p *Pipeline) GetDisassembly() string {
 		return ""
 	}
 	return vm.Disassemble(p.bytecode.Instructions)
-}
-
-func formatErrors(errors []string) string {
-	result := ""
-	for i, err := range errors {
-		result += fmt.Sprintf("  %d. %s\n", i+1, err)
-	}
-	return result
 }
 
 // ConfigureCompiler equips a bytecode compiler with the module-resolution

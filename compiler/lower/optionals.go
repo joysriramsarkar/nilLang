@@ -1,8 +1,6 @@
 package lower
 
 import (
-	"fmt"
-
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/token"
 )
@@ -38,7 +36,7 @@ import (
 // coalesce lowers `left ?? right`.
 func (l *lowerer) coalesce(node *ast.CoalesceExpression) (ast.Expression, error) {
 	if node.Left == nil || node.Right == nil {
-		return nil, fmt.Errorf("line %d: `??` needs a value on both sides", node.Token.Line)
+		return nil, &Error{Line: node.Token.Line, Msg: "`??` needs a value on both sides"}
 	}
 
 	tok := node.Token
@@ -165,7 +163,7 @@ func (l *lowerer) guardChain(tok token.Token, whole ast.Expression, safe *ast.Sa
 // safeAccess lowers `left?.member`.
 func (l *lowerer) safeAccess(node *ast.SafeAccessExpression) (ast.Expression, error) {
 	if node.Left == nil || node.Member == nil {
-		return nil, fmt.Errorf("line %d: `?.` needs a receiver and a member", node.Token.Line)
+		return nil, &Error{Line: node.Token.Line, Msg: "`?.` needs a receiver and a member"}
 	}
 	return l.safeAccessBody(node, node.Token, node.Left, node.Member, nil)
 }
@@ -173,7 +171,7 @@ func (l *lowerer) safeAccess(node *ast.SafeAccessExpression) (ast.Expression, er
 // safeAccessCall lowers `left?.member(args)`.
 func (l *lowerer) safeAccessCall(node *ast.CallExpression, access *ast.SafeAccessExpression) (ast.Expression, error) {
 	if access.Left == nil || access.Member == nil {
-		return nil, fmt.Errorf("line %d: `?.` needs a receiver and a member", access.Token.Line)
+		return nil, &Error{Line: access.Token.Line, Msg: "`?.` needs a receiver and a member"}
 	}
 	// The lookup key is the SafeAccessExpression, not the call. That is the node
 	// the checker records against, because that is the node that names the

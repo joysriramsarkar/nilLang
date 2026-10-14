@@ -198,13 +198,13 @@ func (l *lowerer) statement(stmt ast.Statement) (ast.Statement, error) {
 
 	case *ast.BreakStatement:
 		if l.loopDepth == 0 {
-			return nil, fmt.Errorf("line %d: `break` used outside of a loop", node.Token.Line)
+			return nil, &Error{Line: node.Token.Line, Msg: "`break` used outside of a loop"}
 		}
 		return node, nil
 
 	case *ast.ContinueStatement:
 		if l.loopDepth == 0 {
-			return nil, fmt.Errorf("line %d: `continue` used outside of a loop", node.Token.Line)
+			return nil, &Error{Line: node.Token.Line, Msg: "`continue` used outside of a loop"}
 		}
 		return node, nil
 
@@ -322,8 +322,7 @@ func (l *lowerer) block(node *ast.BlockStatement) (*ast.BlockStatement, error) {
 // it appeared.
 func (l *lowerer) expression(expr ast.Expression) (ast.Expression, error) {
 	if rangeExpr, ok := expr.(*ast.RangeExpression); ok {
-		return nil, fmt.Errorf("line %d: a range expression is only valid in a `for` loop header",
-			rangeExpr.Token.Line)
+		return nil, &Error{Line: rangeExpr.Token.Line, Msg: "a range expression is only valid in a `for` loop header"}
 	}
 
 	switch node := expr.(type) {
@@ -577,10 +576,10 @@ func (l *lowerer) expression(expr ast.Expression) (ast.Expression, error) {
 // forStatement lowers a `for` loop into a block containing a `while` loop.
 func (l *lowerer) forStatement(node *ast.ForStatement) (ast.Statement, error) {
 	if node.Body == nil {
-		return nil, fmt.Errorf("line %d: `for` loop has no body", node.Token.Line)
+		return nil, &Error{Line: node.Token.Line, Msg: "`for` loop has no body"}
 	}
 	if node.Value == nil {
-		return nil, fmt.Errorf("line %d: `for` loop must bind a variable", node.Token.Line)
+		return nil, &Error{Line: node.Token.Line, Msg: "`for` loop must bind a variable"}
 	}
 
 	if rangeExpr, ok := node.Iterable.(*ast.RangeExpression); ok {
@@ -736,7 +735,7 @@ func (l *lowerer) structLiteral(node *ast.StructLiteral) (ast.Expression, error)
 
 	for _, field := range node.Fields {
 		if field.Value == nil {
-			return nil, fmt.Errorf("line %d: field %q has no value", tok.Line, field.Name.Value)
+			return nil, &Error{Line: tok.Line, Msg: fmt.Sprintf("field %q has no value", field.Name.Value)}
 		}
 		value, err := l.expression(field.Value)
 		if err != nil {

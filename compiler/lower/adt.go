@@ -133,10 +133,10 @@ func hashLiteral(tok token.Token, pairs []ast.HashPairExpr) *ast.HashLiteral {
 // if/else chain.
 func (l *lowerer) matchExpression(node *ast.MatchExpression) (ast.Expression, error) {
 	if node.Subject == nil {
-		return nil, fmt.Errorf("line %d: `match` has no subject", node.Token.Line)
+		return nil, &Error{Line: node.Token.Line, Msg: "`match` has no subject"}
 	}
 	if len(node.Arms) == 0 {
-		return nil, fmt.Errorf("line %d: `match` has no arms", node.Token.Line)
+		return nil, &Error{Line: node.Token.Line, Msg: "`match` has no arms"}
 	}
 
 	tok := node.Token
@@ -162,7 +162,7 @@ func (l *lowerer) matchExpression(node *ast.MatchExpression) (ast.Expression, er
 
 	for _, arm := range node.Arms {
 		if arm.Body == nil {
-			return nil, fmt.Errorf("line %d: a match arm has no body", tok.Line)
+			return nil, &Error{Line: tok.Line, Msg: "a match arm has no body"}
 		}
 
 		body, err := l.expression(arm.Body)
@@ -468,10 +468,10 @@ func (b *patternBuilder) build(pattern ast.MatchPattern) (ast.Expression, []ast.
 	case len(pattern.Alternatives) > 0:
 		// The caller flattens alternatives into separate arms, so reaching here
 		// means an or-pattern was nested inside another pattern.
-		return nil, nil, fmt.Errorf("line %d: a `|` pattern cannot be nested inside another pattern", tok.Line)
+		return nil, nil, &Error{Line: tok.Line, Msg: "a `|` pattern cannot be nested inside another pattern"}
 
 	default:
-		return nil, nil, fmt.Errorf("line %d: empty match pattern", tok.Line)
+		return nil, nil, &Error{Line: tok.Line, Msg: "empty match pattern"}
 	}
 }
 

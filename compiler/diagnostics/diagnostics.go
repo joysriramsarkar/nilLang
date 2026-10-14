@@ -121,6 +121,7 @@ func (d *Diagnostic) Format(useColor bool) string {
 
 // DiagnosticCatalog provides standard descriptions for compiler error codes
 var DiagnosticCatalog = map[string]string{
+	"E0000": "Internal Compiler Error: the toolchain itself failed on checked source. This is a bug in the compiler, not in the program — please report it with the source attached.",
 	"E0001": "Unexpected Token: A character or token appeared where the grammar does not allow it.",
 	"E0002": "Unterminated String: A string literal is missing its closing quote.",
 	"E0003": "Unexpected EOF: The file ended in the middle of a statement, expression, or block.",
@@ -145,6 +146,26 @@ var DiagnosticCatalog = map[string]string{
 	"E0404": "Invalid Entity Field Type: The declared field type could not be resolved.",
 	"E0405": "Multiple Primary Keys: An entity may declare at most one primary key.",
 	"E0406": "Invalid Component Name: Component declaration must have a name.",
+	"E0502": "Unknown Type: Unknown type name in a parameter, return, field, or alias annotation.",
+	"E0110": "Width Overflow: An integer literal does not fit the width it was written against.",
+	"E0111": "Unknown Member: A member chain names something the receiver's declared type does not have.",
+	"E0112": "Not Narrowable: A narrowing builtin applied to a value that is neither a `Result` nor an optional.",
+	"E0113": "Width Mismatch: A numeric width used where a different width or Int is expected, with no implicit conversion.",
+	"E0203": "Unsafe Without Block: Unsafe operation invoked without `unsafe` block.",
+	"E0204": "Generic Mismatch: A call cannot satisfy a generic signature's structure.",
+	"E0501": "Duplicate Declaration: A type name, enum variant, trait, or trait method redeclared.",
+	"E0503": "Unknown Field: Unknown field on a struct.",
+	"E0504": "Duplicate Field: Duplicate field in a struct literal.",
+	"E0505": "Unknown Variant: Unknown enum variant in a `match` or a call.",
+	"E0506": "Missing Field: Missing field in a struct literal.",
+	"E0507": "Non-exhaustive Match: Non-exhaustive `match` over an enum, `bool`, `Result`, or `Optional`.",
+	"E0508": "Duplicate Arm: Duplicate `match` arm.",
+	"E0509": "Variant Arity: Wrong number of arguments for an enum variant.",
+	"E0510": "Pattern Arity: Wrong arity for a `match` pattern.",
+	"E0511": "Unbound Variable: Variable not bound in the arm that would read it.",
+	"E0601": "Impl Missing Method: An `impl` does not provide a method its trait declares.",
+	"E0602": "Impl Extra Method: An `impl` provides a method its trait does not declare.",
+	"E0603": "Unresolved Method: A method call cannot be resolved on the receiver's type.",
 }
 
 // ExplainCode returns human and AI explanation for a given code

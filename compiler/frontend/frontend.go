@@ -25,6 +25,7 @@ package frontend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
@@ -140,7 +141,8 @@ func Check(source string, opts Options) Result {
 	}
 
 	if opts.SkipTypeCheck {
-		result.Lowered = lowerProgram(&result)
+		result.Lowered = lowerProgram(&result, opts.Filename)
+		attachSourceContext(source, opts.Filename, result.Diagnostics)
 		return result
 	}
 
@@ -157,9 +159,33 @@ func Check(source string, opts Options) Result {
 	// this program still sees what was written.
 	result.MethodResolutions = checker.MethodResolutions()
 
-	result.Lowered = lowerProgram(&result)
+	result.Lowered = lowerProgram(&result, opts.Filename)
+	attachSourceContext(source, opts.Filename, result.Diagnostics)
 
 	return result
+}
+
+// attachSourceContext fills Filename and ContextLine on diagnostics that
+// lack them. The checker works on the AST without the text, so positions
+// without file context arrive bare; the frontend owns the source, so it is
+// the one place that completes them. End columns are left alone: a point is
+// honest, a fabricated range is not.
+func attachSourceContext(source, filename string, diags []*diagnostics.Diagnostic) {
+	if source == "" {
+		return
+	}
+	lines := strings.Split(source, "\n")
+	for _, d := range diags {
+		if d == nil {
+			continue
+		}
+		if d.Span.Filename == "" {
+			d.Span.Filename = filename
+		}
+		if d.ContextLine == "" && d.Span.StartLine >= 1 && d.Span.StartLine <= len(lines) {
+			d.ContextLine = strings.TrimRight(lines[d.Span.StartLine-1], "\r\n")
+		}
+	}
 }
 
 // lowerProgram runs the lowering pass and turns a failure into a diagnostic.
@@ -168,7 +194,7 @@ func Check(source string, opts Options) Result {
 // outside a loop is something a developer writes and needs told about. Routing
 // it through the diagnostic channel means `nil check` reports it with a file
 // name and a span, like any other mistake.
-func lowerProgram(result *Result) *ast.Program {
+func lowerProgram(result *Result, filename string) *ast.Program {
 	if result.Program == nil {
 		return nil
 	}
@@ -176,10 +202,17 @@ func lowerProgram(result *Result) *ast.Program {
 	lowered, err := lower.ProgramWithMethods(result.Program, result.MethodResolutions)
 	if err != nil {
 		result.OK = false
+		// The lowerer reports its line; the column is genuinely unknown, so
+		// the span names the line and lets the renderer mark it.
+		span := diagnostics.Span{}
+		if line := lower.ErrorLine(err); line > 0 {
+			span = diagnostics.Span{Filename: filename, StartLine: line}
+		}
 		result.Diagnostics = append(result.Diagnostics, &diagnostics.Diagnostic{
 			Code:     diagnostics.CodeLoweringFailed,
 			Severity: diagnostics.SeverityError,
-			Message:  err.Error(),
+			Message:  lower.ErrorMessage(err),
+			Span:     span,
 			AIExplanation: "This construct cannot be compiled: `break` and " +
 				"`continue` only make sense inside a loop, and `for` needs a " +
 				"collection or a range to walk.",

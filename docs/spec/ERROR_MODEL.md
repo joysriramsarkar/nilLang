@@ -33,10 +33,14 @@ Diagnostic
 ### 2.2 Standard Error Code Registry
 
 #### Lexical & Syntactic (`E0001` - `E0099`)
+- `E0000`: Internal compiler error. The toolchain failed on checked source;
+  report it with the source attached. Never used for a mistake in the program.
 - `E0001`: Unexpected character or invalid token.
 - `E0002`: Unterminated string literal.
 - `E0003`: Unexpected end of file.
 - `E0004`: Syntax error (expected token X, got Y).
+- `E0005`: Lowering failed. The source parses and checks, but a construct
+  (such as `break` outside a loop) cannot be translated into executable form.
 
 #### Typing & Binding (`E0101` - `E0199`)
 - `E0101`: Type mismatch.

@@ -108,7 +108,7 @@ func ProgramWithMethods(program *ast.Program, resolutions map[ast.Expression]str
 // debuggable like any other, which is worth more than saving one argument.
 func (l *lowerer) implMethod(typeName string, method *ast.TraitMethod) (ast.Statement, error) {
 	if method.Body == nil {
-		return nil, fmt.Errorf("line %d: method %q has no body", method.Token.Line, method.Name)
+		return nil, &Error{Line: method.Token.Line, Msg: fmt.Sprintf("method %q has no body", method.Name)}
 	}
 
 	params := make([]*ast.Parameter, 0, len(method.Parameters))

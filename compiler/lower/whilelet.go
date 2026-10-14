@@ -1,8 +1,6 @@
 package lower
 
 import (
-	"fmt"
-
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 )
 
@@ -32,7 +30,7 @@ import (
 // closure created in the body captures them the way a developer expects.
 func (l *lowerer) whileLet(node *ast.WhileLetStatement) (ast.Statement, error) {
 	if node.Value == nil {
-		return nil, fmt.Errorf("line %d: `while let` has no value to match", node.Token.Line)
+		return nil, &Error{Line: node.Token.Line, Msg: "`while let` has no value to match"}
 	}
 
 	tok := node.Token
