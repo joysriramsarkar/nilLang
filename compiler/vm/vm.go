@@ -382,7 +382,7 @@ func (vm *VM) pushFrame(f *Frame) error {
 
 func (vm *VM) popFrame() (*Frame, error) {
 	if vm.framesIndex <= 0 {
-		return nil, fmt.Errorf("internal error: frame stack underflow")
+		return nil, errInvalidBytecode("frame stack underflow")
 	}
 	vm.framesIndex--
 	frame := vm.frames[vm.framesIndex]
@@ -403,7 +403,7 @@ func (vm *VM) push(o object.Object) error {
 
 func (vm *VM) pop() (object.Object, error) {
 	if vm.sp <= 0 {
-		return nil, fmt.Errorf("internal error: stack underflow")
+		return nil, errInvalidBytecode("stack underflow")
 	}
 	o := vm.stack[vm.sp-1]
 	vm.truncateStack(vm.sp - 1)
@@ -1005,7 +1005,7 @@ func (vm *VM) Run() error {
 				if _, ok := object.CategoryOf(err); ok {
 					return err
 				}
-				return fmt.Errorf("task failed: %w", err)
+				return vmErrorWrap(object.CategoryTaskFaulted, err, "task failed: %s", err)
 			}
 			if result == nil {
 				result = Null
@@ -1117,7 +1117,7 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 	}
 
 	if left == nil || right == nil {
-		return fmt.Errorf("runtime error: uninitialized variable or nil operand in binary operation")
+		return errTypeMismatch("uninitialized variable or nil operand in binary operation")
 	}
 
 	leftType := left.Type()
@@ -1159,7 +1159,7 @@ func (vm *VM) executeBinaryFloatOperation(op code.Opcode, left, right object.Obj
 		}
 		result = math.Mod(leftValue, rightValue)
 	default:
-		return fmt.Errorf("unknown float operator: %d", op)
+		return errTypeMismatch("unknown float operator: %d", op)
 	}
 	return vm.push(&object.Float{Value: result})
 }
@@ -1188,7 +1188,7 @@ func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right object.O
 		}
 		result = leftValue % rightValue
 	default:
-		return fmt.Errorf("unknown integer operator: %d", op)
+		return errTypeMismatch("unknown integer operator: %d", op)
 	}
 
 	return vm.push(&object.Integer{Value: result})
@@ -1196,7 +1196,7 @@ func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right object.O
 
 func (vm *VM) executeBinaryStringOperation(op code.Opcode, left, right object.Object) error {
 	if op != code.OpAdd {
-		return fmt.Errorf("unknown string operator: %d", op)
+		return errTypeMismatch("unknown string operator: %d", op)
 	}
 
 	leftValue := left.(*object.String).Value
@@ -1216,7 +1216,7 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	}
 
 	if left == nil || right == nil {
-		return fmt.Errorf("runtime error: uninitialized variable or nil operand in comparison")
+		return errTypeMismatch("uninitialized variable or nil operand in comparison")
 	}
 
 	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
@@ -1242,7 +1242,7 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 		case code.OpLessThanEqual:
 			return vm.push(nativeBoolToBooleanObject(leftVal <= rightVal))
 		default:
-			return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+			return errTypeMismatch("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
 		}
 	}
 
@@ -1266,7 +1266,7 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	case code.OpNotEqual:
 		return vm.push(nativeBoolToBooleanObject(!objectsEqual(right, left)))
 	default:
-		return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+		return errTypeMismatch("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
 	}
 }
 
@@ -1372,7 +1372,7 @@ func (vm *VM) executeMinusOperator() error {
 	case *object.Float:
 		return vm.push(&object.Float{Value: -operand.Value})
 	default:
-		return fmt.Errorf("unsupported type for negation: %s", operand.Type())
+		return errTypeMismatch("unsupported type for negation: %s", operand.Type())
 	}
 }
 
@@ -1488,7 +1488,7 @@ func (vm *VM) executeSetIndex(target, index, val object.Object) error {
 		t.SetPair(index, val)
 		return nil
 	default:
-		return fmt.Errorf("index-assignment not supported on: %s", target.Type())
+		return errTypeMismatch("index-assignment not supported on: %s", target.Type())
 	}
 }
 
@@ -1545,7 +1545,7 @@ func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
 		value := vm.stack[i+1]
 
 		if _, ok := key.(object.Hashable); !ok {
-			return nil, fmt.Errorf("unusable as hash key: %s", key.Type())
+			return nil, errTypeMismatch("unusable as hash key: %s", key.Type())
 		}
 
 		hash.SetPair(key, value)
@@ -1568,7 +1568,10 @@ func (vm *VM) executeCall(numArgs int) error {
 
 func (vm *VM) callClosure(cl *object.Closure, numArgs int) error {
 	if numArgs != cl.Fn.NumParameters {
-		return fmt.Errorf("wrong number of arguments: want=%d, got=%d",
+		// Arity is checked statically (E0105), so reaching here means hand-built
+		// bytecode or a direct API call. TypeError keeps the closed category
+		// set closed; there is deliberately no ArityMismatch runtime category.
+		return errTypeMismatch("wrong number of arguments: want=%d, got=%d",
 			cl.Fn.NumParameters, numArgs)
 	}
 

@@ -32,3 +32,4 @@
 - [x] 13 Oct: P0.6 never-panics fuzz (commit `8c60dba`) + P1 scoped MIR lowering (commit `1e4a633`)।
 - [x] 14 Oct: P0.7 diagnostics standardize (commit `65331d8`) — নিচে।
 - [x] 14 Oct: P0.8 CI gate — conformance matrix + dx-gate (fmt/rejection) + fuzz-smoke (commit `ffe94d3`)।
+- [x] 14 Oct: P1.4 typed VM errors — নিচে।

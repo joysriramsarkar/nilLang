@@ -33,6 +33,9 @@ func TestBothEnginesReportTheSameErrorCategory(t *testing.T) {
 		// TestTypeCheckerCatchesWhatTheRuntimeWould.
 		{"index assignment out of bounds", `let a = [1]; a[9] = 1;`, object.CategoryIndexOutOfBounds},
 		{"property access on an integer", `let x = 5; x.field;`, object.CategoryTypeError},
+		{"index assignment on an integer", `let a = 1; a[0] = 1;`, object.CategoryTypeError},
+		{"array as a hash key", `{[1, 2]: 3};`, object.CategoryTypeError},
+		{"null operand in arithmetic", `let x = null; x + 1;`, object.CategoryTypeError},
 	}
 
 	for _, tc := range cases {

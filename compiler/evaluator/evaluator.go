@@ -647,7 +647,7 @@ func evalPrefixExpression(operator string, right object.Object) object.Object {
 	case "-":
 		return evalMinusPrefixOperatorExpression(right)
 	default:
-		return newError("unknown operator: %s%s", operator, right.Type())
+		return runtimeError(object.CategoryTypeError, "unknown operator: %s%s", operator, right.Type())
 	}
 }
 
@@ -682,7 +682,7 @@ func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
 	case *object.Float:
 		return &object.Float{Value: -right.Value}
 	default:
-		return newError("unknown operator: -%s", right.Type())
+		return runtimeError(object.CategoryTypeError, "unknown operator: -%s", right.Type())
 	}
 }
 
@@ -704,7 +704,7 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		if operator == "!=" {
 			return nativeBoolToBooleanObject(left.Inspect() != right.Inspect())
 		}
-		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
+		return runtimeError(object.CategoryTypeError, "unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	case operator == "==":
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
@@ -714,9 +714,9 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 	case operator == "||":
 		return nativeBoolToBooleanObject(isTruthy(left) || isTruthy(right))
 	case left.Type() != right.Type():
-		return newError("type mismatch: %s %s %s", left.Type(), operator, right.Type())
+		return runtimeError(object.CategoryTypeError, "type mismatch: %s %s %s", left.Type(), operator, right.Type())
 	default:
-		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
+		return runtimeError(object.CategoryTypeError, "unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
 }
 
@@ -758,7 +758,7 @@ func evalIntegerInfixExpression(operator string, left, right object.Object) obje
 	case "||":
 		return nativeBoolToBooleanObject(leftVal != 0 || rightVal != 0)
 	default:
-		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
+		return runtimeError(object.CategoryTypeError, "unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
 }
 
@@ -799,7 +799,7 @@ func evalFloatInfixExpression(operator string, left, right object.Object) object
 	case "!=":
 		return nativeBoolToBooleanObject(leftVal != rightVal)
 	default:
-		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
+		return runtimeError(object.CategoryTypeError, "unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
 }
 
@@ -815,7 +815,7 @@ func evalStringInfixExpression(operator string, left, right object.Object) objec
 	case "!=":
 		return nativeBoolToBooleanObject(leftVal != rightVal)
 	default:
-		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
+		return runtimeError(object.CategoryTypeError, "unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
 }
 
@@ -1137,7 +1137,7 @@ func evalHashLiteral(node *ast.HashLiteral, env *object.Environment) object.Obje
 			}
 
 			if _, ok := key.(object.Hashable); !ok {
-				return newError("unusable as hash key: %s", key.Type())
+				return runtimeError(object.CategoryTypeError, "unusable as hash key: %s", key.Type())
 			}
 
 			value := Eval(entry.Value, env)
@@ -1157,7 +1157,7 @@ func evalHashLiteral(node *ast.HashLiteral, env *object.Environment) object.Obje
 		}
 
 		if _, ok := key.(object.Hashable); !ok {
-			return newError("unusable as hash key: %s", key.Type())
+			return runtimeError(object.CategoryTypeError, "unusable as hash key: %s", key.Type())
 		}
 
 		value := Eval(valueNode, env)
@@ -1176,7 +1176,7 @@ func evalHashIndexExpression(hash, index object.Object) object.Object {
 
 	key, ok := index.(object.Hashable)
 	if !ok {
-		return newError("unusable as hash key: %s", index.Type())
+		return runtimeError(object.CategoryTypeError, "unusable as hash key: %s", index.Type())
 	}
 
 	pair, ok := hashObject.Pairs[key.HashKey()]
@@ -1191,7 +1191,7 @@ func evalIndexAssign(left, index, val object.Object) object.Object {
 	switch l := left.(type) {
 	case *object.Hash:
 		if _, ok := index.(object.Hashable); !ok {
-			return newError("unusable as hash key: %s", index.Type())
+			return runtimeError(object.CategoryTypeError, "unusable as hash key: %s", index.Type())
 		}
 		// Through `SetPair`, never by writing `Pairs` directly.
 		//

@@ -231,7 +231,7 @@ var Builtins = map[string]*object.Builtin{
 			}
 			hashable, ok := args[1].(object.Hashable)
 			if !ok {
-				return newError("unusable as hash key: %s", args[1].Type())
+				return runtimeError(object.CategoryTypeError, "unusable as hash key: %s", args[1].Type())
 			}
 			newPairs := make(map[object.HashKey]object.HashPair)
 			for k, v := range hash.Pairs {
