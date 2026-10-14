@@ -195,6 +195,9 @@ func (p *Parser) parseStructDecl() *ast.StructDecl {
 	}
 
 	if !closed {
+		p.recordError(CodeUnexpectedEOF, p.curToken,
+			fmt.Sprintf("struct %q is missing its closing }", decl.Name.Value),
+			"close the struct body with }")
 		p.skipToBrace()
 		return nil
 	}
@@ -300,6 +303,9 @@ func (p *Parser) parseStructLiteral() ast.Expression {
 	}
 
 	if !closed {
+		p.recordError(CodeUnexpectedEOF, p.curToken,
+			fmt.Sprintf("struct literal %q is missing its closing }", literal.Name.Value),
+			"close the literal with }")
 		p.skipToBrace()
 		return nil
 	}
@@ -417,6 +423,9 @@ func (p *Parser) parseEnumDecl() *ast.EnumDecl {
 	}
 
 	if !closed {
+		p.recordError(CodeUnexpectedEOF, p.curToken,
+			fmt.Sprintf("enum %q is missing its closing }", decl.Name.Value),
+			"close the enum body with }")
 		p.skipToBrace()
 		return nil
 	}

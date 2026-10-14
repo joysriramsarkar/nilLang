@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
@@ -329,13 +330,44 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 	for !p.curTokenIs(token.EOF) {
 		stmt := p.parseStatement()
-		if stmt != nil {
-			program.Statements = append(program.Statements, stmt)
-		}
+		p.appendStatement(&program.Statements, stmt)
 		p.nextToken()
 	}
 
 	return program
+}
+
+// appendStatement collects one parsed statement, dropping nils.
+//
+// A failed declaration often comes back as a *typed* nil —
+// (*ast.StructDecl)(nil) stored in an ast.Statement — which compares unequal
+// to nil and would otherwise flow downstream, where the first method call on
+// it panics far from the malformed source. Reflection is deliberate here: a
+// type switch would have to name every statement type, and the next node kind
+// someone adds would reopen the hole silently.
+//
+// A dropped statement with no recorded error becomes one: losing source
+// quietly is worse than noise.
+func (p *Parser) appendStatement(dst *[]ast.Statement, stmt ast.Statement) {
+	if stmt == nil || isNilStatement(stmt) {
+		if len(p.Errors()) == 0 {
+			p.recordError(CodeSyntaxError, p.curToken,
+				"could not parse a statement here",
+				"the surrounding code is incomplete")
+		}
+		return
+	}
+	*dst = append(*dst, stmt)
+}
+
+// isNilStatement reports whether s is nil or a typed-nil pointer, which is
+// what a recovery path returns when it gives up mid-declaration.
+func isNilStatement(s ast.Statement) bool {
+	if s == nil {
+		return true
+	}
+	v := reflect.ValueOf(s)
+	return v.Kind() == reflect.Ptr && v.IsNil()
 }
 
 func (p *Parser) parseStatement() ast.Statement {
@@ -1326,9 +1358,7 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 
 	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
 		stmt := p.parseStatement()
-		if stmt != nil {
-			block.Statements = append(block.Statements, stmt)
-		}
+		p.appendStatement(&block.Statements, stmt)
 		p.nextToken()
 	}
 
@@ -1869,9 +1899,7 @@ func (p *Parser) parseComponentDeclaration() *ast.ComponentLiteral {
 			}
 		default:
 			stmt := p.parseStatement()
-			if stmt != nil {
-				comp.Body.Statements = append(comp.Body.Statements, stmt)
-			}
+			p.appendStatement(&comp.Body.Statements, stmt)
 		}
 		p.nextToken()
 	}
