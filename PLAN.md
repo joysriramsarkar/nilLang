@@ -31,4 +31,4 @@
 - [x] 13 Oct: P0.4 scope freeze — block shadowing (checker+evaluator+VM), app transparency, per-pass loop bindings (fresh cells), unified scope corpus — commit `8d9eef3`।
 - [x] 13 Oct: P0.6 never-panics fuzz (commit `8c60dba`) + P1 scoped MIR lowering (commit `1e4a633`)।
 - [x] 14 Oct: P0.7 diagnostics standardize (commit `65331d8`) — নিচে।
-- [ ] P1 follow-up: MIR backends-এ loop per-iteration cells + WASM parity matrix।
+- [x] 14 Oct: P0.8 CI gate — conformance matrix + dx-gate (fmt/rejection) + fuzz-smoke (commit `ffe94d3`)।
