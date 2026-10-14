@@ -1,32 +1,9 @@
-// Nilang Standard Library
-// Module: std/crypto/aes
-//
-// AES-GCM প্রতিসম এনক্রিপশন (AEAD) — হোস্ট রানটাইমের ওপর।
-//
-// চাবি ১৬/২৪/৩২ বাইট (base64), ননস ১২ বাইট (base64) হতে হবে।
-// random.key32() ও random.nonce12() দিয়ে তৈরি করা যায়।
-//
-// উদাহরণ:
-//
-//   import "std/crypto/aes" as aes;
-//   import "std/crypto/random" as random;
-//   let key = random.key32();
-//   let nonce = random.nonce12();
-//   let sealed = aes.encrypt(key, nonce, "গোপন বার্তা");
-//   aes.decrypt(key, nonce, sealed); // "গোপন বার্তা"
-
-// encrypt — (keyB64, nonceB64, plaintext) -> ciphertextB64।
 let encrypt = fn(key, nonce, plaintext) {
     return native("std.crypto.aes_gcm_encrypt", key, nonce, plaintext);
 };
-
-// decrypt — (keyB64, nonceB64, ciphertextB64) -> plaintext।
-// ভুল চাবি/ননসে প্রমাণীকরণ ব্যর্থ হয়ে ত্রুটি দেয়।
 let decrypt = fn(key, nonce, sealed) {
     return native("std.crypto.aes_gcm_decrypt", key, nonce, sealed);
 };
-
-// roundTrip — পরীক্ষা/উদাহরণের জন্য এনক্রিপ্ট-ডিক্রিপ্ট একসাথে।
 let roundTrip = fn(key, nonce, plaintext) {
     return decrypt(key, nonce, encrypt(key, nonce, plaintext));
 };

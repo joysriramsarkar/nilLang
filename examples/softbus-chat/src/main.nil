@@ -1,29 +1,15 @@
-// SoftBus Chat Demonstration in Nilang
-// Demonstrating zero-discovery peer messaging
-
 puts("📡 SoftBus Network Node Initializing...");
-
 let localDevice = "onuron-pad-01";
 let remoteDevice = "onuron-phone-02";
-
 let createMessage = fn(sender, receiver, text) {
-    return {
-        "source": sender,
-        "dest": receiver,
-        "payload": text,
-        "timestamp": 1725280000
-    };
+    return {"source": sender, "dest": receiver, "payload": text, "timestamp": 1725280000};
 };
-
 let msg = createMessage(localDevice, remoteDevice, "নমস্কার! SoftBus-এর মাধ্যমে বার্তা পৌঁছাল।");
-
 let sender = msg["source"];
 let receiver = msg["dest"];
 let text = msg["payload"];
-
 puts("Outgoing Message created:");
 puts("  From: \(sender)");
 puts("  To:   \(receiver)");
 puts("  Body: \(text)");
-
 puts("🚀 Message dispatched across SoftBus daemon session!");

@@ -1,37 +1,10 @@
 component Settings {
     state dark: Bool = true;
     state locale: String = "bn-BD";
-
     render {
-        return {
-            "type": "Page",
-            "title": "Settings",
-            "content": [
-                {
-                    "type": "Form",
-                    "title": "Preferences",
-                    "fields": [
-                        {"label": "Locale", "name": "locale", "placeholder": "bn-BD"}
-                    ]
-                },
-                {
-                    "type": "Button",
-                    "id": "toggle-theme",
-                    "label": "Toggle Theme",
-                    "event": "toggle_theme",
-                    "payload": {}
-                },
-                {
-                    "type": "Card",
-                    "title": "Theme",
-                    "body": "Dark mode on"
-                }
-            ],
-            "footer": "Alap Settings"
-        };
+        return {"type": "Page", "title": "Settings", "content": [{"type": "Form", "title": "Preferences", "fields": [{"label": "Locale", "name": "locale", "placeholder": "bn-BD"}]}, {"type": "Button", "id": "toggle-theme", "label": "Toggle Theme", "event": "toggle_theme", "payload": {}}, {"type": "Card", "title": "Theme", "body": "Dark mode on"}], "footer": "Alap Settings"};
     }
-
-    on toggle_theme(payload) {
+    on toggle_theme {
         if (dark) {
             dark = false;
         } else {

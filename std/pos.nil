@@ -1,41 +1,12 @@
-// Nilang Standard Library
-// Module: std/pos
-//
-// POS (পয়েন্ট-অফ-সেল) সহায়ক — catalog/cart/discount/tax/receipt।
-// টাকার হিসাব std/money-এর fixed-point decimal-এ হয় (float ভুল নেই)।
-//
-// উদাহরণ:
-//
-//   import "std/pos" as pos;
-//   import "std/money" as money;
-//   let catalog = pos.newCatalog();
-//   pos.addItem(catalog, "চা", 20, "BDT");
-//   let cart = pos.newCart("BDT");
-//   pos.addToCart(catalog, cart, "চা", 2);
-//   let receipt = pos.checkout(cart, 10, 5); // 10% ছাড়, 5% ভ্যাট
-//   receipt["total"]; // মোট (Money হ্যাশ)
-
 import "std/money" as money;
 import "std/math/decimal" as decimal;
-
-// newCatalog — খালি পণ্য-তালিকা {"items": {নাম: {"price": Money, "name": ...}}}।
 let newCatalog = fn() {
-    return {
-        "items": {}
-    };
+    return {"items": {}};
 };
-
-// addItem — catalog-এ পণ্য যোগ করে (price: major এককে, যেমন 20 = ২০ টাকা)।
 let addItem = fn(catalog, name, priceMajor, currency) {
-    catalog["items"][name] = {
-        "name": name,
-        "price": money.ofMajor(priceMajor, currency),
-        "currency": currency
-    };
+    catalog["items"][name] = {"name": name, "price": money.ofMajor(priceMajor, currency), "currency": currency};
     return catalog;
 };
-
-// itemPrice — পণ্যের Money-মান (না থাকলে null)।
 let itemPrice = fn(catalog, name) {
     let entry = catalog["items"][name];
     if (entry == null) {
@@ -43,31 +14,17 @@ let itemPrice = fn(catalog, name) {
     }
     return entry["price"];
 };
-
-// newCart — খালি কার্ট {"currency": ..., "lines": [...]}।
 let newCart = fn(currency) {
-    return {
-        "currency": currency,
-        "lines": []
-    };
+    return {"currency": currency, "lines": []};
 };
-
-// addToCart — catalog থেকে name পণ্য qty সংখ্যায় কার্টে তোলে।
-// পণ্য না থাকলে Err ফেরত যায়।
 let addToCart = fn(catalog, cart, name, qty) {
     let price = itemPrice(catalog, name);
     if (price == null) {
         return Err("unknown item: " + name);
     }
-    cart["lines"] = push(cart["lines"], {
-        "name": name,
-        "qty": qty,
-        "price": price
-    });
+    cart["lines"] = push(cart["lines"], {"name": name, "qty": qty, "price": price});
     return Ok(cart);
 };
-
-// cartCount — মোট আইটেম-সংখ্যা (qty-যোগফল)।
 let cartCount = fn(cart) {
     let total = 0;
     let i = 0;
@@ -77,9 +34,6 @@ let cartCount = fn(cart) {
     }
     return total;
 };
-
-// subtotal — ছাড়/কর-পূর্ব মোট (Money)।
-// দ্রষ্টব্য: money.add Result দেয়, তাই unwrap করা হয়।
 let subtotal = fn(cart) {
     let acc = money.ofMinor(0, cart["currency"]);
     let i = 0;
@@ -91,35 +45,20 @@ let subtotal = fn(cart) {
     }
     return acc;
 };
-
-// discountOf — subtotal-এর percent% ছাড় (Money)।
-// উদাহরণ: 200 টাকায় 10% -> 20 টাকা।
 let discountOf = fn(sub, percent) {
     return money.mulQty(sub, percent, 100);
 };
-
-// taxOf — amount-এর percent% কর (Money)।
 let taxOf = fn(amount, percent) {
     return money.mulQty(amount, percent, 100);
 };
-
-// checkout — {"subtotal", "discount", "tax", "total"} (সব Money)।
-// ধাপ: ছাড় subtotal থেকে বাদ, তারপর বাকির ওপর কর, মোট = বাকি + কর।
 let checkout = fn(cart, discountPercent, taxPercent) {
     let sub = subtotal(cart);
     let disc = discountOf(sub, discountPercent);
     let afterDisc = unwrap(money.sub(sub, disc));
     let tax = taxOf(afterDisc, taxPercent);
     let total = unwrap(money.add(afterDisc, tax));
-    return {
-        "subtotal": sub,
-        "discount": disc,
-        "tax": tax,
-        "total": total
-    };
+    return {"subtotal": sub, "discount": disc, "tax": tax, "total": total};
 };
-
-// formatReceipt — রসিদ-লেখা (বাংলা)।
 let formatReceipt = fn(cart, receipt, symbol) {
     let lines = [];
     lines = push(lines, "===== রসিদ =====");

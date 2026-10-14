@@ -1,57 +1,23 @@
-// Nilang Standard Library
-// Module: std/net/http
-//
-// HTTP ক্লায়েন্ট, সার্ভার-রাউটার ও সহায়ক।
-//
-// - ক্লায়েন্ট: get/post (হোস্ট), getJson/postJson, statusText
-// - সার্ভার: ইন-প্রসেস রাউটার (newRouter/routerGet/routerPost/routerHandle)
-// - URL: buildQuery/withQuery (std/net/url থেকে পুনঃরপ্তানি)
-//
-// উদাহরণ:
-//
-//   import "std/net/http" as http;
-//   let router = http.newRouter();
-//   http.routerGet(router, "/api/ping", fn(req) {
-//       return http.responseText(200, "pong");
-//   });
-//   let resp = http.routerHandle(router, {"method": "GET", "path": "/api/ping", "headers": {}, "body": ""});
-
 import "std/net/http/router" as router;
 import "std/net/url" as url;
 import "std/data/json" as json;
-
 let get = fn(url) {
     return native("std.http.get", url);
 };
-
 let post = fn(url, body) {
     return native("std.http.post", url, body);
 };
-
-// getJson — GET করে body-কে JSON ডিকোড করে {"status": ..., "data": ...} দেয়।
 let getJson = fn(url) {
     let resp = get(url);
-    return {
-        "status": resp["status"],
-        "data": json.decode(resp["body"])
-    };
+    return {"status": resp["status"], "data": json.decode(resp["body"])};
 };
-
-// postJson — মানকে JSON এনকোড করে POST করে।
 let postJson = fn(url, value) {
     return post(url, json.encode(value));
 };
-
-// postJsonDecoded — postJson + response body ডিকোড একসাথে।
 let postJsonDecoded = fn(url, value) {
     let resp = post(url, json.encode(value));
-    return {
-        "status": resp["status"],
-        "data": json.decode(resp["body"])
-    };
+    return {"status": resp["status"], "data": json.decode(resp["body"])};
 };
-
-// statusText — পরিচিত HTTP স্ট্যাটাসের কারণ-বাক্য।
 let statusText = fn(code) {
     if (code == 200) {
         return "OK";
@@ -94,12 +60,9 @@ let statusText = fn(code) {
     }
     return "Unknown Status";
 };
-
-// isOkStatus — 2xx কি না।
 let isOkStatus = fn(code) {
     return code >= 200 && code < 300;
 };
-
 let response = router.response;
 let responseJson = router.responseJson;
 let responseText = router.responseText;
@@ -107,7 +70,5 @@ let newRouter = router.new;
 let routerGet = router.get;
 let routerPost = router.post;
 let routerHandle = router.handle;
-
-// URL সহায়ক পুনঃরপ্তানি।
 let buildQuery = url.buildQuery;
 let withQuery = url.withQuery;

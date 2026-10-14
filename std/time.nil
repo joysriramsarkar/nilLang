@@ -1,43 +1,25 @@
-// Nilang Standard Library
-// Module: std/time
-//
-// সময়-সুবিধা — Instant/Duration/Date এক জায়গায়।
-//
-// উদাহরণ:
-//
-//   import "std/time" as time;
-//   time.sleep(10);
-//   time.today(); // "2026-10-12" (UTC)
-//   time.format(0, "YYYY-MM-DD"); // "1970-01-01"
-
 import "std/time/instant" as instant;
 import "std/time/duration" as duration;
 import "std/time/date" as date;
-
 let now = fn() {
     return instant.nowUnix();
 };
-
 let sleep = fn(millis) {
     return native("std.time.sleep", millis);
 };
-
 let today = fn() {
     return date.today();
 };
-
 let isBefore = instant.isBefore;
 let isAfter = instant.isAfter;
 let equals = instant.equals;
 let elapsedSince = instant.elapsedSince;
 let deadlineIn = instant.deadlineIn;
 let isExpired = instant.isExpired;
-
 let format = date.format;
 let formatSeconds = date.formatSeconds;
 let isoNow = date.isoNow;
 let yearOf = date.yearOf;
-
 let seconds = duration.seconds;
 let minutes = duration.minutes;
 let hours = duration.hours;

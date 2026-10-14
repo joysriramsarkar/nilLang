@@ -2,7 +2,6 @@ let nilEmit = fn(program) {
     let instructions = [];
     let diagnostics = [];
     let nextLabel = 0;
-
     let instruction = fn(op, operand) {
         return {"op": op, "operand": operand};
     };
@@ -14,7 +13,6 @@ let nilEmit = fn(program) {
         nextLabel = nextLabel + 1;
         return name;
     };
-
     let compile = null;
     let compileList = fn(nodes) {
         let index = 0;
@@ -23,7 +21,6 @@ let nilEmit = fn(program) {
             index = index + 1;
         }
     };
-
     compile = fn(node) {
         if (node == null) {
             return null;
@@ -141,10 +138,7 @@ let nilEmit = fn(program) {
                                                                                                 compile(node["left"]);
                                                                                                 appendInstruction("MEMBER", node["member"]["value"]);
                                                                                             } else {
-                                                                                                diagnostics = push(diagnostics, {
-                                                                                                    "code": "E2001",
-                                                                                                    "message": "unsupported AST node: " + str(kind)
-                                                                                                });
+                                                                                                diagnostics = push(diagnostics, {"code": "E2001", "message": "unsupported AST node: " + str(kind)});
                                                                                             }
                                                                                         }
                                                                                     }
@@ -169,16 +163,9 @@ let nilEmit = fn(program) {
         }
         return null;
     };
-
     compile(program);
-    return {
-        "format": "nil-bootstrap-ir",
-        "version": 1,
-        "instructions": instructions,
-        "diagnostics": diagnostics
-    };
+    return {"format": "nil-bootstrap-ir", "version": 1, "instructions": instructions, "diagnostics": diagnostics};
 };
-
 let nilCompile = fn(source) {
     let program = nilParse(source);
     if (len(program["errors"]) > 0) {

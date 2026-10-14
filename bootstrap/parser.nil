@@ -1,31 +1,12 @@
-let nilParserPrecedence = {
-    "||": 1, "&&": 2, "==": 3, "!=": 3,
-    "<": 4, ">": 4, "<=": 4, ">=": 4,
-    "+": 5, "-": 5, "*": 6, "/": 6, "%": 6,
-    "(": 8, "[": 9, ".": 9
-};
-
+let nilParserPrecedence = {"||": 1, "&&": 2, "==": 3, "!=": 3, "<": 4, ">": 4, "<=": 4, ">=": 4, "+": 5, "-": 5, "*": 6, "/": 6, "%": 6, "(": 8, "[": 9, ".": 9};
 let nilAstNode = fn(kind, token) {
-    return {
-        "kind": kind,
-        "literal": token["literal"],
-        "line": token["line"],
-        "column": token["column"]
-    };
+    return {"kind": kind, "literal": token["literal"], "line": token["line"], "column": token["column"]};
 };
-
-// nilParserTypeStops are the tokens that cannot continue a written type.
-//
-// A type is read until one of these, which is what lets List<String> and
-// Map<String, Int> read as one type while let x: Int = 1 stops at the =.
-// The set mirrors the Go parser's, because the parity test compares the two.
 let nilParserTypeStops = ["=", ";", ",", "}", ")"];
-
 let nilParse = fn(source) {
     let tokens = nilLex(source);
     let position = 0;
     let errors = [];
-
     let current = fn() {
         return tokens[position];
     };
@@ -36,11 +17,6 @@ let nilParse = fn(source) {
         }
         return token;
     };
-
-    // readTypeAnnotation consumes a written type, stopping at the first token
-    // that cannot continue one. It mirrors the Go parser's parseTypeAnnotation:
-    // the parity test compares the two parsers' output, so the stopping rule has
-    // to be the same rule and not merely a similar-looking one.
     let readTypeAnnotation = fn() {
         let parts = "";
         while (current()["type"] != "EOF") {
@@ -59,10 +35,6 @@ let nilParse = fn(source) {
         }
         return parts;
     };
-
-    // readOptionalTypeAnnotation reads : Type when a colon is next, and
-    // nothing at all when it is not. A function may leave its parameters and
-    // its return type unannotated, and that is not an error.
     let readOptionalTypeAnnotation = fn() {
         if (current()["type"] != ":") {
             return "";
@@ -70,16 +42,10 @@ let nilParse = fn(source) {
         advance();
         return readTypeAnnotation();
     };
-
     let errorAt = fn(token, message) {
-        errors = push(errors, {
-            "message": message,
-            "line": token["line"],
-            "column": token["column"]
-        });
+        errors = push(errors, {"message": message, "line": token["line"], "column": token["column"]});
         return null;
     };
-
     let expect = fn(tokenType) {
         let token = current();
         if (token["type"] != tokenType) {
@@ -87,7 +53,6 @@ let nilParse = fn(source) {
         }
         return advance();
     };
-
     let precedence = fn(tokenType) {
         let value = nilParserPrecedence[tokenType];
         if (value == null) {
@@ -95,12 +60,10 @@ let nilParse = fn(source) {
         }
         return value;
     };
-
     let parseExpression = null;
     let parseStatement = null;
     let parseBlock = null;
     let parseExpressionList = null;
-
     parseBlock = fn() {
         let opening = expect("{");
         if (opening == null) {
@@ -122,7 +85,6 @@ let nilParse = fn(source) {
         block["statements"] = statements;
         return block;
     };
-
     parseExpressionList = fn(endToken) {
         let expressions = [];
         if (current()["type"] == endToken) {
@@ -137,11 +99,9 @@ let nilParse = fn(source) {
         expect(endToken);
         return expressions;
     };
-
     let parsePrefix = fn() {
         let token = advance();
         let tokenType = token["type"];
-
         if (tokenType == "IDENT") {
             let node = nilAstNode("Identifier", token);
             node["value"] = token["literal"];
@@ -257,11 +217,6 @@ let nilParse = fn(source) {
             }
             expect(")");
             node["parameters"] = parameters;
-
-            // The return type annotation, absent unless `-> Type` was written.
-            // Both this and `parameterTypes` are reported so that the parity
-            // test notices when a function gains an annotation, rather than
-            // passing because neither side was compared on the field at all.
             let returnType = "";
             if (current()["type"] == "ARROW") {
                 advance();
@@ -272,7 +227,6 @@ let nilParse = fn(source) {
                 returnType = readTypeAnnotation();
             }
             node["returnType"] = returnType;
-
             let parameterTypes = [];
             let index = 0;
             while (index < len(parameters)) {
@@ -280,20 +234,16 @@ let nilParse = fn(source) {
                 index = index + 1;
             }
             node["parameterTypes"] = parameterTypes;
-
             node["body"] = parseBlock();
             return node;
         }
-
         return errorAt(token, "no prefix parser for " + tokenType);
     };
-
     parseExpression = fn(minimumPrecedence) {
         let left = parsePrefix();
         if (left == null) {
             return null;
         }
-
         while (current()["type"] != ";" && current()["type"] != "EOF" && current()["type"] != ")" && current()["type"] != "]" && current()["type"] != "}" && current()["type"] != "," && current()["type"] != ":" && precedence(current()["type"]) > minimumPrecedence) {
             let operatorToken = advance();
             let operatorPrecedence = precedence(operatorToken["type"]);
@@ -333,7 +283,6 @@ let nilParse = fn(source) {
         }
         return left;
     };
-
     parseStatement = fn() {
         let token = current();
         if (token["type"] == "LET" || token["type"] == "CONST") {
@@ -364,7 +313,6 @@ let nilParse = fn(source) {
             }
             return statement;
         }
-
         if (token["type"] == "WHILE") {
             advance();
             let statement = nilAstNode("WhileStatement", token);
@@ -378,7 +326,6 @@ let nilParse = fn(source) {
             statement["body"] = parseBlock();
             return statement;
         }
-
         let expression = parseExpression(0);
         if (current()["type"] == "=") {
             let assignmentToken = advance();
@@ -412,7 +359,6 @@ let nilParse = fn(source) {
         }
         return statement;
     };
-
     let statements = [];
     while (current()["type"] != "EOF") {
         let before = position;
@@ -424,6 +370,5 @@ let nilParse = fn(source) {
             advance();
         }
     }
-
     return {"kind": "Program", "statements": statements, "errors": errors};
 };

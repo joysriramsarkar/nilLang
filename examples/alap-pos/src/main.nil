@@ -1,41 +1,13 @@
 component POS {
     state cart_total: i32 = 0;
     state item_count: i32 = 0;
-
     render {
-        return {
-            "type": "Page",
-            "title": "POS Terminal",
-            "content": [
-                {
-                    "type": "Dashboard",
-                    "title": "Today",
-                    "metrics": [
-                        {"label": "Total", "value": "\(cart_total)", "delta": "live"},
-                        {"label": "Items", "value": "\(item_count)", "delta": "live"}
-                    ]
-                },
-                {
-                    "type": "Button",
-                    "id": "add-item",
-                    "label": "Add Item (৳50)",
-                    "event": "add_item",
-                    "payload": {"price": 50}
-                },
-                {
-                    "type": "Card",
-                    "title": "Cart",
-                    "body": "Items: \(item_count), Total: ৳\(cart_total)"
-                }
-            ],
-            "footer": "Alap POS"
-        };
+        return {"type": "Page", "title": "POS Terminal", "content": [{"type": "Dashboard", "title": "Today", "metrics": [{"label": "Total", "value": "\(cart_total)", "delta": "live"}, {"label": "Items", "value": "\(item_count)", "delta": "live"}]}, {"type": "Button", "id": "add-item", "label": "Add Item (৳50)", "event": "add_item", "payload": {"price": 50}}, {"type": "Card", "title": "Cart", "body": "Items: \(item_count), Total: ৳\(cart_total)"}], "footer": "Alap POS"};
     }
-
-    on add_item(payload) {
+    on add_item {
         let price: i32 = 50;
         if (payload != null) {
-            price = payload["price"] ?? 50;
+            price = ((payload["price"]) ?? 50);
         }
         cart_total = cart_total + price;
         item_count = item_count + 1;

@@ -1,78 +1,31 @@
-// Nilang Standard Library
-// Module: std/concurrency/sync
-//
-// পারস্পরিক-বর্জন (mutex) ও একবার-চালনা — চ্যানেল-ভিত্তিক, হোস্ট-নিরপেক্ষ।
-//
-// নীলাং-এ শেয়ার্ড মেমোরির বদলে বার্তা-পাসিং-ই আদর্শ, তাই mutex এখানে
-// একটি ১-ধারণক্ষমতার টোকেন-চ্যানেল: lock টোকেন নেয়, unlock ফেরত দেয়।
-//
-// উদাহরণ:
-//
-//   import "std/concurrency/sync" as sync;
-//   let m = sync.newMutex();
-//   sync.lock(m);
-//   // ... সংকটাপন্ন অংশ ...
-//   sync.unlock(m);
-//   sync.withLock(m, fn() { return 42; }); // 42
-
-// newMutex — আনলকড mutex (টোকেন-চ্যানেলে "unlocked" টোকেনসহ)।
 let newMutex = fn() {
     let gate = Channel(1);
     send(gate, "unlocked");
-    return {
-        "gate": gate
-    };
+    return {"gate": gate};
 };
-
-// lock — টোকেন না পাওয়া পর্যন্ত অপেক্ষা করে।
 let lock = fn(m) {
     return receive(m["gate"]);
 };
-
-// unlock — টোকেন ফেরত দিয়ে mutex ছেড়ে দেয়।
 let unlock = fn(m) {
     return send(m["gate"], "unlocked");
 };
-
-// tryLock — অপেক্ষা না করে চেষ্টা করে; বর্তমান বাস্তবায়নে সরাসরি lock-ই করে।
-// (নন-ব্লকিং tryLock-এর জন্য select-ভাষা দরকার — ভবিষ্যৎ কাজ।)
 let tryLock = fn(m) {
     return lock(m);
 };
-
-// withLock — fn-কে mutex ধরে চালিয়ে ফলাফল দেয় (আনলক নিশ্চিত)।
 let withLock = fn(m, critical) {
     lock(m);
     let result = critical();
     unlock(m);
     return result;
 };
-
-// newOnce — একবার-চালনা গার্ড।
 let newOnce = fn() {
-    return {
-        "fired": false,
-        "value": null
-    };
+    return {"fired": false, "value": null};
 };
-
-// doOnce — প্রথম কলে body চালিয়ে মান মনে রাখে, পরে সেই মানই দেয়।
-// দ্রষ্টব্য: হ্যাশ অপরিবর্তনীয়-অনুলিপি সেমান্টিক্সের, তাই নতুন হ্যাশ ফেরত যায়;
-// কলারকে ফেরত মানটি রাখতে হবে: o = sync.doOnce(o, fn() { ... })["guard"]।
 let doOnce = fn(guard, body) {
     if (guard["fired"]) {
-        return {
-            "value": guard["value"],
-            "guard": guard
-        };
+        return {"value": guard["value"], "guard": guard};
     }
     let v = body();
-    let next = {
-        "fired": true,
-        "value": v
-    };
-    return {
-        "value": v,
-        "guard": next
-    };
+    let next = {"fired": true, "value": v};
+    return {"value": v, "guard": next};
 };

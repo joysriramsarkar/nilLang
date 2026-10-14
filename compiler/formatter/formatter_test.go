@@ -1,6 +1,7 @@
 package formatter
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -109,5 +110,40 @@ a[0] = 42;
 `
 	if formatted != expected {
 		t.Fatalf("index assignment was altered or deleted!\nGot:\n%s\nExpected:\n%s", formatted, expected)
+	}
+}
+
+// TestFormatterKeepsGroupingParens pins the paren rule: the formatter may
+// drop parens only when re-parsing regroups identically. `!(a && b)` printed
+// as `!a && b` flips the meaning — the bootstrap lexer parity failure that
+// found this — and `(a + b) * c` printed flat re-binds the multiplication.
+func TestFormatterKeepsGroupingParens(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{`let x = !(a && b);`, `!(a && b)`},
+		{`let x = !(a || b);`, `!(a || b)`},
+		{`let x = -(a + b);`, `-(a + b)`},
+		{`let x = (a + b) * c;`, `(a + b) * c`},
+		{`let x = a * (b + c);`, `a * (b + c)`},
+		{`let x = (a == b) == c;`, `a == b == c`},
+		{`let x = a == (b == c);`, `a == (b == c)`},
+		{`let x = -a + b;`, `-a + b`},
+		{`let x = a + b + c;`, `a + b + c`},
+		{`let x = f((a + b));`, `f(a + b)`},
+	}
+	for _, tc := range cases {
+		formatted, err := Format(tc.src + "\n")
+		if err != nil {
+			t.Fatalf("Format(%q) failed: %v", tc.src, err)
+		}
+		if !strings.Contains(formatted, tc.want) {
+			t.Errorf("Format(%q) lost grouping:\n got: %q\nwant substring: %q", tc.src, formatted, tc.want)
+		}
+		again, err := Format(formatted)
+		if err != nil {
+			t.Fatalf("reformat failed for %q: %v", tc.src, err)
+		}
+		if again != formatted {
+			t.Errorf("not idempotent for %q:\nfirst:\n%ssecond:\n%s", tc.src, formatted, again)
+		}
 	}
 }

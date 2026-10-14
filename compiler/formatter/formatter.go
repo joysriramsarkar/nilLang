@@ -281,10 +281,12 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 		return "null"
 
 	case *ast.PrefixExpression:
-		return fmt.Sprintf("%s%s", e.Operator, f.formatExpression(e.Right))
+		return fmt.Sprintf("%s%s", e.Operator, f.formatOperand(e.Right, precPrefix, false))
 
 	case *ast.InfixExpression:
-		return fmt.Sprintf("%s %s %s", f.formatExpression(e.Left), e.Operator, f.formatExpression(e.Right))
+		prec := infixPrecedence(e.Operator)
+		return fmt.Sprintf("%s %s %s",
+			f.formatOperand(e.Left, prec, false), e.Operator, f.formatOperand(e.Right, prec, true))
 
 	case *ast.CallExpression:
 		var args []string
@@ -358,6 +360,70 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 	}
 
 	return expr.String()
+}
+
+// Precedence ranks mirror the parser (compiler/parser precedences): higher
+// binds tighter. Calls, indexing and member access are atomic and never need
+// parens, so they sit above everything with precCall.
+const (
+	precLowest = iota + 1
+	precRange
+	precTernary
+	precCoalesce
+	precOr
+	precAnd
+	precEquals
+	precLessGreater
+	precSum
+	precProduct
+	precPrefix
+	precCall
+)
+
+// infixPrecedence ranks a binary operator for parenthesization. Unknown
+// operators sort lowest, which parenthesizes rather than risks regrouping.
+func infixPrecedence(op string) int {
+	switch op {
+	case "||":
+		return precOr
+	case "&&":
+		return precAnd
+	case "==", "!=":
+		return precEquals
+	case "<", "<=", ">", ">=":
+		return precLessGreater
+	case "+", "-":
+		return precSum
+	case "*", "/", "%":
+		return precProduct
+	case "..", "..=":
+		return precRange
+	case "??":
+		return precCoalesce
+	default:
+		return precLowest
+	}
+}
+
+// formatOperand prints an operand of a parent operator, parenthesizing exactly
+// when re-parsing would regroup: a lower-precedence child always, and an
+// equal-precedence child on the right (every binary operator is
+// left-associative in the parser). A prefix child needs no parens: `-a + b`
+// re-parses as `(-a) + b`, and there is no `--` token that could fuse.
+func (f *ASTFormatter) formatOperand(expr ast.Expression, parent int, right bool) string {
+	s := f.formatExpression(expr)
+	switch c := expr.(type) {
+	case *ast.InfixExpression:
+		q := infixPrecedence(c.Operator)
+		if q < parent || (right && q == parent) {
+			return "(" + s + ")"
+		}
+	case *ast.PrefixExpression:
+		if precPrefix < parent {
+			return "(" + s + ")"
+		}
+	}
+	return s
 }
 
 func requiresSemicolon(expr ast.Expression) bool {

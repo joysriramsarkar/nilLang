@@ -147,3 +147,143 @@ jobs:
           go test -v -tags integration -count=1 -race ./pkg/alap/data/...
         env:
           TEST_POSTGRES_DSN: postgres://nilang:nilang_test@localhost:5432/nilang_test?sslmode=disable
+
+  # P0.8 gate: conformance on every OS, with the machine-readable matrix kept
+  # as an artifact. This is the published NilLang 0.1 conformance evidence.
+  conformance:
+    name: Conformance Matrix (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Run conformance suites (no cache)
+        run: go test -count=1 ./tests/...
+
+      - name: Record conformance matrix
+        run: go test -count=1 -json ./tests/... > conformance-matrix.json
+
+      - name: Upload conformance matrix
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-matrix-${{ matrix.os }}
+          path: conformance-matrix.json
+          retention-days: 90
+
+  # P0.8 gate: formatter check, short fuzz smoke, and CLI rejection smoke.
+  # The fuzz seed corpus already runs inside `go test ./...` on every OS;
+  # this job additionally fuzzes each target briefly to catch instant
+  # crashers (a `struct A{`-class input must never panic the toolchain).
+  dx-gate:
+    name: DX Gate (${{ matrix.os }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Build nil CLI (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p bin
+          go build -o bin/nil ./cmd/nil
+          go build -o bin/nilc ./cmd/nilc
+
+      - name: Build nil CLI (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          if (!(Test-Path "bin")) { New-Item -ItemType Directory -Path "bin" }
+          go build -o bin/nil.exe ./cmd/nil
+          go build -o bin/nilc.exe ./cmd/nilc
+
+      - name: Formatter check (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          ./bin/nil fmt --check examples
+          ./bin/nil fmt --check std
+          ./bin/nil fmt --check bootstrap
+
+      - name: Formatter check (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          .\bin\nil.exe fmt --check examples
+          .\bin\nil.exe fmt --check std
+          .\bin\nil.exe fmt --check bootstrap
+
+      - name: CLI rejection smoke (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          printf 'let x = 40; x + 2;' > /tmp/ok.nil
+          printf 'let x = (1 + 2;' > /tmp/bad.nil
+          ./bin/nilc /tmp/ok.nil
+          if ./bin/nilc /tmp/bad.nil; then
+            echo "expected nilc to reject bad.nil"
+            exit 1
+          fi
+
+      - name: CLI rejection smoke (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          [IO.File]::WriteAllText("$env:TEMP\ok.nil", "let x = 40; x + 2;")
+          [IO.File]::WriteAllText("$env:TEMP\bad.nil", "let x = (1 + 2;")
+          .\bin\nilc.exe "$env:TEMP\ok.nil"
+          $ok = $LASTEXITCODE
+          .\bin\nilc.exe "$env:TEMP\bad.nil" | Out-Null
+          if ($LASTEXITCODE -eq 0 -or $ok -ne 0) {
+            Write-Error "rejection smoke failed (ok=$ok, bad=$LASTEXITCODE)"
+            exit 1
+          }
+
+  # P0.8 gate: short fuzz smoke on Ubuntu. The seed corpus runs on every OS
+  # inside the unit tests; this job spends a minute per target shaking out
+  # instant crashers beyond the seeds.
+  fuzz-smoke:
+    name: Fuzz Smoke (Ubuntu)
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Fuzz parser, lexer, formatter, frontend
+        run: |
+          go test -run XXX -fuzz FuzzParser -fuzztime 60s ./compiler/parser/
+          go test -run XXX -fuzz FuzzTypeChecker -fuzztime 60s ./compiler/typecheck/
+          go test -run XXX -fuzz FuzzLexer -fuzztime 60s ./compiler/lexer/
+          go test -run XXX -fuzz FuzzFormat -fuzztime 60s ./compiler/formatter/
+          go test -run XXX -fuzz FuzzCheck -fuzztime 60s ./compiler/frontend/
+
+      - name: Fuzz pipeline and bytecode decode
+        run: |
+          go test -run XXX -fuzz FuzzPipelineCompile -fuzztime 60s ./pkg/compiler/
+          go test -run XXX -fuzz FuzzDecodeBytecode -fuzztime 60s ./pkg/compiler/

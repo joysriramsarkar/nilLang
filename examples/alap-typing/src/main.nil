@@ -1,33 +1,13 @@
 component Typing {
     state typed: i32 = 0;
     state target: i32 = 50;
-
     render {
-        return {
-            "type": "Page",
-            "title": "Typing Practice",
-            "content": [
-                {
-                    "type": "Card",
-                    "title": "Progress",
-                    "body": "\(typed) / \(target) chars"
-                },
-                {
-                    "type": "Button",
-                    "id": "type-char",
-                    "label": "Type 5 chars",
-                    "event": "type_chars",
-                    "payload": {"n": 5}
-                }
-            ],
-            "footer": "Alap Typing"
-        };
+        return {"type": "Page", "title": "Typing Practice", "content": [{"type": "Card", "title": "Progress", "body": "\(typed) / \(target) chars"}, {"type": "Button", "id": "type-char", "label": "Type 5 chars", "event": "type_chars", "payload": {"n": 5}}], "footer": "Alap Typing"};
     }
-
-    on type_chars(payload) {
+    on type_chars {
         let n: i32 = 5;
         if (payload != null) {
-            n = payload["n"] ?? 5;
+            n = ((payload["n"]) ?? 5);
         }
         typed = typed + n;
         emit("changed", typed);

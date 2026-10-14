@@ -1,18 +1,6 @@
-// Nilang Standard Library
-// Module: std/json
-//
-// JSON ধারাবাহিককরণ — হোস্ট Go serializer-এর ওপর (দ্রুত, নির্ভুল)।
-//
-// উদাহরণ:
-//
-//   import "std/json" as json;
-//   let text = json.encode({"ভাষা": "নীলাং", "সংস্করণ": 1});
-//   json.decode(text)["ভাষা"]; // "নীলাং"
-
 let encode = fn(value) {
     return native("std.json.encode", value);
 };
-
 let decode = fn(text) {
     return native("std.json.decode", text);
 };

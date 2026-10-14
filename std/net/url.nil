@@ -1,51 +1,27 @@
-// Nilang Standard Library
-// Module: std/net/url
-//
-// URL পার্সিং ও তৈরি — নেটিভ পার্সার ছাড়া, বিশুদ্ধ নীলাং + হোস্ট এনকোডিং।
-//
-// উদাহরণ:
-//
-//   import "std/net/url" as url;
-//   url.host("https://nilang.org:8080/docs?lang=bn#শুরু"); // "nilang.org:8080"
-//   url.path("https://nilang.org/docs?lang=bn");           // "/docs"
-//   url.query("https://nilang.org/docs?lang=bn");          // "lang=bn"
-//   url.encode("শূন্য থেকে নীলাং"); // শতাংশ-এনকোডেড
-
 let scheme = fn(value) {
     let marker = "://";
     let parts = split(value, marker);
-
     if (len(parts) < 2) {
         return "";
     }
-
     return first(parts);
 };
-
 let withoutScheme = fn(value) {
     let marker = "://";
     let parts = split(value, marker);
-
     if (len(parts) < 2) {
         return value;
     }
-
     return substr(value, len(parts[0]) + len(marker));
 };
-
 let host = fn(value) {
     let restText = withoutScheme(value);
     let parts = split(restText, "/");
-
     if (len(parts) == 0) {
         return "";
     }
-
     return first(parts);
 };
-
-// path — হোস্টের পর থেকে query/fragment বাদে অংশ।
-// উদাহরণ: path("https://x.org/a/b?k=1") == "/a/b"
 let path = fn(value) {
     let restText = withoutScheme(value);
     let segs = split(restText, "/");
@@ -63,8 +39,6 @@ let path = fn(value) {
     let noFrag = split(first(noQuery), "#");
     return first(noFrag);
 };
-
-// query — "?"-এর পর থেকে "#" বাদে অংশ (না থাকলে "")।
 let query = fn(value) {
     let byQuestion = split(value, "?");
     if (len(byQuestion) < 2) {
@@ -73,8 +47,6 @@ let query = fn(value) {
     let tail = join(rest(byQuestion), "?");
     return first(split(tail, "#"));
 };
-
-// fragment — "#"-এর পরের অংশ (না থাকলে "")।
 let fragment = fn(value) {
     let parts = split(value, "#");
     if (len(parts) < 2) {
@@ -82,18 +54,12 @@ let fragment = fn(value) {
     }
     return join(rest(parts), "#");
 };
-
-// encode — query-উপযোগী শতাংশ-এনকোডিং (হোস্ট)।
 let encode = fn(value) {
     return native("std.net.url_encode", value);
 };
-
-// decode — শতাংশ-এনকোডেড লেখা ফেরত ডিকোড করে।
 let decode = fn(value) {
     return native("std.net.url_decode", value);
 };
-
-// queryValue — query স্ট্রিং থেকে একটি চাবির মান ("a=1&b=2", "b" -> "2")।
 let queryValue = fn(queryText, key) {
     let pairs = split(queryText, "&");
     let i = 0;
@@ -111,8 +77,6 @@ let queryValue = fn(queryText, key) {
     }
     return null;
 };
-
-// buildQuery — হ্যাশ থেকে "k=v&k2=v2" তৈরি করে (চাবি সাজানো ক্রমে)।
 let buildQuery = fn(params) {
     let keys = native("std.data.hash_keys", params);
     let parts = [];
@@ -124,13 +88,9 @@ let buildQuery = fn(params) {
     }
     return join(parts, "&");
 };
-
-// keysOf — হ্যাশের চাবিগুলোর অ্যারে (সাজানো, নির্ধারিত ক্রমে)।
 let keysOf = fn(h) {
     return native("std.data.hash_keys", h);
 };
-
-// withQuery — বেস URL-এর সাথে query প্যারামিটার জোড়ে।
 let withQuery = fn(base, params) {
     let q = buildQuery(params);
     if (q == "") {

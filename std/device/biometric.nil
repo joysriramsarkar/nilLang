@@ -1,14 +1,6 @@
-// Nilang Standard Library
-// Module: std/device/biometric
-//
-// বায়োমেট্রিক প্রমাণীকরণ — FFI স্টাব।
-
-// kind — বায়োমেট্রিক ধরন ("none" | "fingerprint" | "face")।
 let kind = fn() {
     return "none";
 };
-
-// authenticate — প্রমাণীকরণ; স্টাবে Err।
 let authenticate = fn(reason) {
     return Err("E_NOSUPPORT: biometric backend not installed (FFI stub)");
 };

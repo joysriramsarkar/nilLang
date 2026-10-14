@@ -1,37 +1,24 @@
-let nilLexerKeywords = {
-    "let": "LET", "const": "CONST", "fn": "FN", "true": "TRUE",
-    "false": "FALSE", "null": "NULL", "if": "IF", "else": "ELSE",
-    "return": "RETURN", "while": "WHILE", "for": "FOR", "import": "IMPORT",
-    "export": "EXPORT", "as": "AS", "from": "FROM", "component": "COMPONENT",
-    "state": "STATE", "render": "RENDER", "emit": "EMIT", "on": "ON",
-    "build": "BUILD", "style": "STYLE", "entity": "ENTITY"
-};
-
+let nilLexerKeywords = {"let": "LET", "const": "CONST", "fn": "FN", "true": "TRUE", "false": "FALSE", "null": "NULL", "if": "IF", "else": "ELSE", "return": "RETURN", "while": "WHILE", "for": "FOR", "import": "IMPORT", "export": "EXPORT", "as": "AS", "from": "FROM", "component": "COMPONENT", "state": "STATE", "render": "RENDER", "emit": "EMIT", "on": "ON", "build": "BUILD", "style": "STYLE", "entity": "ENTITY"};
 let nilLexerChar = fn(source, position) {
     if (position >= len(source)) {
         return "";
     }
     return substr(source, position, 1);
 };
-
 let nilLexerIsDigit = fn(ch) {
     return ch != "" && contains("0123456789", ch);
 };
-
 let nilLexerIsLetter = fn(ch) {
     return ch != "" && contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", ch);
 };
-
 let nilLexerToken = fn(tokenType, literal, line, column) {
     return {"type": tokenType, "literal": literal, "line": line, "column": column};
 };
-
 let nilLex = fn(source) {
     let tokens = [];
     let position = 0;
     let line = 1;
     let column = 1;
-
     let advance = fn() {
         let ch = nilLexerChar(source, position);
         position = position + 1;
@@ -43,14 +30,11 @@ let nilLex = fn(source) {
         }
         return ch;
     };
-
     let peek = fn() {
         return nilLexerChar(source, position + 1);
     };
-
     while (position < len(source)) {
         let ch = nilLexerChar(source, position);
-
         if (ch == " " || ch == "\t" || ch == "\r" || ch == "\n") {
             advance();
         } else {
@@ -72,7 +56,6 @@ let nilLex = fn(source) {
                 } else {
                     let tokenLine = line;
                     let tokenColumn = column;
-
                     if (nilLexerIsLetter(ch)) {
                         let literal = "";
                         while (position < len(source) && (nilLexerIsLetter(nilLexerChar(source, position)) || nilLexerIsDigit(nilLexerChar(source, position)))) {
@@ -122,25 +105,22 @@ let nilLex = fn(source) {
                             tokens = push(tokens, nilLexerToken("STRING", literal, tokenLine, tokenColumn));
                         } else {
                             if (nilLexerIsDigit(ch)) {
-                            let literal = "";
-                            let tokenType = "INT";
-                            while (position < len(source) && nilLexerIsDigit(nilLexerChar(source, position))) {
-                                literal = literal + advance();
-                            }
-                            if (nilLexerChar(source, position) == "." && nilLexerIsDigit(peek())) {
-                                tokenType = "FLOAT";
-                                literal = literal + advance();
+                                let literal = "";
+                                let tokenType = "INT";
                                 while (position < len(source) && nilLexerIsDigit(nilLexerChar(source, position))) {
                                     literal = literal + advance();
                                 }
-                            }
+                                if (nilLexerChar(source, position) == "." && nilLexerIsDigit(peek())) {
+                                    tokenType = "FLOAT";
+                                    literal = literal + advance();
+                                    while (position < len(source) && nilLexerIsDigit(nilLexerChar(source, position))) {
+                                        literal = literal + advance();
+                                    }
+                                }
                                 tokens = push(tokens, nilLexerToken(tokenType, literal, tokenLine, tokenColumn));
                             } else {
                                 let two = ch + peek();
-                                // `->` and `=>` are lexed as one token each, so that a
-                                // return type and a match arm separator cannot be
-                                // misread as a minus, an equals, and a comparison.
-                                if (two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" || two == "+=" || two == "-=" || two == "->" || two == "=>" ) {
+                                if (two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "&&" || two == "||" || two == "+=" || two == "-=" || two == "->" || two == "=>") {
                                     advance();
                                     advance();
                                     tokens = push(tokens, nilLexerToken(two, two, tokenLine, tokenColumn));
@@ -159,7 +139,6 @@ let nilLex = fn(source) {
             }
         }
     }
-
     tokens = push(tokens, nilLexerToken("EOF", "", line, column));
     return tokens;
 };

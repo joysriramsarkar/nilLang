@@ -1,47 +1,21 @@
-// Nilang Standard Library
-// Module: std/io
-//
-// ইনপুট/আউটপুট ফ্যাসাড — কনসোল, ফাইল, পাথ, JSON ও CSV।
-//
-// এই মডিউলে আছে:
-// - কনসোল: write, writeLine, readLine
-// - ফাইল: readText, writeText, appendText, readLines, writeLines, copyText
-// - পাথ: joinPath, basename, dirname, extName, withoutExt
-// - ডেটা: readJson, writeJson, readCsv, writeCsv
-//
-// উদাহরণ:
-//
-//   import "std/io" as io;
-//   io.writeText("নমস্কার.txt", "শূন্য থেকে নীলাং");
-//   io.appendText("নমস্কার.txt", "\nদ্বিতীয় লাইন");
-//   let lines = io.readLines("নমস্কার.txt"); // ["শূন্য থেকে নীলাং", "দ্বিতীয় লাইন"]
-//   let name = io.basename("docs/book/প্রথম-অধ্যায়.md"); // "প্রথম-অধ্যায়.md"
-
 import "std/io/path" as path;
 import "std/data/json" as json;
 import "std/data/csv" as csv;
-
 let write = fn(value) {
     return print(value);
 };
-
 let writeLine = fn(value) {
     return println(value);
 };
-
 let readLine = fn(prompt) {
     return input(prompt);
 };
-
 let readText = fn(path) {
     return readFile(path);
 };
-
 let writeText = fn(path, content) {
     return writeFile(path, content);
 };
-
-// appendText — ফাইলের শেষে লেখা যোগ করে (ফাইল না থাকলে তৈরি করে)।
 let appendText = fn(path, content) {
     let existing = "";
     if (fileExists(path)) {
@@ -49,8 +23,6 @@ let appendText = fn(path, content) {
     }
     return writeFile(path, existing + content);
 };
-
-// readLines — ফাইল পড়ে প্রতি লাইনের অ্যারে দেয় (শেষের খালি লাইন বাদে)।
 let readLines = fn(path) {
     let text = readFile(path);
     let raw = split(text, "\n");
@@ -69,69 +41,47 @@ let readLines = fn(path) {
     }
     return out;
 };
-
-// writeLines — লাইনের অ্যারে ফাইলে লেখে (প্রতি লাইনে "\n")।
 let writeLines = fn(path, lines) {
     return writeFile(path, join(lines, "\n"));
 };
-
-// copyText — এক ফাইলের পুরো লেখা আরেক ফাইলে নকল করে।
 let copyText = fn(src, dst) {
     return writeFile(dst, readFile(src));
 };
-
 let exists = fn(path) {
     return fileExists(path);
 };
-
 let isDirectory = fn(path) {
     return isDir(path);
 };
-
 let directory = fn(path) {
     return listDir(path);
 };
-
 let mkdir = fn(path) {
     return makeDir(path);
 };
-
 let remove = fn(path) {
     return removeFile(path);
 };
-
 let currentDirectory = fn() {
     return cwd();
 };
-
 let changeDirectory = fn(path) {
     return chdir(path);
 };
-
-// পাথ সহায়ক (std/io/path থেকে পুনঃরপ্তানি)।
 let joinPath = path.joinPath;
 let basename = path.basename;
 let dirname = path.dirname;
 let extName = path.extName;
 let withoutExt = path.withoutExt;
-
-// readJson — JSON ফাইল পড়ে মান দেয়।
 let readJson = fn(path) {
     return json.decode(readFile(path));
 };
-
-// writeJson — মানকে JSON করে ফাইলে লেখে।
 let writeJson = fn(path, value) {
     return writeFile(path, json.encode(value));
 };
-
-// readCsv — CSV ফাইল পড়ে সারির অ্যারে দেয়।
 let readCsv = fn(path) {
     return csv.parse(readFile(path));
 };
-
-// writeCsv — সারির অ্যারে CSV করে ফাইলে লেখে।
-// প্রতিটি সারি নিজেই একটি অ্যারে: [["a", "b"], ["c", "d"]]
 let writeCsv = fn(path, rows) {
     let lines = [];
     let i = 0;

@@ -1,48 +1,25 @@
-// Nilang Standard Library
-// Module: std/time/instant
-//
-// মুহূর্ত — time() বিল্ট-ইন ইউনিক্স-সেকেন্ড দেয়; সব গণিত সেকেন্ডে।
-//
-// দ্রষ্টব্য: sysTime বিল্ট-ইনটি মডিউল-লোডের সময় ধরে রাখা হয়। আমদানিকারী
-// `import "std/time" as time` লিখলে `time` নামটি তার স্কোপে মডিউল-হ্যাশ হয়;
-// ফাংশন-বডি বাইরের স্কোপ থেকে `time` পড়লে ভুল মান পেত।
-
-// sysTime — time() বিল্ট-ইনের মডিউল-স্থানীয় স্ন্যাপশট।
 let sysTime = time;
-
-// nowUnix — বর্তমান ইউনিক্স সময় (সেকেন্ডে)।
 let nowUnix = fn() {
     return sysTime();
 };
-
 let isBefore = fn(a, b) {
     return a < b;
 };
-
 let isAfter = fn(a, b) {
     return a > b;
 };
-
 let equals = fn(a, b) {
     return a == b;
 };
-
-// addSeconds — সেকেন্ড যোগ করে।
 let addSeconds = fn(t, s) {
     return t + s;
 };
-
-// elapsedSince — অতিবাহিত সেকেন্ড (এখন - t)।
 let elapsedSince = fn(t) {
     return sysTime() - t;
 };
-
-// isExpired — deadline পার হয়েছে কি না।
 let isExpired = fn(deadline) {
     return sysTime() >= deadline;
 };
-
-// deadlineIn — secs পরে deadline মুহূর্ত।
 let deadlineIn = fn(secs) {
     return sysTime() + secs;
 };

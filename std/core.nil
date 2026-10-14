@@ -1,150 +1,92 @@
-// Nilang Standard Library
-// Module: std/core
-//
-// মূল মডিউল — প্রতিটি নীলাং প্রোগ্রামের ভিত্তি।
-//
-// এই মডিউলে আছে:
-// - পরিচয় ও ডিফল্ট মান (identity, isNull, defaultValue, clamp, repeat, swap)
-// - Result সহায়ক (ok, err, mapResult, andThen, okOr)
-// - Optional সহায়ক (some, none, mapOption, unwrapOrDefault, expectOption)
-// - Error মান (error)
-//
-// উদাহরণ:
-//
-//   import "std/core" as core;
-//   let r = core.ok(42);
-//   let doubled = core.mapResult(r, fn(x) { return x * 2; });
-//   let v = unwrap(doubled); // 84
-//
-//   let name = core.defaultValue(null, "অতিথি"); // "অতিথি"
-
 let identity = fn(value) {
     return value;
 };
-
 let isNull = fn(value) {
     return value == null;
 };
-
 let defaultValue = fn(value, fallback) {
     if (value == null) {
         return fallback;
     }
     return value;
 };
-
 let clamp = fn(value, low, high) {
     if (value < low) {
         return low;
     }
-
     if (value > high) {
         return high;
     }
-
     return value;
 };
-
 let repeat = fn(value, count) {
     let result = [];
     let i = 0;
-
     while (i < count) {
         result = push(result, value);
         i = i + 1;
     }
-
     return result;
 };
-
 let swap = fn(a, b) {
     return [b, a];
 };
-
 let ok = fn(val) {
     return Ok(val);
 };
-
 let err = fn(val) {
     return Err(val);
 };
-
 let some = fn(val) {
     return Some(val);
 };
-
 let none = fn() {
     return None();
 };
-
 let error = fn(code, message) {
-    return {
-        "code": code,
-        "message": message
-    };
+    return {"code": code, "message": message};
 };
-
-// mapResult — Ok মানের ওপর ফাংশন চালায়, Err অপরিবর্তিত রাখে।
-// উদাহরণ: mapResult(ok(3), fn(x) { return x + 1; }) == Ok(4)
 let mapResult = fn(result, f) {
     if (isOk(result)) {
         return Ok(f(unwrap(result)));
     }
     return result;
 };
-
-// mapResultErr — Err মানের ওপর ফাংশন চালায়, Ok অপরিবর্তিত রাখে।
 let mapResultErr = fn(result, f) {
     if (isErr(result)) {
         return Err(f(errValue(result)));
     }
     return result;
 };
-
-// andThen — Ok থাকলে পরের Result-ফেরত ফাংশনে পাঠায় (চেইনিং)।
-// উদাহরণ: andThen(ok(5), fn(x) { return ok(x * 2); }) == Ok(10)
 let andThen = fn(result, f) {
     if (isOk(result)) {
         return f(unwrap(result));
     }
     return result;
 };
-
-// okOr — Optional-কে Result-এ রূপান্তর করে: Some(v) -> Ok(v), None -> Err(errVal)।
 let okOr = fn(opt, errVal) {
     if (isSome(opt)) {
         return Ok(unwrap(opt));
     }
     return Err(errVal);
 };
-
-// mapOption — Some মানের ওপর ফাংশন চালায়, None অপরিবর্তিত রাখে।
 let mapOption = fn(opt, f) {
     if (isSome(opt)) {
         return Some(f(unwrap(opt)));
     }
     return opt;
 };
-
-// unwrapOrDefault — Some হলে ভেতরের মান, None হলে fallback।
-// (বিল্ট-ইন unwrapOr-এর সুস্পষ্ট নামের সংস্করণ।)
 let unwrapOrDefault = fn(opt, fallback) {
     return unwrapOr(opt, fallback);
 };
-
-// expectOption — Some হলে মান, None হলে message দিয়ে ব্যর্থ হয়।
 let expectOption = fn(opt, message) {
     assert(isSome(opt), message);
     return unwrap(opt);
 };
-
-// expectResult — Ok হলে মান, Err হলে message দিয়ে ব্যর্থ হয়।
 let expectResult = fn(result, message) {
     assert(isOk(result), message);
     return unwrap(result);
 };
-
-// isEmptyValue — null, খালি স্ট্রিং বা খালি অ্যারে কি না।
 let isEmptyValue = fn(value) {
     if (value == null) {
         return true;
@@ -157,9 +99,6 @@ let isEmptyValue = fn(value) {
     }
     return false;
 };
-
-// pipeline — মানকে ফাংশনের তালিকার মধ্য দিয়ে চালায়।
-// উদাহরণ: pipeline(3, [fn(x) { return x + 1; }, fn(x) { return x * 10; }]) == 40
 let pipeline = fn(value, stages) {
     let current = value;
     let i = 0;

@@ -1,33 +1,18 @@
 let nilAnalyze = fn(program) {
     let diagnostics = [];
     let scopes = [{}];
-    let builtins = [
-        "len", "print", "println", "puts", "type", "first", "last", "rest",
-        "push", "append", "set", "str", "int", "time", "assert", "lower",
-        "upper", "trim", "split", "join", "contains", "hasPrefix", "hasSuffix",
-        "replace", "substr", "readFile", "writeFile", "fileExists", "isDir",
-        "listDir", "makeDir", "removeFile", "cwd", "chdir", "exec", "clear", "input"
-        , "tensor", "tensorShape", "tensorGet", "tensorAdd", "tensorMul",
-        "tensorSlice", "tensorDtype", "tensorCast", "tensorDot",
-        "tensorMatmul", "tensorSum"
-    ];
-
+    let builtins = ["len", "print", "println", "puts", "type", "first", "last", "rest", "push", "append", "set", "str", "int", "time", "assert", "lower", "upper", "trim", "split", "join", "contains", "hasPrefix", "hasSuffix", "replace", "substr", "readFile", "writeFile", "fileExists", "isDir", "listDir", "makeDir", "removeFile", "cwd", "chdir", "exec", "clear", "input", "tensor", "tensorShape", "tensorGet", "tensorAdd", "tensorMul", "tensorSlice", "tensorDtype", "tensorCast", "tensorDot", "tensorMatmul", "tensorSum"];
     let scopeIndex = fn() {
         return len(scopes) - 1;
     };
-
     let define = fn(name, node) {
         let scope = scopes[scopeIndex()];
         if (scope[name] != null) {
-            diagnostics = push(diagnostics, {
-                "code": "E1001", "message": "duplicate binding: " + name,
-                "line": node["line"], "column": node["column"]
-            });
+            diagnostics = push(diagnostics, {"code": "E1001", "message": "duplicate binding: " + name, "line": node["line"], "column": node["column"]});
         } else {
             scope[name] = true;
         }
     };
-
     let resolve = fn(name) {
         let index = len(scopes) - 1;
         while (index >= 0) {
@@ -38,17 +23,12 @@ let nilAnalyze = fn(program) {
         }
         return false;
     };
-
     let reportUndefined = fn(node) {
         let name = node["value"];
         if (!resolve(name)) {
-            diagnostics = push(diagnostics, {
-                "code": "E1002", "message": "undefined identifier: " + name,
-                "line": node["line"], "column": node["column"]
-            });
+            diagnostics = push(diagnostics, {"code": "E1002", "message": "undefined identifier: " + name, "line": node["line"], "column": node["column"]});
         }
     };
-
     let visit = null;
     let visitList = fn(nodes) {
         let index = 0;
@@ -57,7 +37,6 @@ let nilAnalyze = fn(program) {
             index = index + 1;
         }
     };
-
     visit = fn(node) {
         if (node == null) {
             return null;
@@ -173,7 +152,6 @@ let nilAnalyze = fn(program) {
         }
         return null;
     };
-
     let index = 0;
     while (index < len(builtins)) {
         scopes[0][builtins[index]] = true;

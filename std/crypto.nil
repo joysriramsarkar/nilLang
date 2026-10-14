@@ -1,22 +1,9 @@
-// Nilang Standard Library
-// Module: std/crypto
-//
-// ক্রিপ্টোগ্রাফি সুবিধা-মডিউল — হ্যাশ, HMAC, র‍্যান্ডম, AES-GCM,
-// Ed25519 ও base64 এক জায়গায়।
-//
-// উদাহরণ:
-//
-//   import "std/crypto" as crypto;
-//   let digest = crypto.sha256("test-data"); // ৬৪ অক্ষরের হেক্স
-//   let sealed = crypto.aesEncrypt(crypto.randomKey32(), crypto.randomNonce12(), "গোপন");
-
 import "std/crypto/hash" as hash;
 import "std/crypto/hmac" as hmac;
 import "std/crypto/random" as random;
 import "std/crypto/aes" as aes;
 import "std/crypto/ed25519" as ed25519;
 import "std/data/base64" as base64;
-
 let sha256 = hash.sha256;
 let sha512 = hash.sha512;
 let hmacSha256 = hmac.sha256;
