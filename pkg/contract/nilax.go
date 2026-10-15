@@ -175,7 +175,7 @@ func (z ZipArchive) Entries() ([]ArchiveEntry, error) {
 // because a second path to the filesystem should not depend on a first check
 // having happened somewhere else.
 func ReadZipEntry(zf *zip.File) ([]byte, error) {
-	if !UnsafePath(zf.Name) {
+	if UnsafePath(zf.Name) {
 		return nil, fmt.Errorf("contract: unsafe archive path %q", zf.Name)
 	}
 	rc, err := zf.Open()
