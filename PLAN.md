@@ -16,13 +16,13 @@
 5. **P0.5–8 Conformance + never-panic + diagnostics + CI gate** — `tests/conformance|frontend_gate|architecture`, seeded fuzz (`parser|typecheck` fuzz), structured error code (`compiler/diagnostics`), Linux/macOS/Windows matrix।
 
 ## Phase 0 (roadmap §6 — নির্ভরযোগ্য ভিত্তি)
-বিস্তারিত: `../onuron_ecosystem_plan/PHASE0_STATUS_BN.md`
+বিস্তারিত: `../docs/archive/onuron_ecosystem_plan/PHASE0_STATUS_BN.md`
 
 1. **Exit condition release blocker** — `tests/p0_exit_test.go`; উপরের প্রতিটি item-এর evidence থাকতে হবে এবং CI-তে চালু থাকতে হবে।
 2. **একই gate সব path-এ** — `pkg/compiler/entry_rejection_test.go`-এ ৮টি entry point × ৮টি invalid program, diagnostic **code** সমানতাসহ; `compiler/frontend/modules.go` দিয়ে import-এর module-ও check হয় (আগে হতো না)।
 3. **Capability matrix** — `tests/capability_matrix_test.go`; requirement table থেকে generated, তাই পিছিয়ে থাকতে পারে না।
 4. **Task/GC স্থিতিশীলতা** — `tests/concurrency_spec_test.go`; `CONCURRENCY.md`-এর প্রতিটি ধারার বিপরীতে পরীক্ষা + GC stress। Process-global task scope সরানো হয়েছে (`evalTaskRoot` → environment)।
-5. **Toolchain pin ও reproducible build** — `../onuron_ecosystem_plan/TOOLCHAIN_PINS.md`; CI-তে `reproducible-build` job।
+5. **Toolchain pin ও reproducible build** — `../docs/archive/onuron_ecosystem_plan/TOOLCHAIN_PINS.md`; CI-তে `reproducible-build` job।
 
 ## P1
 - Typed HIR-ই একমাত্র ইনপুট; SSA/CFG opt (fold/prop/DCE) + parity। (`compiler/hir|mir|lower`)
