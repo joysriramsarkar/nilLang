@@ -15,10 +15,26 @@
 4. **P0.4 Mutable closure capture** — `OpGetFree` read-only কপি → shared cell; checker/evaluator/VM unified corpus। (`compiler/compiler/`, `compiler/vm/vm.go`)
 5. **P0.5–8 Conformance + never-panic + diagnostics + CI gate** — `tests/conformance|frontend_gate|architecture`, seeded fuzz (`parser|typecheck` fuzz), structured error code (`compiler/diagnostics`), Linux/macOS/Windows matrix।
 
+## Phase 0 (roadmap §6 — নির্ভরযোগ্য ভিত্তি)
+বিস্তারিত: `../onuron_ecosystem_plan/PHASE0_STATUS_BN.md`
+
+1. **Exit condition release blocker** — `tests/p0_exit_test.go`; উপরের প্রতিটি item-এর evidence থাকতে হবে এবং CI-তে চালু থাকতে হবে।
+2. **একই gate সব path-এ** — `pkg/compiler/entry_rejection_test.go`-এ ৮টি entry point × ৮টি invalid program, diagnostic **code** সমানতাসহ; `compiler/frontend/modules.go` দিয়ে import-এর module-ও check হয় (আগে হতো না)।
+3. **Capability matrix** — `tests/capability_matrix_test.go`; requirement table থেকে generated, তাই পিছিয়ে থাকতে পারে না।
+4. **Task/GC স্থিতিশীলতা** — `tests/concurrency_spec_test.go`; `CONCURRENCY.md`-এর প্রতিটি ধারার বিপরীতে পরীক্ষা + GC stress। Process-global task scope সরানো হয়েছে (`evalTaskRoot` → environment)।
+5. **Toolchain pin ও reproducible build** — `../onuron_ecosystem_plan/TOOLCHAIN_PINS.md`; CI-তে `reproducible-build` job।
+
 ## P1
 - Typed HIR-ই একমাত্র ইনপুট; SSA/CFG opt (fold/prop/DCE) + parity। (`compiler/hir|mir|lower`)
 - Runtime hardening: typed VM error, GC root, task cancel/timeout/panic spec, capability proof, import cycle/init-order। (`compiler/vm/`, `runtime/gc/`, `docs/spec/CONCURRENCY|MEMORY_MODEL|CAPABILITIES|EFFECTS|MODULE_SYSTEM`)
 - VM/WASM parity matrix, `nil fmt --check` + LSP, `nil.lock` + signing policy, stdlib stabilize, bootstrap reproducibility।
+
+## Phase 1 — চুক্তি (cross-repo contract)
+- `contracts/` — machine-readable contract bundle: capability vocabulary + requirement table, `.nilax` manifest schema (v1 stable, v2 proposed), runtime ABI, signing, compatibility matrix. Checksummed in `contracts/bundle.json`।
+- `pkg/contract/` — Go reader + ৭ ধাপের default-deny validator (archive → identity → integrity → trust → compatibility → capability → install)। `pkg/nilpkg` verifier এখন এটি চালায়।
+- `docs/adr/0001..0008` — পাঁচ রিপোর ownership/contract সিদ্ধান্ত, বিকল্প, migration, evidence ও reversal condition সহ।
+- `cmd/nil-contract` — `generate` (requirement table + signing vectors + index) / `verify` (checksum + drift) / `validate` (.nilax)।
+- বাকি: Contract E (UI/event) Alap-এ, Contract F (POS) Alap-এ, Contract H (protocol) emulator/OS-এ — owner repo-তেই থাকবে।
 
 ## DoD
 - `go test ./...` সবুজ (Linux/macOS/Windows); fuzz/watch-তালিকার টেস্ট স্থিতিশীল; স্পেক-বদলে conformance ফিক্সচার একসাথে।
@@ -33,3 +49,5 @@
 - [x] 14 Oct: P0.7 diagnostics standardize (commit `65331d8`) — নিচে।
 - [x] 14 Oct: P0.8 CI gate — conformance matrix + dx-gate (fmt/rejection) + fuzz-smoke (commit `ffe94d3`)।
 - [x] 14 Oct: P1.4 typed VM errors — নিচে।
+- [x] 14 Oct: Phase 1 contract bundle — `contracts/`, `pkg/contract`, `cmd/nil-contract`, `docs/adr/0001..0008`। `pkg/nilpkg` verifier এখন contract চালায়; CI-তে `contracts` job।
+- [x] 15 Oct: Phase 0 — P0 exit gate, entry-point gate matrix (import module check সহ), capability matrix, concurrency spec conformance + stress, toolchain pin ও reproducible build।

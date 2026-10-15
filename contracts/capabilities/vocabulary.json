@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract": "onuron.capabilities.vocabulary",
+  "version": "1.0.0",
+  "status": "stable",
+  "owner": "nilLang",
+  "spec": "docs/spec/CAPABILITIES.md",
+  "source_of_truth": "compiler/capability/manifest.go",
+  "canonical_form": {
+    "casing": "lowercase",
+    "matching": "case-insensitive; '-', '_' and ' ' are removed before matching",
+    "note": "A manifest may spell a capability 'Filesystem', 'file-system' or 'file_system'. Normalisation maps all of them onto the canonical name, and an unrecognised spelling normalises to itself and is then refused as unknown."
+  },
+  "default_deny": "A capability name absent from this file is refused. It is never treated as pure, never ignored, and never assumed to be a subset of anything.",
+  "capabilities": [
+    { "name": "core",            "status": "canonical", "category": "language",  "description": "Baseline language execution. Also the requirement an unknown operation is refused under, so a manifest typo cannot widen access." },
+    { "name": "stdout",          "status": "canonical", "category": "io",       "description": "Write to standard output." },
+    { "name": "stderr",          "status": "canonical", "category": "io",       "description": "Write to standard error." },
+    { "name": "stdin",           "status": "canonical", "category": "io",       "description": "Read standard input." },
+    { "name": "clock",           "status": "canonical", "category": "system",   "description": "Read the wall clock and sleep." },
+    { "name": "environment",     "status": "canonical", "category": "system",   "description": "Read and change the process working directory." },
+    { "name": "filesystem",      "status": "canonical", "category": "system",   "description": "Read, write, list, create and delete files. A whole-resource grant: there is no read/write split." },
+    { "name": "process",         "status": "canonical", "category": "system",   "description": "Spawn processes and terminate the program." },
+    { "name": "network",         "status": "canonical", "category": "system",   "description": "Outbound and inbound network connections, including HTTP." },
+    { "name": "database",        "status": "canonical", "category": "system",   "description": "Query and mutate a database." },
+    { "name": "crypto",          "status": "canonical", "category": "system",   "description": "Cryptographic primitives." },
+    { "name": "random",          "status": "canonical", "category": "system",   "description": "Non-deterministic randomness." },
+    { "name": "clipboard",       "status": "canonical", "category": "device",   "description": "Read and write the system clipboard." },
+    { "name": "device",          "status": "canonical", "category": "device",   "description": "General device information such as battery level and model." },
+    { "name": "sensors",         "status": "canonical", "category": "device",   "description": "Read device sensors." },
+    { "name": "camera",          "status": "canonical", "category": "device",   "description": "Capture from the camera." },
+    { "name": "location",        "status": "canonical", "category": "device",   "description": "Read the current geographic location." },
+    { "name": "notifications",   "status": "canonical", "category": "device",   "description": "Raise user-visible notifications." },
+    { "name": "ui",              "status": "canonical", "category": "language", "description": "Drive the declarative UI." },
+    { "name": "async",           "status": "canonical", "category": "language", "description": "Spawn tasks and futures." }
+  ],
+  "recognised_unlisted": [
+    { "name": "gpu",        "reason": "Normalised and accepted by the manifest vocabulary, but no builtin in the requirement table declares it. A grant is recorded; nothing currently consults it." },
+    { "name": "audio",      "reason": "As gpu: recognised, not currently required by any operation." },
+    { "name": "printer",    "reason": "As gpu: recognised, not currently required by any operation. ESC/POS output reaches the device through the emulator's virtual HAL, not through a gated builtin." },
+    { "name": "scanner",    "reason": "As gpu: recognised, not currently required by any operation." },
+    { "name": "bluetooth",  "reason": "As gpu: recognised, not currently required by any operation." },
+    { "name": "ai",         "reason": "As gpu: recognised, not currently required by any operation." }
+  ],
+  "aliases": [
+    { "alias": "gps", "canonical": "location", "reason": "pkg/capability spells location 'GPS'; the canonical name is lowercase and resource-independent." }
+  ],
+  "planned": [
+    {
+      "name": "filesystem.read",
+      "status": "planned",
+      "reason": "Fine-grained sub-capabilities are documented as a planned refinement. The requirement table grants whole resources, so a program requesting 'filesystem' receives read and write together. Do not validate against these names: normalising 'filesystem.read' yields itself, which is absent from this file and is therefore refused."
+    }
+  ],
+  "enforcement": {
+    "language_gate": "compiler/compiler emits OpNativeCall for a direct, statically named call to a gated operation; the VM consults the grant before dispatch.",
+    "known_limitations": [
+      "The `requires` clause and compile-time diagnostic E0201 do not exist in the grammar or the type checker. Refusal happens at run time, on the first gated call.",
+      "Indirect calls are not gated: `let f = writeFile; f(\"a\", \"b\")` is not recognised at emission time.",
+      "The evaluator path uses a pre-scan that sees direct calls only. The VM path is the enforced one.",
+      "Pure-context effect checking is inert; the checker's pure-context flag is never enabled."
+    ],
+    "os_gate": "OnuronOS maps a declared capability onto real SELinux, service, file and device permissions. That mapping is the only complete boundary today; see docs/adr/0004."
+  }
+}

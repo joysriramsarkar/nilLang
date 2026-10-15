@@ -21,6 +21,24 @@
 //     reimplements the lexer/parser in Nilang itself.
 //   - compiler/oracle    — the Verified-Novelty oracle must be able to inspect
 //     and diff candidate sources, including ones that fail to parse.
+//
+// # The REPL specifically
+//
+// cmd/nil's REPL sets SkipTypeCheck, and that is a different reason from the
+// IDE exemption above: a REPL checks each line as a whole program, so `x + 1`
+// typed after `let x = 1` names a binding that does not exist in *that line*.
+// Type-checking per line would reject the second line of every ordinary session.
+//
+// The REPL therefore type-checks nothing, and its acceptance is therefore
+// strictly wider than `nil run`'s. That is a deliberate divergence and it is
+// bounded: a REPL session still goes through the gate for parsing and lowering,
+// and anything the session defines is checked as part of a whole program the
+// moment it is run through `nil run`. What the REPL does not do is report a
+// type error at the line that introduced it.
+//
+// Closing the gap means checking the session rather than the line, which is a
+// change to how the REPL accumulates a program — recorded in
+// CORE_STABILIZATION.md P0.2, not done here.
 package frontend
 
 import (
@@ -100,9 +118,30 @@ type Options struct {
 	// which must tolerate source that does not type check.
 	SkipTypeCheck bool
 
+	// ResolveModule loads an imported module so the gate can check it too.
+	//
+	// Without it, an imported module's body is never type checked: the checker
+	// binds the imported names to `Any` and never opens the file. That was the
+	// state of the world before this field existed, and it meant a module with
+	// a type error compiled cleanly from every entry point.
+	//
+	// nil means "do not resolve imports", which is correct for a caller that
+	// genuinely cannot (a formatter, an LSP working on a single buffer) and is
+	// wrong for every backend. The backends supply one.
+	ResolveModule ModuleResolver
+
 	// SkipLowering leaves Result.Lowered nil. Only tooling that never executes
 	// the program should set it; every backend needs the lowered form.
 	SkipLowering bool
+
+	// checkedModules is the set of module identities this gate run has already
+	// validated, shared across the recursive Check calls the module walk makes.
+	//
+	// It is unexported because it is the gate's own bookkeeping, not something a
+	// caller sets: a caller that pre-filled it would silently mark modules as
+	// checked. Options is passed by value, so the copy a nested Check receives
+	// carries the set forward while the caller's own Options stays untouched.
+	checkedModules map[string]bool
 }
 
 // ParseAndCheck parses source and runs the type checker.
@@ -158,6 +197,12 @@ func Check(source string, opts Options) Result {
 	// lowering pass rather than written into the tree, so a formatter reading
 	// this program still sees what was written.
 	result.MethodResolutions = checker.MethodResolutions()
+
+	// Imported modules are part of this program as far as validation goes. A
+	// backend that receives a program whose dependency does not type check has
+	// been handed something the gate was supposed to refuse, so this runs before
+	// the result is handed back and can turn the check red.
+	checkImports(program, &opts, &result)
 
 	result.Lowered = lowerProgram(&result, opts.Filename)
 	attachSourceContext(source, opts.Filename, result.Diagnostics)
@@ -224,10 +269,34 @@ func lowerProgram(result *Result, filename string) *ast.Program {
 
 // ErrSummary renders a Result's diagnostics as a single human readable
 // message suitable for a CLI error return value.
+//
+// Coded diagnostics are preferred over the parser's raw strings. Both describe
+// the same failures — the parser records one alongside every legacy string —
+// but only the coded form names a reason a caller can act on or match. Rendering
+// the strings when both are available would make a syntax error the one class of
+// refusal that arrives without a code, which is precisely the class a caller
+// cannot handle programmatically.
 func (r Result) ErrSummary() string {
 	if r.OK {
 		return ""
 	}
+
+	coded := r.errorDiagnostics()
+	if len(coded) > 0 {
+		errs := 0
+		out := ""
+		for _, d := range coded {
+			if d.Severity != diagnostics.SeverityError {
+				continue
+			}
+			errs++
+			out += "\n  " + d.String()
+		}
+		if errs > 0 {
+			return fmt.Sprintf("compilation failed with %d error(s):%s", errs, out)
+		}
+	}
+
 	if len(r.ParseErrors) > 0 {
 		out := fmt.Sprintf("compilation failed with %d error(s):", len(r.ParseErrors))
 		for _, msg := range r.ParseErrors {
@@ -235,6 +304,7 @@ func (r Result) ErrSummary() string {
 		}
 		return out
 	}
+
 	errs := 0
 	out := ""
 	for _, d := range r.Diagnostics {
@@ -244,5 +314,20 @@ func (r Result) ErrSummary() string {
 		errs++
 		out += "\n  " + d.String()
 	}
-	return fmt.Sprintf("type checking failed with %d error(s):%s", errs, out)
+	return fmt.Sprintf("compilation failed with %d error(s):%s", errs, out)
+}
+
+// errorDiagnostics returns the diagnostics that name a problem.
+//
+// A diagnostic with no code is a message, not a refusal a caller can branch on,
+// so it is not counted here: an uncoded parse failure falls through to the raw
+// strings, which is the same information without the pretence of a code.
+func (r Result) errorDiagnostics() []*diagnostics.Diagnostic {
+	var out []*diagnostics.Diagnostic
+	for _, d := range r.Diagnostics {
+		if d != nil && d.Code != "" {
+			out = append(out, d)
+		}
+	}
+	return out
 }

@@ -56,16 +56,13 @@ func (c *dapClient) send(t *testing.T, seq int, command string, args map[string]
 
 // dapReadTimeout bounds a single read.
 //
-// Five seconds was long enough when the DAP tests were the only thing running and
-// short enough to fail under load. The failure is not a timeout of the debug
-// adapter — it is a timeout of *this* deadline, and it arrives as an error naming
-// the read rather than the session, which sends the reader looking at the wrong
-// place.
-//
-// Thirty seconds is still a bound: a session that genuinely stalls hangs the test
-// rather than passing it, which is what an unbounded read would do. A test that
-// fails is cheap; a test that hangs holds a machine and reports nothing.
-const dapReadTimeout = 30 * time.Second
+// This is a socket deadline, not a session budget: it fires only when the
+// adapter has gone quiet mid-message, which is a genuine stall rather than slow
+// work. It is kept well above dapStepBudget so the *step* budget is what reports
+// a slow session, and the read deadline is left to catch an adapter that has
+// stopped talking at all — the two failing together would produce one message
+// naming the read instead of the step that was never answered.
+const dapReadTimeout = 2 * dapStepBudget
 
 func (c *dapClient) read(t *testing.T) map[string]any {
 	t.Helper()

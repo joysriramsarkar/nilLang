@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract": "onuron.compatibility",
+  "version": "1.0.0",
+  "status": "stable",
+  "owner": "nilLang",
+  "spec": "docs/spec/ARCHITECTURE.md, docs/adr/0001",
+  "description": "Which backends support which features, at what level, with what evidence. This is the table the website presents and the table a runtime consults before claiming compatibility.",
+
+  "statuses": {
+    "stable": "Implemented and covered by the named evidence. A mismatch between this table and a test is a bug in one of the two.",
+    "partial": "Implemented for a subset. The subset is named in `limitations`.",
+    "experimental": "Present but not claimed. A runtime or verifier must not advertise it as supported.",
+    "unsupported": "Not implemented. Must fail loudly, never silently fall back."
+  },
+
+  "evidence_policy": {
+    "rule": "Every non-unsupported cell names an evidence path in this repository. A cell with no evidence is downgraded to experimental. The website copies this file; it does not restate it in prose, because two hand-maintained tables drift.",
+    "ci_job": "conformance, dx-gate and fuzz-smoke in .github/workflows/ci.yml"
+  },
+
+  "backends": {
+    "evaluator": {
+      "description": "Tree-walking evaluator. REPL and development path.",
+      "features": {
+        "language_core":         { "status": "stable",       "evidence": "tests/cross_engine_values_test.go" },
+        "modules_imports":       { "status": "stable",       "evidence": "tests/module_visibility_test.go, pkg/compiler/import_parity_test.go" },
+        "scope_shadowing":       { "status": "stable",       "evidence": "tests/scope_corpus_test.go" },
+        "generics_optionals":    { "status": "stable",       "evidence": "tests/generics_test.go, tests/optionals_test.go, tests/declarative_types_test.go" },
+        "closures_capture":      { "status": "stable",       "evidence": "tests/closure_capture_test.go" },
+        "tasks_futures":         { "status": "partial",      "evidence": "tests/gc_test.go", "limitations": "Same cancellation gaps as the VM: no explicit cancellation, and a faulting child surfaces as cancellation rather than as its cause. The evaluator pre-scans for capabilities and so also does not gate indirect calls." },
+        "capability_gate":       { "status": "partial",      "evidence": "tests/capability_enforcement_test.go", "limitations": "A pre-scan that sees direct calls only, running before evaluation. It cannot report a refusal site and it does not gate indirect calls. The VM path is the enforced one." },
+        "bytecode_compilation":  { "status": "unsupported",  "limitations": "Not a compiling path." },
+        "package_build":         { "status": "unsupported",  "limitations": "Not a compiling path." },
+        "aot_linking":           { "status": "unsupported",  "limitations": "Not a compiling path." },
+        "ffi":                   { "status": "unsupported",  "limitations": "Not a compiling path." }
+      }
+    },
+
+    "vm": {
+      "description": "Bytecode compiler plus VM. The enforced execution path.",
+      "features": {
+        "language_core":         { "status": "stable",       "evidence": "tests/cross_engine_values_test.go, tests/frontend_gate_test.go" },
+        "modules_imports":       { "status": "stable",       "evidence": "pkg/compiler/import_parity_test.go" },
+        "scope_shadowing":       { "status": "stable",       "evidence": "tests/scope_corpus_test.go" },
+        "generics_optionals":    { "status": "stable",       "evidence": "tests/typesystem_test.go, tests/functiontypes_test.go, tests/traits_test.go" },
+        "closures_capture":      { "status": "stable",       "evidence": "tests/closure_capture_test.go" },
+        "typed_errors":          { "status": "stable",       "evidence": "tests/runtime_error_test.go, tests/runtime_l6_test.go" },
+        "gc":                    { "status": "partial",      "evidence": "tests/gc_test.go", "limitations": "Task and future roots, child-VM heap inheritance and periodic root refresh are implemented and unit covered. Long-running stress and race scenarios are not yet a CI gate." },
+        "tasks_futures":         { "status": "partial",      "evidence": "tests/gc_test.go, tests/concurrency_spec_test.go", "limitations": "Fulfilled, Faulted and time-driven cancellation are implemented and asserted clause by clause against docs/spec/CONCURRENCY.md. Two gaps: (1) explicit cancellation is not implemented — there is no cancel() in the language, so the cascading-cancellation rules in §3.1 have no way to be triggered, a timeout is the only route to a cancelled tree, and siblings cannot be cancelled; (2) when a child task faults, the parent surfaces TaskCancelled rather than naming the child's cause, so a fault two tasks deep is indistinguishable from a timeout." },
+        "capability_gate":       { "status": "partial",      "evidence": "tests/capability_enforcement_test.go, compiler/capability/manifest_test.go", "limitations": "Direct statically named calls are gated at the call site. Indirect calls through a function value are not gated, and the `requires` clause with E0201 does not exist." },
+        "native_op_dispatch":    { "status": "partial",      "evidence": "compiler/capability/manifest.go", "limitations": "OpNativeCall is emitted for every operation in the requirement table. An operation with no implementation is an error rather than a silent null, but the set of implemented natives is smaller than the set of gated ones." },
+        "package_build":         { "status": "stable",       "evidence": "pkg/bundle/bundle_test.go, pkg/bundle/reproducible_test.go" },
+        "bytecode_compilation":  { "status": "stable",       "evidence": "pkg/compiler/bytecode_image_test.go" },
+        "aot_linking":           { "status": "unsupported",  "limitations": "See the aot backend." },
+        "ffi":                   { "status": "partial",      "evidence": "pkg/config/ffi_test.go", "limitations": "Declaration and library-flag resolution are covered. Linking is proven on a subset of targets only." },
+        "lsp":                   { "status": "partial",      "evidence": "pkg/lsp/server_test.go, pkg/lsp/navigate_test.go" },
+        "dap":                   { "status": "partial",      "evidence": "pkg/dap/dap_test.go, pkg/dap/process_test.go, pkg/dap/conditional_test.go", "limitations": "Process-level sessions are covered with generous timeouts; timeout and breakpoint behaviour is not characterised." },
+        "fmt_check":             { "status": "stable",       "evidence": "CI dx-gate job, nil fmt --check over examples, std and bootstrap" }
+      }
+    },
+
+    "mir": {
+      "description": "HIR to MIR lowering into the VM.",
+      "features": {
+        "language_core":         { "status": "partial",      "evidence": "tests/cross_engine_values_test.go", "limitations": "Parity is asserted for the tested corpus only. A construct absent from that corpus is unproven, not working." },
+        "scope_shadowing":       { "status": "stable",       "evidence": "tests/scope_corpus_test.go — per-pass loop bindings and shadowed lets agree across backends including AOT." },
+        "typed_hir":             { "status": "partial",      "limitations": "Typed HIR is the input; it is not yet the only input." },
+        "ssa_cfg_optimizer":     { "status": "partial",      "limitations": "Optimized and unoptimized output parity is required but the optimizer is not enabled everywhere, so the requirement is only partially discharged." },
+        "bytecode_compilation":  { "status": "stable",       "evidence": "tests/cross_engine_values_test.go" }
+      }
+    },
+
+    "aot": {
+      "description": "Ahead-of-time native compilation.",
+      "status": "experimental",
+      "features": {
+        "language_core":         { "status": "partial",      "evidence": "tests/cross_engine_values_test.go", "limitations": "Scope handling is covered; broad feature coverage is not." },
+        "ffi":                   { "status": "partial",      "evidence": "pkg/config/ffi_test.go", "limitations": "Library flag resolution is covered; linking on every supported target is not proven." },
+        "gpu_real_submit":       { "status": "unsupported",  "limitations": "The GPU path is a simulation." },
+        "reproducibility":       { "status": "partial",      "limitations": "Byte-identical output is proven for bundles built from the VM path." }
+      }
+    },
+
+    "wasm": {
+      "description": "WebAssembly backend.",
+      "status": "experimental",
+      "features": {
+        "language_core":         { "status": "partial",      "limitations": "Some builtins are unimplemented in compiler/wasm." },
+        "incremental_dom":       { "status": "partial",      "limitations": "Partial." }
+      }
+    },
+
+    "llvm": {
+      "description": "LLVM backend.",
+      "status": "experimental",
+      "features": {
+        "language_core": { "status": "partial", "limitations": "Not conformance tested against the canonical backends." }
+      }
+    }
+  },
+
+  "cross_repo_claims": [
+    {
+      "component": "onuronOS/runtime",
+      "claim": "Nilang 0.1 subset runtime",
+      "status": "partial",
+      "rule": "A Rust mini-VM in onuronOS is a subset runtime, not a second implementation of the language. It may claim support only for the subset its conformance run covers. Any construct it cannot execute must be refused explicitly, not approximated."
+    },
+    {
+      "component": "nilos-emulator",
+      "claim": "Authoritative execution backend",
+      "status": "partial",
+      "rule": "The emulator installs and runs artifacts produced by the canonical compiler. Its own VM does not re-derive language semantics. QEMU is authoritative for hardware behaviour; the desktop simulator is not a second language runtime."
+    },
+    {
+      "component": "alap-framework",
+      "claim": "Application framework",
+      "status": "partial",
+      "rule": "Alap's own parser, compiler, stdlib and VM are not a language conformance reference. Its compiler path must delegate to, or track, the canonical one."
+    },
+    {
+      "component": "onuron_project store",
+      "claim": "Published app catalogue",
+      "status": "partial",
+      "rule": "The store presents this file. It does not author it. A store entry whose maturity is higher than its owner repo's claim is a defect in the store."
+    }
+  ]
+}

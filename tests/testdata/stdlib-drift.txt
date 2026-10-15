@@ -1,0 +1,70 @@
+# Approved standard-library drift — Phase 2 item 5.
+#
+# std/ is the tree a developer edits and the installer ships.
+# pkg/stdlib/modules/ is what //go:embed modules puts inside every binary, and so
+# is what an import of "std/..." resolves to at run time.
+#
+# Every line below is a module where those two disagree. New drift fails CI, and
+# so does a baseline entry whose module has been reconciled — a stale entry is how
+# a fixed module keeps looking broken.
+#
+# Format: <module>\t<status>\t<embedded-sha256>
+#   only-in-std      — exists in std/, not embedded, so an import of it fails
+#   only-in-embedded — embedded but absent from std/, so editors cannot see it
+#   content-differs  — in both, different bytes, so behaviour depends on the copy
+#
+# Regenerate deliberately:
+#   NILANG_UPDATE_STDLIB_DRIFT=1 go test ./tests/ -run TestStdlibDriftIsApprovedKnown
+base64.nil	content-differs	01d3f3755e09e0c1609f9c0a4f7671128c888983cafefef92d9d9cc9875852f6
+collections.nil	content-differs	ffa4570cca75b54bb88e4c03979f307423be3cbcb4f846101c121f27f6abcbd2
+concurrency/channel.nil	content-differs	ab87c9dedcc5200e52dbdd3fa8fdd0dfe6bf64fa5c5e70a0d0a5a429b69f75c6
+concurrency/pool.nil	content-differs	b275fb70e8a2d0a90522aa05ff6bb61ac62e719ffcca063f1b3c5d693081c748
+concurrency/sync.nil	content-differs	1ac0527c639dc6c5d61052410edcb1b8f0bd128ad04aedf336cb01d479d6ee7b
+concurrency/task.nil	content-differs	6ed49dfacd41d1858c31bc42711d9d3b9b28870b158f53b3b011fb55d030eeea
+core.nil	content-differs	360f8d81c89048b8bb9429bba39a7e0eb3a93f0a66d4065518b1079b8c0a9961
+crypto.nil	content-differs	ffae4436b41081badb908ec5c527fadc336bf05111122ea912279a1e66d04cb6
+crypto/aes.nil	content-differs	34ac80c69999fea9feb165ad3bb7fec61db933148a32a538e6bd7c847ada0608
+crypto/ed25519.nil	content-differs	ad3811124571a44d01bab93aa7bbbb98ec47c1f14142a96c00037100f97023de
+crypto/hash.nil	content-differs	e7cf998f7ad3c7eaf6f561b2fa8e239dc39997a5d1f18d82b6b4f8f38795a999
+crypto/hmac.nil	content-differs	1616c747836351acb8d40b6d7ea6f2c2b2634794b995657885a41397b9be75ac
+crypto/random.nil	content-differs	1ec3a1c2ffe8f86eabb0d10702ba0c384559f1021499c73523c338ae1126d70a
+data/base64.nil	content-differs	bdf920242952b906cd02d4932415840478d32a5ffe61dcd44c829d39a1b510da
+data/csv.nil	content-differs	844a0a904a7fec2fc98ac70bd81cc2d3e40c8f85ae883b2b5f0dbd726e106c12
+data/json.nil	content-differs	3646f0eabbc61ab8e3138fb1f6982e9f6ab157c834c40c97c00196c3ef0d510a
+data/migrate.nil	content-differs	38980637ed6f8d2d7a1f4d7cb44c0164bc4890c6e1bc8d12c546d9635436f2f9
+db.nil	content-differs	6e47efb2d5bb5209dbd3c7621a2588e09e1ad923bc971be1603757b98137e425
+db/query_builder.nil	content-differs	dcbcc69ff774ef41fbb3b89a84d366b1c94412a9f702ffffeaf9231b86984ea4
+device.nil	content-differs	f7cc34933a6d42d33b54ab39c054d091ad7ad4d6372c56f00ec60e098520cada
+device/biometric.nil	content-differs	bb429fb8951e7005dfe306da8ed750a21e57d687fd64281f1a02b9a044463603
+device/camera.nil	content-differs	5426e727914269ba6d44307fc81fad27a0db8c6bd54a569c3d9dbd3e70a9d6bf
+device/location.nil	content-differs	0e8862840d958e03a0a76409b526fa192715bd557bb7344af8e8b7b4b4e28792
+device/sensors.nil	content-differs	2fbf3ae447a8d39ab808fa9c9161bb898cf7f27089a16a523593512434b6ebb7
+fs.nil	content-differs	0b3ac12e91d93df44916828243b980e33bdfba108a13c691bb1b9ff4b941a78f
+http.nil	content-differs	24298f25b393d4349af28e902f53dbde6a9934fa248c37d262a5cc406b006b70
+io.nil	content-differs	f6622e435a5184553daa8ff7c0a88d7ffb68b3dd176a4a192354bea093456744
+io/path.nil	content-differs	13bb07d97bb1330afe5b9c1ffe46d01ee197ab6d67554fcbbb7b831cc5b72e8b
+json.nil	content-differs	64ebd2df711d5a562e6add377c9301e952543ed867e5de9dbdb986521217e69d
+math.nil	content-differs	d92230dadeaf9aee9bcfd5869b66fc832bacfc23548f327049c07cf049c7c19d
+math/decimal.nil	content-differs	d418b18a21b98c1b6341c4831f317c97d2e3c5d1c90dc0de93cae4b12d9c599c
+mobile.nil	content-differs	7d04ca20c223566a059f19b626f7121810f1e9b55debb44a8601062484497b07
+mobile/deeplink.nil	content-differs	556a80720ca0b1d59163ccde7bf8f34c3470237b9a7385a406dc863c6249ae61
+mobile/lifecycle.nil	content-differs	67c19cf0bb1a2b9bfe64c9175030bcfe4fb1233d9db5c7aba5ecb03f18fcb92d
+mobile/notify.nil	content-differs	19aceeeedb3c7b8eba2653b63294ff313ae33d9e902efbef167a6b432370ebb1
+mobile/share.nil	content-differs	3f1f6db90603f7b3f3d84b51c28cd7ed99d700eaebdf59a5db142e2d84981bc4
+money.nil	content-differs	e327ebf59bd2c890168ea8115890c23e80132c823946e2fca978570dde0411c7
+net/http.nil	content-differs	828be78b103ae34d5aa3697ada7ae0f851c3e616d52b353ea69afd4b4ca39769
+net/http/router.nil	content-differs	695603643388f48f22171c4d8d5d5d35eccafb339ab69b76246f92310566578d
+net/socket.nil	content-differs	f4f9df02e2062f4223ec5752f0840c0dfaac1c161297a4847c365496288c2be9
+net/tls.nil	content-differs	8ba8acb3ad2766dbe21244de031583cb6ad02b359166ebc7e4edf088bafc9c01
+net/url.nil	content-differs	2f174155cc64f92714aadb12f312c472920b58009833ab618407c6df0f63fc97
+pos.nil	content-differs	417f0713e780cbedcc574f18d9d41fe681a52faa1ba02dc689d3ee22a3c94916
+process.nil	content-differs	015724b4c56edc453926ab1ff9dab0d98c0245e6175c41dff2b7fe0c496b2f00
+strings.nil	content-differs	e810226e0785498fd44755465622b6501de4a874bf28e02c24db5d58128a857f
+testing.nil	content-differs	8a365b2fb55d8692ce036dc0b1fd1900ca15c6ed62c92a5d7caa9573490961b4
+text/bn.nil	content-differs	cc98223e22b55318b0ba9883d180b651697945a1685c58e66a05e7cd300c7b84
+text/encoding.nil	content-differs	ee27c13c1e47b156315462401515949328fe51d56d697b59a56b692974b4cd71
+text/unicode.nil	content-differs	3a4bf156b6263abbca4c70a8ae7c6c2716fc9b9e7f54ab3b8c3f938132efba24
+time.nil	content-differs	bf39db900b7a8d3f0db05701525e5b58da0d850512e145b1bc06cf50e12b6671
+time/date.nil	content-differs	cf33c0adac60baa4eb6ccd1c440ab5fc89473910f27f40f504839dd7e4f857c8
+time/duration.nil	content-differs	cb8ae6c91c3a4901268b7eff07c0da91eade229f6b6b4868dc13a95c77217d84
+time/instant.nil	content-differs	4190f1945911f7c78910eff60369a85a00e55ff8857aa331be50702410671e51

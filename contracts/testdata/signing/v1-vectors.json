@@ -1,0 +1,83 @@
+{
+  "$schema": "https://onuron.org/schemas/signing/v1-vectors.json",
+  "contract": "onuron.signing.test_vectors",
+  "version": "1.0.0",
+  "status": "stable",
+  "owner": "nilLang",
+  "spec": "contracts/signing/signing.json",
+  "generated_by": "go run ./cmd/nil-contract generate",
+  "description": "Conformance vectors for the v1 package signature. Every vector states the accept/reject decision a conforming verifier must reach and the exact bytes it must reach it from.",
+  "usage": "Rebuild the canonical payload as `{\"checksum\":\u003cchecksum_hex\u003e,\"timestamp\":\u003ctimestamp\u003e,\"key_id\":\u003ckey_id\u003e}` with no whitespace, verify signature_hex against the public key, then follow the verification order in signing/signing.json. The keys below are published test keys and must never appear in a trust store.",
+  "vectors": [
+    {
+      "name": "known-good",
+      "expect": "accept",
+      "stage": "6",
+      "reason": "Every step passes: the key is known and not revoked, the file digest matches, and the signature verifies over the reconstructed payload.",
+      "payload": "{\"checksum\":\"eae014144e3ed5ac77b8a98cecb95bcc6c4910155a9d52ccf7ab2aa19db997b9\",\"timestamp\":1767225600,\"key_id\":\"d4e9546db366744414a0a928717fa3c2\"}",
+      "payload_hex": "7b22636865636b73756d223a2265616530313431343465336564356163373762386139386365636239356263633663343931303135356139643532636366376162326161313964623939376239222c2274696d657374616d70223a313736373232353630302c226b65795f6964223a226434653935343664623336363734343431346130613932383731376661336332227d",
+      "signature_hex": "5cfc64a699f375551b07652f257953a41cc954c56e2bdf55d04c061b63ee9c9ed68f656f1056accadc86191be264864813e33f961bf971024a81d863389ba70e",
+      "key_id": "d4e9546db366744414a0a928717fa3c2",
+      "public_key_hex": "228efb13e367ef9da12b0d9a3e35c467577d4e35d7c8df6386f115394d3c6ffe",
+      "fingerprint": "d4e9:546d:b366:7444:14a0:a928:717f:a3c2:a2f6:0fdd",
+      "checksum_hex": "eae014144e3ed5ac77b8a98cecb95bcc6c4910155a9d52ccf7ab2aa19db997b9",
+      "timestamp": 1767225600
+    },
+    {
+      "name": "tampered-payload",
+      "expect": "reject",
+      "stage": "5",
+      "reason": "The file's digest no longer matches the signed checksum. The signature over the original digest is still perfectly valid, which is exactly why integrity is checked before the signature.",
+      "payload": "{\"checksum\":\"eae014144e3ed5ac77b8a98cecb95bcc6c4910155a9d52ccf7ab2aa19db997b9\",\"timestamp\":1767225600,\"key_id\":\"d4e9546db366744414a0a928717fa3c2\"}",
+      "payload_hex": "7b22636865636b73756d223a2265616530313431343465336564356163373762386139386365636239356263633663343931303135356139643532636366376162326161313964623939376239222c2274696d657374616d70223a313736373232353630302c226b65795f6964223a226434653935343664623336363734343431346130613932383731376661336332227d",
+      "signature_hex": "5cfc64a699f375551b07652f257953a41cc954c56e2bdf55d04c061b63ee9c9ed68f656f1056accadc86191be264864813e33f961bf971024a81d863389ba70e",
+      "key_id": "d4e9546db366744414a0a928717fa3c2",
+      "public_key_hex": "228efb13e367ef9da12b0d9a3e35c467577d4e35d7c8df6386f115394d3c6ffe",
+      "fingerprint": "d4e9:546d:b366:7444:14a0:a928:717f:a3c2:a2f6:0fdd",
+      "checksum_hex": "57dcd75a249438ff121c1184ea47544503b6526c6f2a8460d53d2eb4a8529ebc",
+      "timestamp": 1767225600
+    },
+    {
+      "name": "signature-over-different-digest",
+      "expect": "reject",
+      "stage": "5",
+      "reason": "A correctly formed signature over a digest that does not match the file. A verifier that checks only the signature accepts this package; one that checks integrity first does not.",
+      "payload": "{\"checksum\":\"57dcd75a249438ff121c1184ea47544503b6526c6f2a8460d53d2eb4a8529ebc\",\"timestamp\":1767225600,\"key_id\":\"d4e9546db366744414a0a928717fa3c2\"}",
+      "payload_hex": "7b22636865636b73756d223a2235376463643735613234393433386666313231633131383465613437353434353033623635323663366632613834363064353364326562346138353239656263222c2274696d657374616d70223a313736373232353630302c226b65795f6964223a226434653935343664623336363734343431346130613932383731376661336332227d",
+      "signature_hex": "a9b8d8d3ed8afb7b4fcbd42c1c7de29046149a77d9ac053472a14ea81d80781a3dcdbbbf45aedbb49617c667167e88f4d5231a7b06754575d22db007a0b41d05",
+      "key_id": "d4e9546db366744414a0a928717fa3c2",
+      "public_key_hex": "228efb13e367ef9da12b0d9a3e35c467577d4e35d7c8df6386f115394d3c6ffe",
+      "fingerprint": "d4e9:546d:b366:7444:14a0:a928:717f:a3c2:a2f6:0fdd",
+      "checksum_hex": "57dcd75a249438ff121c1184ea47544503b6526c6f2a8460d53d2eb4a8529ebc",
+      "timestamp": 1767225600
+    },
+    {
+      "name": "timestamp-tampered",
+      "expect": "reject",
+      "stage": "6",
+      "reason": "The timestamp is inside the signed payload, so changing it invalidates the signature. A verifier that reconstructs the payload from signed_at instead of from timestamp would accept this.",
+      "payload": "{\"checksum\":\"eae014144e3ed5ac77b8a98cecb95bcc6c4910155a9d52ccf7ab2aa19db997b9\",\"timestamp\":1767225601,\"key_id\":\"d4e9546db366744414a0a928717fa3c2\"}",
+      "payload_hex": "7b22636865636b73756d223a2265616530313431343465336564356163373762386139386365636239356263633663343931303135356139643532636366376162326161313964623939376239222c2274696d657374616d70223a313736373232353630312c226b65795f6964223a226434653935343664623336363734343431346130613932383731376661336332227d",
+      "signature_hex": "003ed47a69f4ec7a4f6543e02805fc990052a1dc6ee4a591b754d984cd04f5bf3f9c53d39961118b070f07030bd5d3e70f0d3f4ed0df7123835c771d57091406",
+      "key_id": "d4e9546db366744414a0a928717fa3c2",
+      "public_key_hex": "228efb13e367ef9da12b0d9a3e35c467577d4e35d7c8df6386f115394d3c6ffe",
+      "fingerprint": "d4e9:546d:b366:7444:14a0:a928:717f:a3c2:a2f6:0fdd",
+      "checksum_hex": "eae014144e3ed5ac77b8a98cecb95bcc6c4910155a9d52ccf7ab2aa19db997b9",
+      "timestamp": 1767225601
+    },
+    {
+      "name": "key-id-swapped",
+      "expect": "reject",
+      "stage": "6",
+      "reason": "A key id altered after signing. The key id is inside the payload, so the signature fails — and the altered id is also absent from any trust store.",
+      "payload": "{\"checksum\":\"eae014144e3ed5ac77b8a98cecb95bcc6c4910155a9d52ccf7ab2aa19db997b9\",\"timestamp\":1767225600,\"key_id\":\"d4e9546db366744414a0a928717fa3c0\"}",
+      "payload_hex": "7b22636865636b73756d223a2265616530313431343465336564356163373762386139386365636239356263633663343931303135356139643532636366376162326161313964623939376239222c2274696d657374616d70223a313736373232353630302c226b65795f6964223a226434653935343664623336363734343431346130613932383731376661336330227d",
+      "signature_hex": "08728c6e3d0107276b5773eb9f570ead8ccb4729a6e684d9bb1012365165e98c116257e95087b67bf1ca073901d7bd9d858c882932bb633cfc0f28008037f904",
+      "key_id": "d4e9546db366744414a0a928717fa3c0",
+      "public_key_hex": "228efb13e367ef9da12b0d9a3e35c467577d4e35d7c8df6386f115394d3c6ffe",
+      "fingerprint": "d4e9:546d:b366:7444:14a0:a928:717f:a3c2:a2f6:0fdd",
+      "checksum_hex": "eae014144e3ed5ac77b8a98cecb95bcc6c4910155a9d52ccf7ab2aa19db997b9",
+      "timestamp": 1767225600
+    }
+  ]
+}

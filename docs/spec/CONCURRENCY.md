@@ -40,7 +40,12 @@ A task progresses through well-defined lifecycle states:
 2. **Faulted**: Computation encountered an unhandled error or panic; error propagates to `await`.
 3. **Cancelled**: Computation aborted before or during execution via cooperative cancellation.
 
-**Single-Resolution Invariant**: A task's terminal state is immutable and observed by `await` exactly once.
+**Single-Resolution Invariant**: A task's terminal state is immutable and observed by `await` exactly once. Observing it more than once yields the same terminal state; it never consumes the completion.
+
+**Cause preservation**: a faulted task carries the error that faulted it, and
+`await` reports it. This holds for a task whose body fails directly. For a task
+that fails *because a child task failed*, the parent currently reports
+`TaskCancelled` rather than the child's cause — see §4.2.
 
 ---
 
@@ -72,5 +77,35 @@ If the deadline expires before completion, the enclosed task tree is cleanly can
 
 ## 4. Scheduler Isolation & Panic Safety
 
-1. **Fault Isolation**: A panic or runtime exception occurring inside a task does not crash the host process or sibling tasks.
+1. **Fault Isolation**: A panic or runtime exception occurring inside a task does not crash the host process, and does not reach tasks belonging to another evaluation. It **does** cancel sibling tasks in the same evaluation — that is §3.1.2, and the two clauses are about different boundaries.
 2. The runtime scheduler intercepts the exception, wraps it in a typed `TaskFaultError`, and transitions the task to the `Faulted` state.
+
+### 4.1 What "isolation" means, precisely
+
+Earlier drafts of this section said a fault "does not crash … sibling tasks",
+while §3.1.2 says a child that faults cancels its siblings. Both are true and
+they contradict each other in wording, which made the clause untestable: an
+implementation that cancels siblings passed §3.1.2 and failed §4.1, depending on
+whether the sibling had already finished.
+
+The boundary is **the cancellation tree, not the task**:
+
+| Beyond the boundary | Inside it |
+|---|---|
+| Another evaluation's tasks are unaffected | Siblings are cancelled (§3.1.2) |
+| The host process survives | The fault surfaces to `await` as `TaskFaulted` |
+| The fault's cause is preserved | The cause is preserved at the faulting task |
+
+So "isolation" means the damage stops at the tree's edge. Conformance is
+`tests/concurrency_spec_test.go`, which asserts each clause separately and
+records the unimplemented ones rather than leaving them to be discovered.
+
+### 4.2 Known gaps
+
+- **Explicit cancellation is not implemented.** There is no `cancel()`, so §3.1.1
+  has no way to be triggered; a deadline (`withTimeout`) is the only route to a
+  cancelled tree.
+- **A nested fault loses its cause.** When a *child* task faults, the parent
+  surfaces `TaskCancelled` rather than the child's error, so a fault two tasks
+  deep is indistinguishable from a timeout. At the top level the fault is typed
+  and names its cause.

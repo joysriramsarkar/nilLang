@@ -1,0 +1,57 @@
+{
+  "bundle": "onuron.contracts",
+  "version": "1.0.0",
+  "owner": "nilLang",
+  "files": [
+    {
+      "path": "abi/runtime-abi.json",
+      "status": "stable",
+      "sha256": "697ed49404c28309917c56a8dc80b32cc4ac338dfdd2717d52531979b5e5fa54",
+      "bytes": 7443
+    },
+    {
+      "path": "capabilities/requirements.json",
+      "status": "stable",
+      "sha256": "f74479d3486d3e52826abf1ed2efd827102b01e99da9efdbce3912d207924012",
+      "bytes": 2539,
+      "generated": true
+    },
+    {
+      "path": "capabilities/vocabulary.json",
+      "status": "stable",
+      "sha256": "dc9f3ec758f5494b8cc5c02035bcde3bdf08e5d538b83a794a767f489ebbcaaa",
+      "bytes": 6002
+    },
+    {
+      "path": "compatibility/matrix.json",
+      "status": "stable",
+      "sha256": "061bd9080245aeba8bfc13f9c215590c188124704c766389062996f0411ea2f2",
+      "bytes": 10419
+    },
+    {
+      "path": "nilax/manifest-v1.schema.json",
+      "status": "stable",
+      "sha256": "8dde965c3a58338960c42888181bd4faaac7df3977fefe9fa02eb0360ec8359d",
+      "bytes": 4728
+    },
+    {
+      "path": "nilax/manifest-v2.schema.json",
+      "status": "proposed",
+      "sha256": "0edc69883dfeb37e82b0ed45fc73bd08147dc680634ff59d30e973e4040cf975",
+      "bytes": 6255
+    },
+    {
+      "path": "signing/signing.json",
+      "status": "stable",
+      "sha256": "234fc25280c44f17f7d98ae25f69139a7170694c39dfbc6ef42741d9ce5f2dd5",
+      "bytes": 11968
+    },
+    {
+      "path": "testdata/signing/v1-vectors.json",
+      "status": "stable",
+      "sha256": "3e5e159d138a6b93b4ad616dc3f9b9a5067f85a71a829777c60aacbd5f98687d",
+      "bytes": 7194,
+      "generated": true
+    }
+  ]
+}

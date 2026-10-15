@@ -9,6 +9,7 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/compiler"
 	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
+	"github.com/joysriramsarkar/nilLang/compiler/evaluator"
 	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 	"github.com/joysriramsarkar/nilLang/compiler/hir"
 	"github.com/joysriramsarkar/nilLang/compiler/mir"
@@ -111,14 +112,93 @@ func CompileFileVia(path string, backend Backend) (*Pipeline, error) {
 	return pipeline, nil
 }
 
+// ResolveModuleSource loads an imported module's text for the frontend gate.
+//
+// It is the single answer to "how does an import path become a module", shared by
+// the gate and by the backends. When the gate resolved imports one way and a
+// backend another, a program the gate had checked would still fail to build —
+// or worse, build against a different module than the one that was checked.
+//
+// A native module has no text: it is a Go value registered at init time by
+// RegisterNativeModule. It still has to resolve here, because a gate that
+// refuses every native import would refuse every program that uses one, and the
+// backends have always accepted them.
+func ResolveModuleSource(importPath, sourceDir string) (frontend.ModuleSource, error) {
+	if strings.HasPrefix(importPath, "std/") && stdlib.Exists(importPath) {
+		content, err := stdlib.Read(importPath)
+		if err != nil {
+			return frontend.ModuleSource{}, fmt.Errorf("failed to read standard library module %q: %s", importPath, err)
+		}
+		return frontend.ModuleSource{
+			Source:    string(content),
+			Filename:  importPath,
+			Canonical: "std:" + importPath,
+		}, nil
+	}
+
+	if _, ok := evaluator.GetNativeModule(importPath); ok {
+		return frontend.ModuleSource{
+			Filename:  "native:" + importPath,
+			Canonical: "native:" + importPath,
+		}, nil
+	}
+
+	path, err := resolveModuleFile(importPath, sourceDir)
+	if err != nil {
+		return frontend.ModuleSource{}, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return frontend.ModuleSource{}, fmt.Errorf("cannot read module file '%s': %w", path, err)
+	}
+	abs, absErr := filepath.Abs(path)
+	if absErr != nil {
+		abs = path
+	}
+	return frontend.ModuleSource{
+		Source:    string(content),
+		Filename:  abs,
+		Canonical: abs,
+	}, nil
+}
+
+// ModuleResolver is ResolveModuleSource in the shape the gate expects.
+func ModuleResolver() frontend.ModuleResolver {
+	return ResolveModuleSource
+}
+
+// resolveModuleFile finds the file an import path names, trying the source
+// directory first and then the working directory.
+func resolveModuleFile(importPath, sourceDir string) (string, error) {
+	filePath := importPath
+	if !strings.HasSuffix(filePath, ".nil") && !strings.Contains(filePath, ".") {
+		filePath += ".nil"
+	}
+
+	var candidates []string
+	if sourceDir != "" && !filepath.IsAbs(filePath) {
+		candidates = append(candidates, filepath.Join(sourceDir, filePath))
+	}
+	candidates = append(candidates, filePath)
+
+	for _, cand := range candidates {
+		if _, err := os.Stat(cand); err != nil {
+			continue
+		}
+		return cand, nil
+	}
+	return "", fmt.Errorf("cannot find module or file '%s'", importPath)
+}
+
 // Compile runs the full compilation pipeline.
 //
 // Parsing and type checking both go through the frontend gate so that every
 // backend observes identical diagnostics. See compiler/frontend.
 func (p *Pipeline) Compile() error {
 	res := frontend.Check(p.source, frontend.Options{
-		Filename:  p.filename,
-		SourceDir: filepath.Dir(p.filename),
+		Filename:      p.filename,
+		SourceDir:     filepath.Dir(p.filename),
+		ResolveModule: ResolveModuleSource,
 	})
 
 	if !res.OK {
@@ -234,46 +314,16 @@ func ConfigureCompiler(comp *compiler.Compiler, sourceDir string) {
 // loadModuleAST resolves a file-based import to its parsed AST. It supports
 // embedded standard library modules (std/...) and relative .nil source files,
 // so the bytecode pipeline can inline modules the same way the evaluator does.
+//
+// It resolves through ResolveModuleSource rather than repeating the path rules,
+// so the file the gate checked is the file the backend compiles.
 func loadModuleAST(importPath, sourceDir string) (*ast.Program, string, error) {
-	// Embedded standard library module
-	if strings.HasPrefix(importPath, "std/") && stdlib.Exists(importPath) {
-		content, err := stdlib.Read(importPath)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to read standard library module %q: %s", importPath, err)
-		}
-		prog, err := parseModuleSource(string(content), importPath)
-		return prog, importPath, err
+	module, err := ResolveModuleSource(importPath, sourceDir)
+	if err != nil {
+		return nil, "", err
 	}
-
-	// Relative or bare file path
-	filePath := importPath
-	if !strings.HasSuffix(filePath, ".nil") && !strings.Contains(filePath, ".") {
-		filePath += ".nil"
-	}
-
-	var candidates []string
-	if sourceDir != "" && !filepath.IsAbs(filePath) {
-		candidates = append(candidates, filepath.Join(sourceDir, filePath))
-	}
-	candidates = append(candidates, filePath)
-
-	for _, cand := range candidates {
-		if _, err := os.Stat(cand); err != nil {
-			continue
-		}
-		content, err := os.ReadFile(cand)
-		if err != nil {
-			return nil, "", fmt.Errorf("cannot read module file '%s': %s", cand, err)
-		}
-		abs, absErr := filepath.Abs(cand)
-		if absErr != nil {
-			abs = cand
-		}
-		prog, err := parseModuleSource(string(content), abs)
-		return prog, abs, err
-	}
-
-	return nil, "", fmt.Errorf("cannot find module or file '%s'", importPath)
+	prog, err := parseModuleSource(module.Source, module.Filename)
+	return prog, module.Filename, err
 }
 
 func parseModuleSource(content, path string) (*ast.Program, error) {

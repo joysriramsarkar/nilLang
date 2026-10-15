@@ -46,6 +46,24 @@ Conformance evidence is listed in `tests/capability_enforcement_test.go` and
 `compiler/capability/manifest_test.go`. Per `CORE_FREEZE.md` nothing here may be
 presented as an enforced guarantee without that coverage.
 
+### Machine-readable form
+
+This document is the normative specification. Its machine-readable counterpart
+is the contract bundle in `contracts/`:
+
+- `contracts/capabilities/vocabulary.json` — the canonical names, the aliases,
+  the recognised-but-ungated names, and the limitations in §0 as structured
+  data;
+- `contracts/capabilities/requirements.json` — **generated** from
+  `compiler/capability/manifest.go`, so a verifier in another language consults
+  the same table rather than transcribing it.
+
+Both are checksummed in `contracts/bundle.json`. `pkg/contract` reads them and
+enforces them; `go run ./cmd/nil-contract verify` fails if either drifts from the
+code. When this document and that table disagree, the table is generated from
+the code and this document is what needs correcting — which is a deliberate
+asymmetry, because the table can be checked automatically and this cannot.
+
 ---
 
 ## 1. Overview & Threat Model

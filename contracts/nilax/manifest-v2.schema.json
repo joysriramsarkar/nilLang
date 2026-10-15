@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onuron.org/schemas/nilax/manifest-v2.schema.json",
+  "title": "Nilang .nilax manifest, format_version 2 (PROPOSED)",
+  "contract": "nilax.manifest",
+  "version": "2.0.0-proposed",
+  "status": "proposed",
+  "owner": "nilLang",
+  "spec": "docs/adr/0003, docs/adr/0004",
+  "source_of_truth": "none yet — no code emits or accepts this format",
+  "description": "The manifest the ecosystem should converge on. It is published now so that every repository plans against one shape, and it is marked proposed so that no verifier rejects a v1 package for failing it. Nothing in this repository emits format_version 2. See nilax/MIGRATION.md.",
+  "deviation_from_the_plan_sketch": "The ecosystem plan sketched this as a string `schemaVersion: \"1.x\"`. It is an integer `format_version` here, matching format_version 1, because a manifest version that is both a major line and a point release has two spellings and therefore two parsers. The plan's field coverage is otherwise carried over unchanged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format_version",
+    "app_id",
+    "version",
+    "payload",
+    "source_revision",
+    "compiler",
+    "runtime_abi",
+    "target",
+    "capabilities",
+    "dependencies",
+    "payload_checksums"
+  ],
+  "properties": {
+    "format_version": {
+      "type": "integer",
+      "const": 2
+    },
+    "app_id": {
+      "description": "Reverse-DNS application identity, stable across releases.",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+      "maxLength": 128
+    },
+    "version": {
+      "description": "Semantic version of the application.",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-([0-9A-Za-z.-]+))?(\\+([0-9A-Za-z.-]+))?$"
+    },
+    "payload": {
+      "description": "What the package actually carries. Declaring it explicitly is what lets a source-only bundle and a compiled artifact share one manifest without a verifier guessing which it has.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "entrypoint", "backends"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["source", "bytecode", "native", "wasm"]
+        },
+        "entrypoint": {
+          "description": "Archive-relative path of the entry file for the declared payload type.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$"
+        },
+        "backends": {
+          "description": "Backends the payload was produced by. Must be listed in compatibility/matrix.json with a status of stable or partial.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "source_revision": {
+      "description": "Immutable identifier of the source this package was built from: a commit sha, or `sha256:<digest>` over the source tree when the build has no VCS. A value that cannot be verified to exist is refused.",
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64}|sha256:[0-9a-f]{64})$"
+    },
+    "compiler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "const": "NilLang" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "revision": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "runtime_abi": {
+      "description": "Runtime ABI the package requires. Verified against abi/runtime-abi.json; a version outside the declared compatible range is refused rather than attempted.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "target": {
+      "description": "Single target identifier, declared in abi/runtime-abi.json.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "capabilities": {
+      "description": "Requested capabilities, canonical lowercase. Every entry must appear in capabilities/vocabulary.json.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "checksum": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "payload_checksums": {
+      "description": "Digest per payload file. This is the field that makes per-file integrity checkable by a verifier that has no signature yet, and it is what a store re-checks on repack.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$" },
+      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "signature": {
+      "description": "Optional at rest, required to publish. A verifier configured to require trust refuses a package whose signature is absent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "signed_fields"],
+      "properties": {
+        "algorithm": { "type": "string", "enum": ["Ed25519"] },
+        "key_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$" },
+        "signed_fields": {
+          "description": "The manifest fields covered by the signature, in canonical order. See signing/signing.json; the list is explicit so that adding a field cannot silently fall outside or inside the signature.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

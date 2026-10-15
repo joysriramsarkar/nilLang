@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract": "onuron.capabilities.requirements",
+  "version": "1.0.0",
+  "status": "stable",
+  "owner": "nilLang",
+  "spec": "docs/spec/CAPABILITIES.md",
+  "source_of_truth": "compiler/capability/manifest.go",
+  "generated_by": "go run ./cmd/nil-contract generate",
+  "description": "Capabilities each builtin and std module operation requires, generated from the compiler's requirement table. An operation present here with an empty list is known and needs nothing; an operation absent from this table is refused rather than assumed pure.",
+  "default_deny": "An operation absent from this table is refused. A verifier that cannot find an operation here must not report that it requires nothing: that is the difference between a typo being a refusal and a typo being a hole.",
+  "unknown_operation": "refused, with the same refusal an unknown operation gets at run time",
+  "requirements": {
+    "chdir": [
+      "environment"
+    ],
+    "clear": [],
+    "cwd": [
+      "environment"
+    ],
+    "exec": [
+      "process"
+    ],
+    "exit": [
+      "process"
+    ],
+    "fileExists": [
+      "filesystem"
+    ],
+    "input": [
+      "stdin"
+    ],
+    "isDir": [
+      "filesystem"
+    ],
+    "listDir": [
+      "filesystem"
+    ],
+    "makeDir": [
+      "filesystem"
+    ],
+    "print": [
+      "stdout"
+    ],
+    "println": [
+      "stdout"
+    ],
+    "puts": [
+      "stdout"
+    ],
+    "random": [
+      "random"
+    ],
+    "readFile": [
+      "filesystem"
+    ],
+    "removeFile": [
+      "filesystem"
+    ],
+    "sleep": [
+      "clock"
+    ],
+    "std.camera.capture": [
+      "camera"
+    ],
+    "std.clipboard.read": [
+      "clipboard"
+    ],
+    "std.clipboard.write": [
+      "clipboard"
+    ],
+    "std.crypto.randomBytes": [
+      "random"
+    ],
+    "std.db.exec": [
+      "database"
+    ],
+    "std.db.query": [
+      "database"
+    ],
+    "std.device.batteryLevel": [
+      "device"
+    ],
+    "std.device.model": [
+      "device"
+    ],
+    "std.http.get": [
+      "network"
+    ],
+    "std.http.post": [
+      "network"
+    ],
+    "std.http.request": [
+      "network"
+    ],
+    "std.location.current": [
+      "location"
+    ],
+    "std.net.dial": [
+      "network"
+    ],
+    "std.net.listen": [
+      "network"
+    ],
+    "std.notify.send": [
+      "notifications"
+    ],
+    "std.sensors.read": [
+      "sensors"
+    ],
+    "std.time.sleep": [
+      "clock"
+    ],
+    "time": [
+      "clock"
+    ],
+    "writeFile": [
+      "filesystem"
+    ]
+  }
+}

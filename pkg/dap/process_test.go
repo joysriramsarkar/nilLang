@@ -127,7 +127,7 @@ func TestNilDAPProcess(t *testing.T) {
 
 	// Read the program state at the breakpoint.
 	send(6, "variables", map[string]any{"variablesReference": 2})
-	drain(t, msgs, 30*time.Second, func(m map[string]any) bool {
+	if !drain(t, msgs, dapStepBudget, func(m map[string]any) bool {
 		if m["type"] != "response" || m["command"] != "variables" {
 			return false
 		}
@@ -140,12 +140,19 @@ func TestNilDAPProcess(t *testing.T) {
 			}
 		}
 		return true
-	})
+	}) {
+		// Naming the request: without this the failure is a bare timeout and
+		// the next reader opens the debug adapter looking for a fault that is
+		// really a budget.
+		t.Fatalf("the adapter did not answer the variables request within %s", dapStepBudget)
+	}
 
 	send(7, "disconnect", nil)
-	drain(t, msgs, 5*time.Second, func(m map[string]any) bool {
+	if !drain(t, msgs, dapStepBudget, func(m map[string]any) bool {
 		return m["type"] == "response" && m["command"] == "disconnect"
-	})
+	}) {
+		t.Fatalf("the adapter did not acknowledge disconnect within %s", dapStepBudget)
+	}
 	_ = stdin.Close()
 
 	if len(failures) > 0 {
@@ -200,9 +207,39 @@ func readMessages(r io.Reader) <-chan map[string]any {
 	return out
 }
 
+// dapStepBudget is how long one DAP request may go unanswered.
+//
+// # Why it is generous
+//
+// The session this budget covers does about a second of real work: start a child
+// process, set a breakpoint, run to it, read variables, disconnect. Thirty
+// seconds was already thirty times that, and it still was not enough — the test
+// failed five times out of five on a machine also running six CPU-bound
+// processes, and passed in under three seconds on an idle one.
+//
+// A budget that only holds when nothing else is running does not test the debug
+// adapter; it tests how idle the machine is. The number here is chosen so the
+// test measures the adapter under contention, which is the condition CI runs it
+// in.
+//
+// # Why there is a bound at all
+//
+// An unbounded wait turns a broken session into a hung test that holds a runner
+// and reports nothing. Failing slowly is the price of failing informatively, and
+// that is still the right trade: drain names the step it gave up on, so the
+// report says which request went unanswered rather than just "timeout".
+const dapStepBudget = 90 * time.Second
+
 // drain reads messages until pred matches or the timeout elapses.
+//
+// A false return means the step was not answered in time; the caller is expected
+// to say which one, because "timed out" on its own sends the next reader to look
+// at the adapter instead of at the budget.
 func drain(t *testing.T, msgs <-chan map[string]any, timeout time.Duration, pred func(map[string]any) bool) bool {
 	t.Helper()
+	if timeout <= 0 || timeout > dapStepBudget {
+		timeout = dapStepBudget
+	}
 	end := time.Now().Add(timeout)
 	for {
 		remain := time.Until(end)

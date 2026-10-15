@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract": "onuron.signing",
+  "version": "1.0.0",
+  "status": "stable",
+  "owner": "nilLang",
+  "spec": "docs/adr/0008, contracts/nilax/MIGRATION.md",
+  "source_of_truth": "pkg/signing",
+  "description": "How a package signature is produced and what bytes a verifier must check. Written so that a Go, a Rust and a JavaScript verifier accept and reject exactly the same inputs.",
+
+  "status_of_this_contract": "The v1 section below describes what NilLang's pkg/signing actually does and is enforced against NilLang's own tooling. It is NOT yet what every verifier in the ecosystem does: see known_divergences, which is the single most important thing in this file until it is resolved.",
+
+  "known_divergences": [
+    {
+      "id": "signing-store-scheme",
+      "severity": "high",
+      "status": "open",
+      "where": "onuron_project/packages/store-schema/scripts/sign-package.mjs and validate.mjs",
+      "what": "The store signs the raw package bytes directly with Ed25519 and stores the signature base64-encoded, with the key named by a friendly identifier such as \"onuron-team\" in trusted-keys.json.",
+      "contract_says": "NilLang signs a JSON payload {\"checksum\",\"timestamp\",\"key_id\"} with the signature in lowercase hex and the key id derived from SHA-256 over the public key.",
+      "why_it_matters": "These are two signature schemes over the same artifact. A package signed for the store cannot be verified by a device using the NilLang verifier, and vice versa. Every claim of \"one signature chain\" is currently false.",
+      "cannot_be_fixed_by_editing_the_contract": "Six packages are published under the store scheme. Declaring the store scheme canonical would require re-signing all of them with a key this repository does not hold.",
+      "options": [
+        "Adopt the store scheme ecosystem-wide and deprecate NilLang's SigningPayload. Simplest; discards the timestamp binding, which is the one property the NilLang payload has that the store scheme lacks.",
+        "Adopt the NilLang payload ecosystem-wide and re-sign the six published packages. Preserves the timestamp binding; requires the maintainer's signing key and a coordinated release.",
+        "Carry both: the contract defines two named schemes and a verifier is told which one a package uses. Honest, and it preserves every existing package — at the cost of a permanent branch in every verifier."
+      ],
+      "decision_owner": "nilLang and onuron_project jointly",
+      "blocks": "Contract G's goal that Go, Rust and JavaScript accept and reject the same inputs",
+      "interim_rule": "Until this is resolved, no verifier may claim to verify \"the\" Onuron signature. A verifier states which scheme it implements. This file implements package_signature_v1; the store implements store-signing-raw-bytes."
+    }
+  ],
+
+  "why_this_is_specified": "Five verifiers will read this: the NilLang CLI, OnuronOS at install time, the emulator in CI, the Onuron Project store API, and any third-party package manager. A signature scheme with two valid encodings of the same payload is a signature scheme with no signature. Everything below is stated as bytes, not as 'the JSON'.",
+
+  "algorithms": [
+    {
+      "id": "Ed25519",
+      "status": "stable",
+      "curve": "ed25519",
+      "signature_encoding": "lowercase hex, no 0x prefix, exactly 128 characters",
+      "public_key_encoding": "lowercase hex, exactly 64 characters",
+      "digest": "SHA-256",
+      "note": "Ed25519 hashes internally. The SHA-256 below is the package digest, not a pre-hash fed to the signature."
+    },
+    {
+      "id": "Ed25519-raw-store",
+      "status": "stable",
+      "curve": "ed25519",
+      "signature_encoding": "base64, exactly 88 characters decoding to 64 bytes",
+      "public_key_encoding": "base64, decoding to a raw 32-byte key",
+      "digest": "none — the raw package bytes are the signed message",
+      "note": "The scheme the Onuron Project store uses today. See known_divergences. It is listed here so that a verifier can identify it rather than misparse it as package_signature_v1."
+    }
+  ],
+  "unknown_algorithm": "refuse. A verifier must not skip a signature it does not recognise.",
+
+  "key_identity": {
+    "key_id": {
+      "derivation": "lowercase hex of the first 16 bytes of SHA-256 over the 32-byte public key",
+      "length": 32,
+      "example_shape": "16 hex characters repeated twice",
+      "recomputable": true,
+      "why": "A key id that a verifier cannot recompute from the key it holds is an identifier, not a binding. Recomputing it is how a verifier refuses a key id that was swapped onto a different key."
+    },
+    "fingerprint": {
+      "derivation": "first 20 bytes of SHA-256 over the public key, hex, grouped into 4-character groups separated by ':'",
+      "length": 47,
+      "purpose": "human comparison only; never used in a verification decision"
+    },
+    "record": {
+      "fields": ["key_id", "algorithm", "created_at", "expires_at", "owner", "email", "purpose", "revoked", "fingerprint"],
+      "purpose_values": ["signing", "encryption", "both"],
+      "note": "A key with purpose 'encryption' presented as a signing key is refused. The field exists; nothing enforces it yet."
+    }
+  },
+
+  "package_signature_v1": {
+    "status": "stable",
+    "applies_to": "any .nilax package, including format_version 1 manifests",
+    "signed_payload": {
+      "description": "Three fields, serialised as compact JSON with no whitespace, in exactly this order. The order is the struct field order in pkg/signing; it is fixed here because a verifier reconstructs the payload rather than reading it from the file.",
+      "fields_in_order": [
+        { "name": "checksum", "type": "string", "encoding": "lowercase hex, 64 characters, SHA-256 over the entire .nilax file" },
+        { "name": "timestamp", "type": "integer", "encoding": "Unix seconds" },
+        { "name": "key_id", "type": "string", "encoding": "lowercase hex, 32 characters" }
+      ],
+      "canonical_form": "{\"checksum\":\"<64 hex>\",\"timestamp\":<int>,\"key_id\":\"<32 hex>\"}",
+      "must_not_include": ["the signature itself", "signed_at", "signer_name", "package_name", "package_version", "the certificate"],
+      "why_excluded": "signed_at is wall-clock time of the signing operation and can differ from the signed timestamp. Including it means a signature that verifies at signing time fails to verify on read, and the natural fix — the one every implementer reaches for — is to trust the file's own signed_at. Excluding it means a file that disagrees with its signature is simply wrong."
+    },
+    "verification_order": [
+      { "step": 1, "action": "parse the signature record", "on_failure": "refuse" },
+      { "step": 2, "action": "look the key id up in the trust store", "on_failure": "refuse as unknown key" },
+      { "step": 3, "action": "check the key is not revoked and is within its validity window", "on_failure": "refuse" },
+      { "step": 4, "action": "recompute the key id from the stored public key and compare", "on_failure": "refuse as tampered trust store" },
+      { "step": 5, "action": "recompute SHA-256 over the file and compare with checksum", "on_failure": "refuse as tampered package" },
+      { "step": 6, "action": "rebuild the canonical payload bytes and verify the Ed25519 signature", "on_failure": "refuse as bad signature" }
+    ],
+    "ordering_rule": "Integrity is checked before the signature. A verifier that runs the signature first spends attacker-controlled time on data it is about to discard."
+  },
+
+  "manifest_signature_v2": {
+    "status": "proposed",
+    "applies_to": "format_version 2 manifests only",
+    "description": "v2 signs the manifest itself rather than the container, so a verifier can check what the package claims before it unpacks anything.",
+    "canonicalisation": {
+      "rule": "serialise the manifest as JSON with object keys sorted lexicographically by UTF-8 code unit, no insignificant whitespace, UTF-8, and the `signature` member removed before signing",
+      "why": "Three implementations parsing the same JSON object into three maps produce three byte strings unless the encoding is pinned. Sorting and stripping is the smallest rule that removes the difference."
+    },
+    "signed_fields": {
+      "rule": "The signature covers exactly the members listed in `signature.signed_fields`, and the list is stored in the signature so that adding a manifest field is a visible act rather than an accident.",
+      "required_members": ["format_version", "app_id", "version", "payload", "source_revision", "compiler", "runtime_abi", "target", "capabilities", "dependencies", "payload_checksums"],
+      "excluded_members": ["signature", "metadata"],
+      "why_metadata_is_excluded": "Metadata is presentation. Signing it would force a re-signature every time a description is corrected, and a re-signature is an operational event people avoid, so signing it would push people toward not signing at all."
+    }
+  },
+
+  "certificate_signature": {
+    "status": "partial",
+    "description": "pkg/signing also implements an X.509-shaped certificate chain on the same Ed25519 primitive. It is not part of the package trust path.",
+    "canonical_payload_fields_in_order": ["serial_number", "issuer", "subject", "public_key", "key_id", "algorithm", "valid_from", "valid_to", "is_ca"],
+    "canonical_form": "{\"serial_number\":\"..\",\"issuer\":\"..\",\"subject\":\"..\",\"public_key\":\"..\",\"key_id\":\"..\",\"algorithm\":\"..\",\"valid_from\":<int>,\"valid_to\":<int>,\"is_ca\":<bool>}",
+    "gaps": [
+      "No trust root is published. VerifyChain takes a root public key as an argument, so trust is whatever the caller supplies.",
+      "Chain construction is not verified on the verifier side beyond pairwise signatures; issuer/subject linkage is not checked.",
+      "Nothing in the package path consults a certificate."
+    ],
+    "consequence": "Do not present the certificate chain as a second trust mechanism. It is a library that has not been connected."
+  },
+
+  "key_custody": {
+    "private_keys": {
+      "must": "live only in an approved signing environment or a build secret store",
+      "must_not": [
+        "be committed to any repository",
+        "appear in a website asset, a build artifact, or a public log",
+        "be the same key as the one used for development or CI experiments"
+      ]
+    },
+    "public_keys": {
+      "store": "a `trusted-keys.json` containing verification material only",
+      "rule": "revocation and trust provenance live beside it as a separate, dated document, so that adding a key and justifying it are two different acts"
+    },
+    "rotation": {
+      "rule": "A release signed by a key retired after that release keeps verifying. Key id, signature and package digest are recorded per release so a rotation does not invalidate history.",
+      "pending": "The rotation and revocation process is written here but not yet exercised by a tool. Until it is, treat `revoked` in a key record as documentation."
+    }
+  },
+
+  "release_record": {
+    "rule": "An official release records: source revision, compiler revision, package digest, signature key id, emulator test evidence, and store API version. A release missing any of these is not publishable.",
+    "owner": "onuron_project publishes the record; nilLang supplies the compiler revision and package digest."
+  },
+
+  "cross_language_verification": {
+    "test_vectors": "contracts/testdata/signing/v1-vectors.json holds signed payloads with their canonical bytes, so a Rust or JavaScript verifier can be checked against Go without a live key.",
+    "conformance_gate": "Every verifier in the ecosystem runs the same vectors and must produce identical accept/reject decisions. A vector that one implementation treats differently is a contract bug, not an implementation bug, until proven otherwise."
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onuron.org/schemas/nilax/manifest-v1.schema.json",
+  "title": "Nilang .nilax manifest, format_version 1",
+  "contract": "nilax.manifest",
+  "version": "1.0.0",
+  "status": "stable",
+  "owner": "nilLang",
+  "spec": "docs/spec/CAPABILITIES.md, docs/adr/0003",
+  "source_of_truth": "pkg/bundle/manifest.go",
+  "description": "The manifest a `nil build` produces today. This schema documents the format as implemented rather than the format the ecosystem would prefer; the preferred field set is manifest-v2.schema.json, which is proposed, not implemented.",
+  "known_gaps": [
+    "There is no source_revision, so a package does not identify the source it was built from.",
+    "There is no runtime_abi, so a package cannot state which runtime it needs.",
+    "There is no payload_checksums, so per-file integrity depends entirely on the whole-archive signature being checked by a verifier that already knows the expected digest.",
+    "signature is a bare string here, while pkg/signing.PackageSignature is a structured object. Two representations of one fact is the defect manifest-v2 removes.",
+    "There is no app_id distinct from app_name; the store uses a reverse-DNS name in app_name, which works but is not typed."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "app_name", "app_version", "entry_bytecode", "targets", "created_at", "compiler_version"],
+  "properties": {
+    "format_version": {
+      "description": "Manifest format version. Only 1 is a stable format.",
+      "type": "integer",
+      "const": 1
+    },
+    "app_name": {
+      "description": "Application identity. In the ecosystem this carries a reverse-DNS id such as org.onuron.calculator.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "app_version": {
+      "description": "Semantic version of the application.",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-([0-9A-Za-z.-]+))?(\\+([0-9A-Za-z.-]+))?$"
+    },
+    "author": { "type": "string", "maxLength": 256 },
+    "description": { "type": "string", "maxLength": 4096 },
+    "entry_bytecode": {
+      "description": "Archive-relative path of the entry bytecode. Must resolve to a file present in the archive.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$"
+    },
+    "targets": {
+      "description": "Targets the package is built for. Every entry must appear in abi/runtime-abi.json; an unknown target is refused, never assumed future-proof.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/target" }
+    },
+    "created_at": {
+      "description": "Build timestamp, RFC 3339. Pinned from SOURCE_DATE_EPOCH-equivalent input when the build is reproducible, so two builds of identical inputs are byte-identical.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "compiler_version": {
+      "description": "Version of the NilLang compiler that produced the package.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "dependencies": {
+      "description": "Declared dependencies, name to version constraint.",
+      "type": "object",
+      "additionalProperties": { "type": "string", "maxLength": 256 }
+    },
+    "permissions": {
+      "description": "Requested capabilities. Despite the name this is the capability set; it is the mirror of nil.json's `capabilities`. Every entry must appear in capabilities/vocabulary.json.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+    },
+    "metadata": {
+      "description": "Free-form string metadata. Not security relevant and not covered by any signature rule today.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "signature": {
+      "description": "Whole-archive signature. Present only on a signed build; an unsigned package is not invalid by schema but is refused by a verifier that requires trust. See signing/signing.json.",
+      "type": "string",
+      "pattern": "^[0-9a-f]+$"
+    }
+  },
+  "$defs": {
+    "target": {
+      "description": "A target identifier declared in abi/runtime-abi.json under `targets`.",
+      "type": "string",
+      "enum": [
+        "onuron",
+        "android",
+        "linux",
+        "windows",
+        "win",
+        "win64",
+        "macos",
+        "darwin",
+        "darwin-arm64",
+        "darwin-amd64",
+        "wasm",
+        "web",
+        "server",
+        "data"
+      ]
+    }
+  }
+}

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
-	"github.com/joysriramsarkar/nilLang/compiler/diagnostics"
 	"github.com/joysriramsarkar/nilLang/compiler/frontend"
 )
 
@@ -30,18 +29,18 @@ func CompileNative(source, outputPath string, options NativeOptions) error {
 	// through the same frontend gate as every other backend. Skipping the
 	// checker here used to let ill-typed programs reach cc and fail with a C
 	// compiler message instead of a Nilang diagnostic.
+	//
+	// It reports through Result.ErrSummary rather than rendering the raw parser
+	// strings itself. Rendering them here was how a syntax error reached the
+	// user as the one refusal in the toolchain with no diagnostic code: the gate
+	// had a coded diagnostic for it and this function discarded it in favour of
+	// the plain-text form.
 	res := frontend.Check(source, frontend.Options{})
-	if len(res.ParseErrors) > 0 {
-		return fmt.Errorf("native parse failed:\n%s", strings.Join(res.ParseErrors, "\n"))
-	}
 	if !res.OK {
-		msgs := make([]string, 0, len(res.Diagnostics))
-		for _, d := range res.Diagnostics {
-			if d.Severity == diagnostics.SeverityError {
-				msgs = append(msgs, d.String())
-			}
+		if summary := res.ErrSummary(); summary != "" {
+			return fmt.Errorf("native compilation failed:%s", summary)
 		}
-		return fmt.Errorf("native type check failed:\n%s", strings.Join(msgs, "\n"))
+		return fmt.Errorf("native compilation failed: the gate refused the program without naming a reason")
 	}
 
 	generated, err := GenerateNativeC(res.Program)

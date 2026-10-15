@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
+	"github.com/joysriramsarkar/nilLang/pkg/contract"
 )
 
 // Verifier handles package integrity verification
@@ -52,6 +53,20 @@ func (v *Verifier) CalculateChecksum(path string) (string, error) {
 }
 
 // VerifyBundle performs comprehensive verification on a .nilax bundle
+//
+// Verification runs the ecosystem contract's seven stages in addition to the
+// integrity checks below: archive safety, manifest identity, payload integrity,
+// signer trust, ABI and target compatibility, capability validity, and install
+// readiness. Every failure is reported rather than only the first, because a
+// package that is both unsigned and built for the wrong target should say so
+// once.
+//
+// The trust posture defaults to TrustIfPresent — a signature is verified when
+// present, and an unsigned package is reported as unsigned without being
+// refused. Callers that publish or install should ask for TrustRequired
+// explicitly; the permissive default exists so that this change does not
+// silently break local development, and it is stated here so that nobody
+// inherits it by accident.
 func (v *Verifier) VerifyBundle(path string) (*VerificationResult, error) {
 	result := &VerificationResult{
 		Path:   path,
@@ -99,9 +114,69 @@ func (v *Verifier) VerifyBundle(path string) (*VerificationResult, error) {
 	}
 
 	result.Manifest = manifest
+
+	// Contract validation. A bundle the contract cannot be read for is
+	// refused: a verifier that skips this because the contract failed to load
+	// is the hole the contract was added to close.
+	contractResult := verifyAgainstContract(path, reader)
+	result.ContractOK = contractResult.OK
+	result.Errors = append(result.Errors, contractResult.Errors...)
+
 	result.Valid = len(result.Errors) == 0
 
 	return result, nil
+}
+
+// verifyAgainstContract runs the seven contract stages over a bundle.
+func verifyAgainstContract(path string, reader *bundle.Reader) contractCheck {
+	var out contractCheck
+
+	set, err := contract.Load()
+	if err != nil {
+		out.Errors = append(out.Errors, fmt.Sprintf("contract bundle could not be loaded: %v", err))
+		return out
+	}
+
+	entries := make([]contract.ArchiveEntry, 0, len(reader.ListFiles()))
+	for _, name := range reader.ListFiles() {
+		data, err := reader.GetFile(name)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, contract.ArchiveEntry{
+			Path:   name,
+			Size:   int64(len(data)),
+			SHA256: sha256HexOf(data),
+		})
+	}
+
+	manifestJSON, err := reader.GetFile("manifest.json")
+	if err != nil {
+		out.Errors = append(out.Errors, "manifest.json could not be read from the bundle")
+		return out
+	}
+
+	_, vs := set.ValidateJSON(manifestJSON, contract.ValidateOptions{
+		Archive: contract.FileArchive(entries),
+		Trust:   contract.TrustIfPresent,
+	})
+	out.OK = true
+	for _, v := range vs {
+		out.OK = false
+		out.Errors = append(out.Errors, v.Error())
+	}
+	return out
+}
+
+type contractCheck struct {
+	OK     bool
+	Errors []string
+}
+
+// sha256HexOf returns the SHA-256 of data as lowercase hex.
+func sha256HexOf(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // VerificationResult holds the result of bundle verification
@@ -111,6 +186,10 @@ type VerificationResult struct {
 	Valid    bool
 	Errors   []string
 	Manifest *bundle.Manifest
+	// ContractOK records whether the ecosystem contract's seven stages passed.
+	// It is separate from Valid so a caller can tell "this package violates the
+	// contract" from "this package is not a readable bundle".
+	ContractOK bool
 }
 
 func (vr *VerificationResult) String() string {

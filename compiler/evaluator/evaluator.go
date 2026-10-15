@@ -61,27 +61,34 @@ func GetCapabilityChecker() func(operation string) error {
 	return nil
 }
 
-// evalTaskRootMu guards the lazy root scope below.
-var evalTaskRootMu sync.Mutex
-
-// evalTaskRoot is the parent scope of every task the evaluator spawns.
+// newEvalTaskScope returns the scope tasks spawned by this evaluation chain
+// belong to, creating one on first use.
 //
-// The tree is deliberately flat — one root, every task its child — because
-// Eval carries no scope handle to nest under. What matters for the
-// structured-concurrency contract is that the tree exists at all: cancelling
-// the root cascades to every task, and one task's fault cancels its siblings
-// through the same parent.
-var evalTaskRoot *concurrency.Task
-
-// newEvalTaskScope returns the scope tasks spawned by Eval belong to,
-// creating the root on first use.
-func newEvalTaskScope() *concurrency.Task {
-	evalTaskRootMu.Lock()
-	defer evalTaskRootMu.Unlock()
-	if evalTaskRoot == nil {
-		evalTaskRoot = concurrency.NewTaskScope(nil)
+// # Why the scope is not a package global
+//
+// A single process-wide root makes every task in the process a sibling of every
+// other one. The runtime cancels a faulting task's siblings, so with a global
+// root one task's failure cancelled the tasks of every other evaluation in the
+// process — including futures an earlier evaluation was still holding.
+//
+// The symptom was a conformance clause that held or failed depending on
+// scheduling: CONCURRENCY.md §4.1 fault isolation passed in isolation and failed
+// about three times in four when run alongside the rest of the table. Nothing
+// about the program changed; only which goroutine won did.
+//
+// The scope therefore lives on the environment, alongside CallDepth and
+// PureDepth, for the same reason those moved off a counter: per-evaluation
+// state that a shared counter turns into a shared budget. A REPL session and a
+// module body, which genuinely share bindings with their parent, inherit the
+// same scope rather than getting one of their own.
+func newEvalTaskScope(env *object.Environment) *concurrency.Task {
+	if existing, ok := env.ScopeValue().(*concurrency.Task); ok && existing != nil {
+		return existing
 	}
-	return evalTaskRoot
+
+	scope := concurrency.NewTaskScope(nil)
+	env.SetScope(scope)
+	return scope
 }
 
 // builtinNameCache remembers reverse builtin lookups so that gating a call
@@ -414,12 +421,15 @@ func evalNode(node ast.Node, env *object.Environment) object.Object {
 		return fn
 	case *ast.TaskExpression:
 		future := object.NewFuture()
+		// Resolve the scope before enclosing: the task body's environment
+		// inherits the scope from this one, so a scope created after the
+		// enclosure would not reach the body.
+		scope := newEvalTaskScope(env)
 		// Shared bindings, not a copy: the child environment encloses the
 		// parent's, so the task reads the parent's variables and assigns
 		// through to them (L6.2). The store lock in object.Environment is
 		// what makes that sharing memory-safe across goroutines.
 		taskEnv := object.NewEnclosedEnvironment(env)
-		scope := newEvalTaskScope()
 		task := scope.Spawn(func(ctx context.Context) (object.Object, error) {
 			result := Eval(node.Body, taskEnv)
 			if returnValue, ok := result.(*object.ReturnValue); ok {

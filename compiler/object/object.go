@@ -530,12 +530,53 @@ type Environment struct {
 	// every other evaluation shares.
 	DepthLimit int
 
+	// TaskScope is the structured-concurrency scope this evaluation chain
+	// spawns its tasks into. It is held as an opaque value because
+	// runtime/concurrency imports this package, so a typed field here would be
+	// an import cycle; the evaluator owns the concrete type and is the only
+	// package that reads it back.
+	//
+	// It lives here for the same reason CallDepth and PureDepth do, and the
+	// failure it fixes is the same shape. A process-wide task scope is a shared
+	// budget with a much worse consequence: one task's fault cancels its
+	// siblings through their shared parent, so with a single global root every
+	// program in the process — and every earlier evaluation still holding a
+	// live future — became a sibling of the faulting task. Fault isolation in
+	// CONCURRENCY.md §4.1 then held or failed depending on scheduling, which is
+	// to say it did not hold.
+	//
+	// One evaluation therefore gets one scope, and a nested evaluation that
+	// legitimately shares bindings with it — a REPL session, a module loaded
+	// into the running program — inherits the same one through `outer`.
+	TaskScope any
+
 	// mu guards the store because task bodies run on their own goroutines
 	// while sharing their parent's bindings (L6.2). A task reads its
 	// parent's variables and assigns through to them; without the lock a
 	// concurrent map read and write is a fatal runtime error, not a data
 	// race the program could observe and recover from.
 	mu sync.RWMutex
+}
+
+// ScopeValue returns the task scope carried by this environment or the nearest
+// enclosing one that has one.
+//
+// The walk is what makes a task spawned inside a function body — several
+// environment frames down from the evaluation's root — land in the right scope
+// without every frame having to thread it through.
+func (e *Environment) ScopeValue() any {
+	for cur := e; cur != nil; cur = cur.outer {
+		if cur.TaskScope != nil {
+			return cur.TaskScope
+		}
+	}
+	return nil
+}
+
+// SetScope records the task scope for this environment and any children
+// enclosed from it afterwards.
+func (e *Environment) SetScope(scope any) {
+	e.TaskScope = scope
 }
 
 func NewEnvironment() *Environment {
@@ -552,6 +593,10 @@ func NewEnclosedEnvironment(outer *Environment) *Environment {
 		env.CallDepth = outer.CallDepth
 		env.PureDepth = outer.PureDepth
 		env.DepthLimit = outer.DepthLimit
+		// The task scope travels with them for the same reason. A task body
+		// and a module body both share their parent's bindings, so both belong
+		// to the parent's cancellation tree.
+		env.TaskScope = outer.ScopeValue()
 	}
 	return env
 }

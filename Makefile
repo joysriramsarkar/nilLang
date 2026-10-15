@@ -9,9 +9,9 @@ PREFIX ?= /usr/local
 GO ?= go
 CGO_ENABLED ?= 0
 
-TARGETS = nil nilc nil-bootstrap nil-lsp nil-runner nilpkg nilpkg-server nilkey softbusd
+TARGETS = nil nilc nil-bootstrap nil-lsp nil-runner nilpkg nilpkg-server nilkey nil-contract softbusd
 
-.PHONY: all build bootstrap bootstrap-verify test clean install uninstall release
+.PHONY: all build bootstrap bootstrap-verify test contracts contracts-verify clean install uninstall release
 
 all: build
 
@@ -29,6 +29,17 @@ bootstrap-verify: build
 
 test:
 	$(GO) test -v ./...
+
+# Regenerate the machine-readable contract bundle from the Go source of truth:
+# the capability requirement table, the signing conformance vectors and the
+# checksummed index.
+contracts:
+	$(GO) run ./cmd/nil-contract generate
+
+# The gate CI runs: checksums and drift against the Go source.
+contracts-verify:
+	$(GO) run ./cmd/nil-contract verify
+	$(GO) test ./pkg/contract/... ./pkg/nilpkg/...
 
 clean:
 	rm -rf $(BIN_DIR) $(DIST_DIR) build/

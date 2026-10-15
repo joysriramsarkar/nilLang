@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract": "onuron.abi",
+  "version": "1.0.0",
+  "status": "stable",
+  "owner": "nilLang",
+  "spec": "docs/spec/ARCHITECTURE.md, docs/spec/CAPABILITIES.md, docs/adr/0003",
+  "description": "Language semantics version, runtime ABI, targets and backends. A package states what it needs; a runtime states what it is; a verifier refuses the pairings that do not meet.",
+
+  "language": {
+    "name": "Nilang",
+    "spec_version": "0.1",
+    "spec_files": [
+      "docs/spec/LANGUAGE_SPEC_CANONICAL.md",
+      "docs/spec/SEMANTICS.md",
+      "docs/spec/TYPE_SYSTEM.md",
+      "docs/spec/CAPABILITIES.md",
+      "docs/spec/EFFECTS.md",
+      "docs/spec/CONCURRENCY.md",
+      "docs/spec/MEMORY_MODEL.md",
+      "docs/spec/MODULE_SYSTEM.md",
+      "docs/spec/ERROR_MODEL.md",
+      "docs/spec/UI_SPEC.md"
+    ],
+    "freeze": {
+      "document": "CORE_FREEZE.md",
+      "status": "active",
+      "meaning": "Grammar, type, scope, assignment, function, module, error, concurrency, memory, effect and capability semantics are frozen. A change to any of them needs spec + conformance test + diagnostic + migration note + explicit approval to amend the freeze."
+    },
+    "compatibility_claim": {
+      "rule": "A runtime that implements spec_version 0.1 may claim Nilang 0.1 compatibility only for the feature set listed in compatibility/matrix.json with a status it actually satisfies. Parsing a construct is not executing it.",
+      "not_guaranteed": [
+        "The `requires` capability clause and E0201",
+        "Gating of indirect calls through a function value",
+        "Pure-context effect checking (E0202)",
+        "Real GPU submission",
+        "Full FFI/AOT linking on every target"
+      ]
+    }
+  },
+
+  "runtime_abi": {
+    "version": "1.0",
+    "compatible_range": "^1.0",
+    "release_policy": "A change to value representation, string or buffer encoding, buffer ownership, error mapping, callback lifetime or capability propagation is a major bump. Adding a host function is a minor bump. Renaming or removing one is a major bump.",
+    "mismatch_behaviour": "refuse with a named error; never attempt the load",
+    "declared_in_manifest": "runtime_abi (format_version 2). format_version 1 has no ABI field at all, which is the gap this section exists to record.",
+    "surface": {
+      "value_representation": {
+        "status": "partial",
+        "note": "The Go-to-runtime boundary is well defined inside one implementation. There is no published C header pinning it, so a third-party embedder cannot rely on it. Contract D is not closed; the table below is what exists today."
+      },
+      "string_encoding": "UTF-8",
+      "buffer_ownership": "The allocator of a buffer owns it for the duration of a call; the callee must not retain it past return. Not verified by a test, therefore not claimed.",
+      "error_mapping": "A runtime fault is converted to a typed runtime error carrying a category. See docs/spec/ERROR_MODEL.md.",
+      "callback_lifetime": "unspecified",
+      "cancellation": "Tasks may be cancelled; a host call in flight is not guaranteed to observe it. See docs/spec/CONCURRENCY.md for what is specified and what is not."
+    }
+  },
+
+  "targets": [
+    { "id": "onuron",       "status": "stable",       "kind": "os",      "description": "OnuronOS, the native Onuron phone/runtime. The ecosystem's primary target." },
+    { "id": "linux",        "status": "stable",       "kind": "host",    "description": "Linux hosts. Used for server builds and for the build machine." },
+    { "id": "windows",      "status": "stable",       "kind": "host",    "description": "Windows hosts." },
+    { "id": "win",          "status": "stable",       "kind": "host",    "description": "Windows hosts, alias of windows." },
+    { "id": "win64",        "status": "stable",       "kind": "host",    "description": "64-bit Windows hosts." },
+    { "id": "macos",        "status": "stable",       "kind": "host",    "description": "macOS hosts." },
+    { "id": "darwin",       "status": "stable",       "kind": "host",    "description": "macOS hosts, alias of macos." },
+    { "id": "darwin-arm64", "status": "stable",       "kind": "host",    "description": "Apple silicon macOS hosts." },
+    { "id": "darwin-amd64", "status": "stable",       "kind": "host",    "description": "Intel macOS hosts." },
+    { "id": "android",      "status": "experimental", "kind": "host",    "description": "Android-hosted runtime. Dual-track by ADR-0001 in onuronOS; a package built for it is not a native OS package." },
+    { "id": "wasm",         "status": "experimental", "kind": "web",     "description": "WebAssembly. Some builtins are unimplemented in compiler/wasm; see compatibility/matrix.json for which." },
+    { "id": "web",          "status": "experimental", "kind": "web",     "description": "Web application target." },
+    { "id": "server",       "status": "experimental", "kind": "service", "description": "Long-running service target." },
+    { "id": "data",         "status": "experimental", "kind": "data",    "description": "Data-only package: a manifest and resources, no entry program." }
+  ],
+
+  "backends": [
+    { "id": "evaluator", "status": "stable",       "description": "Tree-walking evaluator. The REPL and development path. Its capability gate is a pre-scan and is weaker than the VM's." },
+    { "id": "vm",        "status": "stable",       "description": "Bytecode compiler plus VM. The enforced path." },
+    { "id": "mir",       "status": "partial",      "description": "HIR/MIR lowering into the VM. Parity with the direct VM is covered for the tested subset only." },
+    { "id": "aot",       "status": "experimental", "description": "Ahead-of-time native compilation. Linking on every supported target is not proven." },
+    { "id": "wasm",      "status": "experimental", "description": "WebAssembly backend. Several builtins are stubs." },
+    { "id": "llvm",      "status": "experimental", "description": "LLVM backend." }
+  ],
+
+  "cross_repo_rules": {
+    "nilLang": "Defines this file. Emits packages that state language spec version, compiler version and — from format_version 2 — a runtime_abi.",
+    "alap_framework": "Consumes the capability vocabulary and declares capabilities in app metadata. It must not grant a capability the vocabulary does not contain, and must not add implicit authority.",
+    "onuronOS": "Maps a declared capability onto SELinux, service, file and device permissions and enforces them. This mapping is the strongest boundary in the ecosystem today, precisely because the language gate has the limitations listed in capabilities/vocabulary.json.",
+    "nilos_emulator": "Installs and runs artifacts produced by the canonical compiler. It does not re-derive language semantics with its own VM.",
+    "onuron_project": "Publishes packages and records release tag, compiler revision, package digest, signature key id and emulator test evidence. It must not claim a maturity its owner repo does not."
+  },
+
+  "evidence_policy": {
+    "rule": "Every status of stable, partial or experimental above needs an evidence link: a test file, a CI run, a release tag, or hardware output. A status with no evidence is downgraded to experimental.",
+    "where_evidence_lives": "In the owner repository, referenced from compatibility/matrix.json. The Onuron Project site presents it; it does not author it."
+  }
+}
