@@ -9,7 +9,7 @@ let normalizeRecord = fn(item, maxPrice, maxQty) {
     return {"norm_price": item["price"] / maxPrice, "norm_qty": item["quantity"] / maxQty, "revenue": item["revenue"]};
 };
 let normalizedData = [normalizeRecord(rawSales[0], 50, 4), normalizeRecord(rawSales[1], 50, 4), normalizeRecord(rawSales[2], 50, 4), normalizeRecord(rawSales[3], 50, 4), normalizeRecord(rawSales[4], 50, 4)];
-puts("✅ Normalized data sample: price=\(((normalizedData[0])["norm_price"])), qty=\(((normalizedData[0])["norm_qty"]))");
+puts("✅ Normalized data sample: price calculated.");
 let weightPrice = 40;
 let weightQty = 25;
 let bias = -5;
