@@ -96,8 +96,8 @@ func newEvalTaskScope(env *object.Environment) *concurrency.Task {
 // not race. Builtins itself stays a plain map because many call sites index
 // it by name; the lock is the synchronisation point for every access.
 var (
-	builtinMu         sync.RWMutex
-	builtinNameCache  sync.Map // *object.Builtin -> string
+	builtinMu        sync.RWMutex
+	builtinNameCache sync.Map // *object.Builtin -> string
 )
 
 // BuiltinName resolves a builtin value to the name it is registered under,
