@@ -1,18 +1,3 @@
-// Nilang Standard Library
-// Module: std/io/path
-//
-// পাথ ম্যানিপুলেশন — "/" ও "\" দুটো বিভাজকই চেনে, হোস্টের ওপর নির্ভর করে না।
-//
-// উদাহরণ:
-//
-//   import "std/io/path" as path;
-//   path.joinPath("docs", "book/প্রথম.md"); // "docs/book/প্রথম.md"
-//   path.basename("a/b/c.txt");             // "c.txt"
-//   path.dirname("a/b/c.txt");              // "a/b"
-//   path.extName("c.txt");                  // ".txt"
-//   path.withoutExt("c.txt");               // "c"
-
-// splitBoth — দুই বিভাজকেই ভাগ করে।
 let splitBoth = fn(p) {
     let fwd = split(p, "/");
     let out = [];
@@ -29,8 +14,6 @@ let splitBoth = fn(p) {
     }
     return out;
 };
-
-// joinPath — খণ্ডগুলো "/" দিয়ে জোড়ে (ফাঁকা খণ্ড বাদে)।
 let joinPath = fn(a, b) {
     if (a == "" || a == null) {
         return b;
@@ -44,8 +27,6 @@ let joinPath = fn(a, b) {
     }
     return a + "/" + b;
 };
-
-// joinAll — খণ্ডের অ্যারেকে এক পাথে জোড়ে।
 let joinAll = fn(parts) {
     let out = "";
     let i = 0;
@@ -55,8 +36,6 @@ let joinAll = fn(parts) {
     }
     return out;
 };
-
-// basename — পাথের শেষ খণ্ড (ফাইলের নাম)।
 let basename = fn(p) {
     let parts = splitBoth(p);
     if (len(parts) == 0) {
@@ -64,8 +43,6 @@ let basename = fn(p) {
     }
     return last(parts);
 };
-
-// dirname — শেষ খণ্ড বাদে বাকি পাথ।
 let dirname = fn(p) {
     let parts = splitBoth(p);
     if (len(parts) <= 1) {
@@ -79,8 +56,6 @@ let dirname = fn(p) {
     }
     return join(kept, "/");
 };
-
-// extName — ".txt" আকারে এক্সটেনশন (না থাকলে "")।
 let extName = fn(p) {
     let base = basename(p);
     let parts = split(base, ".");
@@ -89,8 +64,6 @@ let extName = fn(p) {
     }
     return "." + last(parts);
 };
-
-// withoutExt — এক্সটেনশন বাদে ফাইলের নাম।
 let withoutExt = fn(p) {
     let dir = dirname(p);
     let base = basename(p);
@@ -110,8 +83,6 @@ let withoutExt = fn(p) {
     }
     return dir + "/" + stem;
 };
-
-// isAbsolute — "/" বা ড্রাইভ ("C:") দিয়ে শুরু কি না।
 let isAbsolute = fn(p) {
     if (p == "" || p == null) {
         return false;

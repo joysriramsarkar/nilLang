@@ -1,40 +1,15 @@
-// Nilang Standard Library
-// Module: std/crypto/ed25519
-//
-// Ed25519 ডিজিটাল স্বাক্ষর — কী তৈরি, স্বাক্ষর ও যাচাই।
-// সব চাবি/স্বাক্ষর base64-এনকোডেড।
-//
-// উদাহরণ:
-//
-//   import "std/crypto/ed25519" as ed;
-//   let kp = ed.keypair();
-//   let sig = ed.sign(kp["private_key"], "চুক্তি v1");
-//   ed.verify(kp["public_key"], "চুক্তি v1", sig); // true
-
-// keypair — {"public_key": ..., "private_key": ...} (দুটোই base64)।
 let keypair = fn() {
     return native("std.crypto.ed25519_keypair");
 };
-
-// sign — (privateKeyB64, message) -> signatureB64।
 let sign = fn(privateKey, message) {
     return native("std.crypto.ed25519_sign", privateKey, message);
 };
-
-// verify — (publicKeyB64, message, signatureB64) -> Bool।
 let verify = fn(publicKey, message, signature) {
     return native("std.crypto.ed25519_verify", publicKey, message, signature);
 };
-
-// signText — স্বাক্ষরসহ {"message": ..., "signature": ...} খাম তৈরি করে।
 let signText = fn(privateKey, message) {
-    return {
-        "message": message,
-        "signature": sign(privateKey, message)
-    };
+    return {"message": message, "signature": sign(privateKey, message)};
 };
-
-// verifyEnvelope — signText-এর খাম publicKey দিয়ে যাচাই করে।
 let verifyEnvelope = fn(publicKey, envelope) {
     return verify(publicKey, envelope["message"], envelope["signature"]);
 };

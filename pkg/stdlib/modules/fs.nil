@@ -1,41 +1,27 @@
-// Nilang Standard Library
-// Module: std/fs
-//
-// ফাইলসিস্টেম-ফ্যাসাড — পড়া/লেখা/তালিকা/ডিরেক্টরি।
-// পাথ-ম্যানিপুলেশনের জন্য std/io/path দেখো।
-
 let exists = fn(path) {
     return fileExists(path);
 };
-
 let isDirectory = fn(path) {
     return isDir(path);
 };
-
 let readText = fn(path) {
     return readFile(path);
 };
-
 let writeText = fn(path, content) {
     return writeFile(path, content);
 };
-
 let list = fn(path) {
     return listDir(path);
 };
-
 let createDirectory = fn(path) {
     return makeDir(path);
 };
-
 let remove = fn(path) {
     return removeFile(path);
 };
-
 let workingDirectory = fn() {
     return cwd();
 };
-
 let changeDirectory = fn(path) {
     return chdir(path);
 };

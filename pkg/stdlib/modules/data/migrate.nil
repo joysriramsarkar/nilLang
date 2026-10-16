@@ -1,35 +1,10 @@
-// Nilang Standard Library
-// Module: std/data/migrate
-//
-// SQLite মাইগ্রেশন রানার — সংস্করণ-টেবিল + ক্রমিক মাইগ্রেশন।
-//
-// প্রতিটি মাইগ্রেশন {"version": Int, "name": String, "up": String}।
-// applied সংস্করণ _nilang_migrations টেবিলে থাকে; pending গুলো ক্রমে চলে।
-//
-// উদাহরণ:
-//
-//   import "std/db" as db;
-//   import "std/data/migrate" as migrate;
-//   let conn = db.connect("file:app?mode=memory&cache=shared");
-//   let ms = [migrate.entry(1, "create-users", "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);")];
-//   migrate.up(conn, ms); // [1]
-
-// entry — একটি মাইগ্রেশন বর্ণনা তৈরি করে।
 let entry = fn(version, name, up) {
-    return {
-        "version": version,
-        "name": name,
-        "up": up
-    };
+    return {"version": version, "name": name, "up": up};
 };
-
-// ensureTable — সংস্করণ-ট্র্যাকিং টেবিল নিশ্চিত করে।
 let ensureTable = fn(conn) {
     conn["exec"]("CREATE TABLE IF NOT EXISTS _nilang_migrations (version INTEGER PRIMARY KEY, name TEXT, applied_at INTEGER);", []);
     return true;
 };
-
-// appliedVersions — প্রয়োগ-হওয়া সংস্করণের অ্যারে।
 let appliedVersions = fn(conn) {
     ensureTable(conn);
     let rows = conn["query"]("SELECT version FROM _nilang_migrations ORDER BY version ASC;", []);
@@ -41,8 +16,6 @@ let appliedVersions = fn(conn) {
     }
     return out;
 };
-
-// isApplied — সংস্করণটি প্রয়োগ হয়েছে কি না।
 let isApplied = fn(conn, version) {
     let done = appliedVersions(conn);
     let i = 0;
@@ -54,8 +27,6 @@ let isApplied = fn(conn, version) {
     }
     return false;
 };
-
-// up — pending মাইগ্রেশন ক্রমে চালায়, প্রয়োগ-হওয়া সংস্করণের তালিকা দেয়।
 let up = fn(conn, migrations) {
     ensureTable(conn);
     let applied = [];
@@ -71,8 +42,6 @@ let up = fn(conn, migrations) {
     }
     return applied;
 };
-
-// pending — এখনো-বাকি মাইগ্রেশনের তালিকা দেয়।
 let pending = fn(conn, migrations) {
     ensureTable(conn);
     let out = [];
@@ -85,8 +54,6 @@ let pending = fn(conn, migrations) {
     }
     return out;
 };
-
-// statusText — মানুষের পড়ার মতো অবস্থা-বিবরণ।
 let statusText = fn(conn, migrations) {
     let done = appliedVersions(conn);
     let wait = pending(conn, migrations);

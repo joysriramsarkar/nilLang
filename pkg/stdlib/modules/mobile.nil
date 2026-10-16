@@ -1,44 +1,19 @@
-// Nilang Standard Library
-// Module: std/mobile
-//
-// মোবাইল-অ্যাপ সহায়ক — lifecycle, deep link, notification, share।
-//
-// এমবেডার (Android/iOS/Harmony) ইভেন্ট পাঠালে onEvent-হ্যান্ডলার চলে;
-// ডেস্কটপে স্টাব-আচরণ (সারি-ভুক্ত, ক্র্যাশ-মুক্ত)।
-//
-// উদাহরণ:
-//
-//   import "std/mobile" as mobile;
-//   let app = mobile.new("আমার অ্যাপ");
-//   mobile.onResume(app);
-//   mobile.notify("স্বাগতম!");
-
 import "std/mobile/lifecycle" as lifecycle;
 import "std/mobile/deeplink" as deeplink;
 import "std/mobile/notify" as notifications;
 import "std/mobile/share" as share;
-
-// new — অ্যাপ-অবস্থা তৈরি করে।
 let new = fn(name) {
     return lifecycle.new(name);
 };
-
-// lifecycle পুনঃরপ্তানি।
 let onCreate = lifecycle.onCreate;
 let onResume = lifecycle.onResume;
 let onPause = lifecycle.onPause;
 let onDestroy = lifecycle.onDestroy;
 let appState = lifecycle.stateOf;
 let isForeground = lifecycle.isForeground;
-
-// deep link পুনঃরপ্তানি।
 let parseLink = deeplink.parse;
 let linkRoute = deeplink.route;
-
-// notification পুনঃরপ্তানি (notify নামে; alias notifications থেকে)।
 let notify = notifications.send;
 let notifyLater = notifications.schedule;
-
-// share পুনঃরপ্তানি।
 let shareText = share.text;
 let shareLink = share.link;

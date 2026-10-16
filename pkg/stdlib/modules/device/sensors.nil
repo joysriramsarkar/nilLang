@@ -1,23 +1,9 @@
-// Nilang Standard Library
-// Module: std/device/sensors
-//
-// সেন্সর — FFI স্টাব (অ্যাক্সেলেরোমিটার, জাইরোস্কোপ, আলো)।
-
-// kinds — সমর্থিত সেন্সরের নাম।
 let kinds = fn() {
     return ["accelerometer", "gyroscope", "light", "proximity"];
 };
-
-// read — সেন্সর-পাঠ; স্টাবে Err।
 let read = fn(kind) {
     return Err("E_NOSUPPORT: sensor backend not installed (FFI stub)");
 };
-
-// sampleAccelerometer — প্রিভিউ-নমুনা (সমতল-শায়িত)।
 let sampleAccelerometer = fn() {
-    return Ok({
-        "x": 0.0,
-        "y": 0.0,
-        "z": 9.8
-    });
+    return Ok({"x": 0, "y": 0, "z": 9.8});
 };

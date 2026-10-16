@@ -20,7 +20,7 @@ let i = 0;
 while (i < 10) {
     let val = fibonacci(i);
     puts("  fib(\(i)) = \(val)");
-    let i = i + 1;
+    i = i + 1;
 }
 puts("");
 let greeting = "Hello";

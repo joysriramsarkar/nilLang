@@ -91,10 +91,14 @@ func newEvalTaskScope(env *object.Environment) *concurrency.Task {
 	return scope
 }
 
-// builtinNameCache remembers reverse builtin lookups so that gating a call
-// does not scan the whole table on every invocation. Only positive hits are
-// cached: a builtin registered later (tests do this) must still be found.
-var builtinNameCache sync.Map // *object.Builtin -> string
+// builtinMu guards Builtins so that concurrent reads (BuiltinName, VM call
+// dispatch) and concurrent writes (tests registering temporary builtins) do
+// not race. Builtins itself stays a plain map because many call sites index
+// it by name; the lock is the synchronisation point for every access.
+var (
+	builtinMu         sync.RWMutex
+	builtinNameCache  sync.Map // *object.Builtin -> string
+)
 
 // BuiltinName resolves a builtin value to the name it is registered under,
 // for the capability and effect gates. The second result is false for values
@@ -104,6 +108,8 @@ func BuiltinName(fn *object.Builtin) (string, bool) {
 	if name, ok := builtinNameCache.Load(fn); ok {
 		return name.(string), true
 	}
+	builtinMu.RLock()
+	defer builtinMu.RUnlock()
 	for name, builtin := range Builtins {
 		if builtin == fn {
 			builtinNameCache.Store(fn, name)
@@ -111,6 +117,25 @@ func BuiltinName(fn *object.Builtin) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// SetBuiltin registers a builtin under name, replacing any existing entry.
+// Callers that previously wrote to evaluator.Builtins directly should use
+// this instead so that concurrent BuiltinName readers do not race.
+func SetBuiltin(name string, builtin *object.Builtin) {
+	builtinMu.Lock()
+	defer builtinMu.Unlock()
+	Builtins[name] = builtin
+	builtinNameCache.Store(builtin, name)
+}
+
+// DeleteBuiltin removes a builtin registered by name. It is the counterpart
+// of SetBuiltin for tests that install temporary builtins and must restore
+// the previous state.
+func DeleteBuiltin(name string) {
+	builtinMu.Lock()
+	defer builtinMu.Unlock()
+	delete(Builtins, name)
 }
 
 // checkBuiltinCall enforces the capability sandbox (L6.4) and the pure

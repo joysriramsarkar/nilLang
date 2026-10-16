@@ -1,15 +1,6 @@
-// Nilang Standard Library
-// Module: std/crypto/hash
-//
-// ক্রিপ্টোগ্রাফিক হ্যাশিং — হোস্ট রানটাইমের ওপর।
-
-// sha256 — হেক্স-এনকোডেড SHA-256 (৬৪ অক্ষর)।
-// উদাহরণ: sha256("test-data")-এর দৈর্ঘ্য 64
 let sha256 = fn(value) {
     return native("std.crypto.sha256", value);
 };
-
-// sha512 — হেক্স-এনকোডেড SHA-512 (১২৮ অক্ষর)।
 let sha512 = fn(value) {
     return native("std.crypto.sha512", value);
 };

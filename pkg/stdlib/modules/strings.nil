@@ -1,129 +1,87 @@
-// Nilang Standard Library
-// Module: std/strings
-//
-// স্ট্রিং ইউটিলিটি — বাংলা-নিরাপদ (দৈর্ঘ্য = রুন-গণনা)।
-//
-// উদাহরণ:
-//
-//   import "std/strings" as s;
-//   s.capitalize("nilang"); // "Nilang"
-//   s.padLeft("42", 5, "0"); // "00042"
-
 let empty = fn(value) {
     return len(value) == 0;
 };
-
 let nonEmpty = fn(value) {
     return len(value) != 0;
 };
-
 let equalsIgnoreCase = fn(a, b) {
     return lower(a) == lower(b);
 };
-
 let startsWith = fn(value, prefix) {
     return hasPrefix(value, prefix);
 };
-
 let endsWith = fn(value, suffix) {
     return hasSuffix(value, suffix);
 };
-
 let includes = fn(value, needle) {
     return contains(value, needle);
 };
-
 let capitalize = fn(value) {
     if (len(value) == 0) {
         return value;
     }
-
     let firstChar = substr(value, 0, 1);
     let restText = substr(value, 1);
-
     return upper(firstChar) + restText;
 };
-
 let normalized = fn(value) {
     return lower(trim(value));
 };
-
 let reverse = fn(value) {
     let result = "";
     let i = len(value) - 1;
-
     while (i >= 0) {
         result = result + substr(value, i, 1);
         i = i - 1;
     }
-
     return result;
 };
-
 let repeat = fn(value, count) {
     let result = "";
-
     let i = 0;
     while (i < count) {
         result = result + value;
         i = i + 1;
     }
-
     return result;
 };
-
 let lines = fn(value) {
     return split(value, "\n");
 };
-
 let words = fn(value) {
     let cleaned = trim(value);
-
     if (cleaned == "") {
         return [];
     }
-
     return split(cleaned, " ");
 };
-
 let joinLines = fn(values) {
     return join(values, "\n");
 };
-
 let joinStrings = fn(values, delim) {
     return join(values, delim);
 };
-
 let splitString = fn(value, delim) {
     return split(value, delim);
 };
-
 let trimString = fn(value) {
     return trim(value);
 };
-
 let toLower = fn(value) {
     return lower(value);
 };
-
 let toUpper = fn(value) {
     return upper(value);
 };
-
 let replaceAll = fn(value, oldVal, newVal) {
     return replace(value, oldVal, newVal);
 };
-
 let substring = fn(value, start, length) {
     return substr(value, start, length);
 };
-
 let length = fn(value) {
     return len(value);
 };
-
-// padLeft — বামে pad দিয়ে width পর্যন্ত ভরে।
-// উদাহরণ: padLeft("42", 5, "0") == "00042"
 let padLeft = fn(value, width, pad) {
     let s = str(value);
     while (len(s) < width) {
@@ -131,8 +89,6 @@ let padLeft = fn(value, width, pad) {
     }
     return s;
 };
-
-// padRight — ডানে pad দিয়ে width পর্যন্ত ভরে।
 let padRight = fn(value, width, pad) {
     let s = str(value);
     while (len(s) < width) {
@@ -140,8 +96,6 @@ let padRight = fn(value, width, pad) {
     }
     return s;
 };
-
-// truncate — maxLen-এর বেশি হলে suffix ("...") দিয়ে ছাঁটে।
 let truncate = fn(value, maxLen, suffix) {
     if (len(value) <= maxLen) {
         return value;

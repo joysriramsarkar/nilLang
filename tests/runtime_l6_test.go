@@ -242,10 +242,10 @@ func TestL6TaskFaultIsolation(t *testing.T) {
 // than crashing the process. The panicking builtin is registered for this
 // test only and removed afterwards.
 func TestL6TaskPanicIsFaultInEvaluator(t *testing.T) {
-	evaluator.Builtins["__l6boom"] = &object.Builtin{
+	evaluator.SetBuiltin("__l6boom", &object.Builtin{
 		Fn: func(args ...object.Object) object.Object { panic("l6 boom") },
-	}
-	defer delete(evaluator.Builtins, "__l6boom")
+	})
+	defer evaluator.DeleteBuiltin("__l6boom")
 
 	evaluated := evalDirect(t, `let tk = task { __l6boom(); }; await tk;`)
 	category, ok := object.CategoryOf(evaluated)

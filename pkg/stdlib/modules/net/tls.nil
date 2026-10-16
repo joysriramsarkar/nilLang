@@ -1,31 +1,9 @@
-// Nilang Standard Library
-// Module: std/net/tls
-//
-// TLS ক্লায়েন্ট — সিস্টেম রুট CA দিয়ে যাচাইকৃত সংযোগ।
-//
-// হ্যান্ডেল টেবিল TCP-এর সাথে ভাগ করা, তাই হ্যান্ডেলে
-// std/net/socket-এর send/receive/close সরাসরি চলে।
-//
-// উদাহরণ:
-//
-//   import "std/net/tls" as tls;
-//   import "std/net/socket" as socket;
-//   let conn = tls.connect("example.com", 443);
-//   socket.send(conn, "GET / HTTP/1.0\r\nHost: example.com\r\n\r\n");
-//   let head = socket.receive(conn, 4096);
-//   socket.close(conn);
-
-// connect — host:port-এ TLS সংযোগ খোলে (SNI + সিস্টেম রুট যাচাইসহ)।
 let connect = fn(host, port) {
     return native("std.net.tls_connect", host, port);
 };
-
-// connectDefault — HTTPS ডিফল্ট পোর্ট 443-এ সংযোগ খোলে।
 let connectDefault = fn(host) {
     return connect(host, 443);
 };
-
-// isTlsHandle — হ্যান্ডেলটি পূর্ণসংখ্যা কি না (হালকা বৈধতা)।
 let isTlsHandle = fn(conn) {
     return type(conn) == "INTEGER";
 };

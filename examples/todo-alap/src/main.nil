@@ -18,7 +18,7 @@ while (i < len(todos)) {
         "[ ]";
     };
     puts("  " + status + " " + item["title"]);
-    let i = i + 1;
+    i = i + 1;
 }
 puts("\n⚡ Marking task 3 as completed...");
 let updatedTodo3 = toggleTodo(todos[2]);
@@ -33,6 +33,6 @@ while (j < len(updatedTodos)) {
         "[ ]";
     };
     puts("  " + status + " " + item["title"]);
-    let j = j + 1;
+    j = j + 1;
 }
 puts("\n🎉 TodoApp business logic and Alap state model executed perfectly!");

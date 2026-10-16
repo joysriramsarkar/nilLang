@@ -1,19 +1,6 @@
-// Nilang Standard Library
-// Module: std/crypto/hmac
-//
-// কী-যুক্ত মেসেজ প্রমাণীকরণ কোড (HMAC-SHA256, হেক্স ৬৪ অক্ষর)।
-//
-// উদাহরণ:
-//
-//   import "std/crypto/hmac" as hmac;
-//   let sig = hmac.sha256("my-secret", "payload");
-//   hmac.verify("my-secret", "payload", sig); // true
-
 let sha256 = fn(key, message) {
     return native("std.crypto.hmac_sha256", key, message);
 };
-
-// verify — প্রত্যাশিত সিগনেচারের সাথে মিলিয়ে দেখে।
 let verify = fn(key, message, expected) {
     return sha256(key, message) == expected;
 };

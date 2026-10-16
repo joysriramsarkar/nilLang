@@ -1777,43 +1777,59 @@ func (vm *VM) callWithTimeout(args []object.Object, numArgs int) error {
 	return nil
 }
 
+// timeoutOutcome is the result of a runWithTimeout goroutine: the value the
+// closure produced, or the error it failed with.
+type timeoutOutcome struct {
+	value object.Object
+	err   error
+}
+
 // runWithTimeout executes the closure off-goroutine and waits up to the
 // deadline for it. There is no preemption: an expired deadline abandons the
 // wait, not the work, and a panic in the work faults the result rather than
-// the process.
+// the process. When the deadline expires the task's scope is cancelled so the
+// VM stops polling instructions and the work cannot keep running with access
+// to shared state. The goroutine is not awaited: a task blocked inside a
+// builtin (for example `receive(Channel(0))`) may never observe cancellation,
+// and waiting would deadlock this call. The buffered channel lets the
+// goroutine send its outcome when it eventually returns.
 func (vm *VM) runWithTimeout(timeoutMs int64, closure *object.Closure) object.Object {
-	type outcome struct {
-		value object.Object
-		err   error
-	}
-	done := make(chan outcome, 1)
+	done := make(chan timeoutOutcome, 1)
+	scope := concurrency.NewTaskScope(vm.ensureTaskScope())
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				done <- outcome{nil, errTaskFaulted("task panicked: %v", r)}
+				done <- timeoutOutcome{nil, errTaskFaulted("task panicked: %v", r)}
 			}
 		}()
-		value, err := vm.runClosureShared(closure, vm.ensureTaskScope())
-		done <- outcome{value, err}
+		value, err := vm.runClosureShared(closure, scope)
+		done <- timeoutOutcome{value, err}
 	}()
 
 	select {
 	case out := <-done:
-		if out.err != nil {
-			var runtimeErr *object.RuntimeError
-			if errors.As(out.err, &runtimeErr) {
-				return runtimeErr
-			}
-			return object.RuntimeErrorf(object.CategoryTaskFaulted, "task failed: %s", out.err.Error())
-		}
-		if out.value == nil {
-			return Null
-		}
-		return out.value
+		return vm.finishTimeout(out)
 	case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+		scope.Cancel()
 		return object.RuntimeErrorf(object.CategoryTaskCancelled,
 			"withTimeout: task timeout exceeded after %dms", timeoutMs)
 	}
+}
+
+// finishTimeout converts a runWithTimeout goroutine result into the value or
+// error the caller sees. A cancelled task reports CategoryTaskCancelled.
+func (vm *VM) finishTimeout(out timeoutOutcome) object.Object {
+	if out.err != nil {
+		var runtimeErr *object.RuntimeError
+		if errors.As(out.err, &runtimeErr) {
+			return runtimeErr
+		}
+		return object.RuntimeErrorf(object.CategoryTaskFaulted, "task failed: %s", out.err.Error())
+	}
+	if out.value == nil {
+		return Null
+	}
+	return out.value
 }
 
 // asTaskFault converts a task body's failure into the fault the awaiting

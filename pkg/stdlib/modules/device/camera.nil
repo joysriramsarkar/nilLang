@@ -1,14 +1,6 @@
-// Nilang Standard Library
-// Module: std/device/camera
-//
-// ক্যামেরা — FFI স্টাব। এমবেডারে নেটিভ বাস্তবায়ন বসলে ছবি দেবে।
-
-// hasCamera — ক্যামেরা-ব্যাকএন্ড আছে কি না (স্টাবে false)।
 let hasCamera = fn() {
     return false;
 };
-
-// capturePhoto — ছবি তোলে; স্টাবে Err (কখনো ক্র্যাশ নয়)।
 let capturePhoto = fn(options) {
     return Err("E_NOSUPPORT: camera backend not installed (FFI stub)");
 };

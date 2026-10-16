@@ -12,6 +12,6 @@ while (i <= frames) {
     let t = i * 1 / 5;
     let progress = easeOutBounce(t);
     puts("  Frame \(i): t = \(t), progress = \(progress)");
-    let i = i + 1;
+    i = i + 1;
 }
 puts("✨ Animation completed with smooth 60fps rendering!");

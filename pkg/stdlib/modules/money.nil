@@ -1,28 +1,11 @@
-// Nilang Standard Library
-// Module: std/money
-//
-// মুদ্রা-সচেতন টাকার উপস্থাপন — নির্ভুল Decimal মান + মুদ্রা-কোড।
-// add/sub Result দেয় (মুদ্রা-অমিলে Err), mulQty সরাসরি Money দেয়।
-//
-// উদাহরণ:
-//
-//   import "std/money" as money;
-//   let মোট = unwrap(money.add(money.ofMajor(150, "BDT"), money.ofMinor(500, "BDT")));
-//   money.format(মোট, "৳"); // "৳155.00"
-
 import "std/math/decimal" as decimal;
-
 let new = fn(amountDecimal, currency) {
     let curr = currency;
     if (curr == null) {
         curr = "BDT";
     }
-    return {
-        "amount": amountDecimal,
-        "currency": curr
-    };
+    return {"amount": amountDecimal, "currency": curr};
 };
-
 let ofMinor = fn(minorUnits, currency) {
     let curr = currency;
     if (curr == null) {
@@ -31,36 +14,31 @@ let ofMinor = fn(minorUnits, currency) {
     let dec = decimal.new(minorUnits, 2);
     return new(dec, curr);
 };
-
 let ofMajor = fn(majorUnits, currency) {
     return ofMinor(majorUnits * 100, currency);
 };
-
 let add = fn(m1, m2) {
     if (m1["currency"] != m2["currency"]) {
         return Err("currency mismatch: " + str(m1["currency"]) + " vs " + str(m2["currency"]));
     }
     return Ok(new(decimal.add(m1["amount"], m2["amount"]), m1["currency"]));
 };
-
 let sub = fn(m1, m2) {
     if (m1["currency"] != m2["currency"]) {
         return Err("currency mismatch: " + str(m1["currency"]) + " vs " + str(m2["currency"]));
     }
     return Ok(new(decimal.sub(m1["amount"], m2["amount"]), m1["currency"]));
 };
-
 let mulQty = fn(m, qtyMinor, scale) {
     let s = scale;
     if (s == null || s <= 0) {
         s = 1000;
     }
     let unitVal = m["amount"]["value"];
-    let resVal = (unitVal * qtyMinor) / s;
+    let resVal = unitVal * qtyMinor / s;
     let newDec = decimal.new(resVal, m["amount"]["scale"]);
     return new(newDec, m["currency"]);
 };
-
 let format = fn(m, symbol) {
     let sym = symbol;
     if (sym == null) {

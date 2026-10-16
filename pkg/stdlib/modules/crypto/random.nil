@@ -1,31 +1,12 @@
-// Nilang Standard Library
-// Module: std/crypto/random
-//
-// ক্রিপ্টোগ্রাফিকভাবে নিরাপদ এলোমেলো বাইট (base64-এনকোডেড)।
-//
-// উদাহরণ:
-//
-//   import "std/crypto/random" as random;
-//   let keyB64 = random.bytes(32); // 32 বাইট -> base64
-
-// bytes — count বাইট CSPRNG থেকে base64 স্ট্রিং হিসেবে।
 let bytes = fn(count) {
     return native("std.crypto.random_bytes", count);
 };
-
-// hex — count বাইট হেক্স স্ট্রিং হিসেবে (sha256-এর মতো)।
-// দ্রষ্টব্য: base64 ডিকোড হোস্টে নেই, তাই হ্যাশ-ভিত্তিক উদ্ভব ব্যবহার করা হয়।
 let hex = fn(count) {
     return native("std.crypto.sha256", bytes(count));
 };
-
-// nonce12 — AES-GCM-এর জন্য ১২-বাইট ননস (base64)।
-// 12 বাইট base64-এ 16 অক্ষর হয়।
 let nonce12 = fn() {
     return bytes(12);
 };
-
-// key32 — AES-256-এর জন্য ৩২-বাইট চাবি (base64)।
 let key32 = fn() {
     return bytes(32);
 };

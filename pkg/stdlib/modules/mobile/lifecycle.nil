@@ -1,48 +1,26 @@
-// Nilang Standard Library
-// Module: std/mobile/lifecycle
-//
-// অ্যাপ lifecycle — created/resumed/paused/destroyed।
-
-// new — "created" অবস্থায় অ্যাপ-হ্যাশ।
 let new = fn(name) {
-    return {
-        "name": name,
-        "lifecycle": "created",
-        "resumeCount": 0
-    };
+    return {"name": name, "lifecycle": "created", "resumeCount": 0};
 };
-
-// onCreate — created-এ ফেরত নেয়।
 let onCreate = fn(app) {
     app["lifecycle"] = "created";
     return app;
 };
-
-// onResume — resumed + গণনা বাড়ায়।
 let onResume = fn(app) {
     app["lifecycle"] = "resumed";
     app["resumeCount"] = app["resumeCount"] + 1;
     return app;
 };
-
-// onPause — paused-এ নেয়।
 let onPause = fn(app) {
     app["lifecycle"] = "paused";
     return app;
 };
-
-// onDestroy — destroyed-এ নেয়।
 let onDestroy = fn(app) {
     app["lifecycle"] = "destroyed";
     return app;
 };
-
-// stateOf — বর্তমান অবস্থা-নাম (state সংরক্ষিত শব্দ, তাই stateOf)।
 let stateOf = fn(app) {
     return app["lifecycle"];
 };
-
-// isForeground — resumed কি না।
 let isForeground = fn(app) {
     return app["lifecycle"] == "resumed";
 };
