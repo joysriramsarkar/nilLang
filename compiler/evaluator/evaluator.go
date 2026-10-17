@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -136,6 +137,27 @@ func DeleteBuiltin(name string) {
 	builtinMu.Lock()
 	defer builtinMu.Unlock()
 	delete(Builtins, name)
+}
+
+// GetBuiltin looks up a builtin by name under the read lock so concurrent
+// SetBuiltin/DeleteBuiltin callers in tests cannot race with evaluation or VM
+// dispatch.
+func GetBuiltin(name string) (*object.Builtin, bool) {
+	builtinMu.RLock()
+	defer builtinMu.RUnlock()
+	b, ok := Builtins[name]
+	return b, ok
+}
+
+// BuiltinNames returns a snapshot of registered builtin names under the read lock.
+func BuiltinNames() []string {
+	builtinMu.RLock()
+	defer builtinMu.RUnlock()
+	names := make([]string, 0, len(Builtins))
+	for k := range Builtins {
+		names = append(names, k)
+	}
+	return names
 }
 
 // checkBuiltinCall enforces the capability sandbox (L6.4) and the pure
@@ -721,11 +743,33 @@ func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
 	}
 }
 
+func isNumericObj(obj object.Object) bool {
+	return obj != nil && (obj.Type() == object.INTEGER_OBJ || obj.Type() == object.FLOAT_OBJ)
+}
+
+func evalObjectsEqual(left, right object.Object) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	if left.Type() != right.Type() {
+		return false
+	}
+	switch l := left.(type) {
+	case *object.Boolean:
+		r, ok := right.(*object.Boolean)
+		return ok && l.Value == r.Value
+	case *object.Null:
+		return true
+	default:
+		return left == right
+	}
+}
+
 func evalInfixExpression(operator string, left, right object.Object) object.Object {
 	switch {
 	case left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ:
 		return evalIntegerInfixExpression(operator, left, right)
-	case left.Type() == object.FLOAT_OBJ || right.Type() == object.FLOAT_OBJ:
+	case isNumericObj(left) && isNumericObj(right):
 		return evalFloatInfixExpression(operator, left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
 		return evalStringInfixExpression(operator, left, right)
@@ -741,9 +785,9 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		}
 		return runtimeError(object.CategoryTypeError, "unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	case operator == "==":
-		return nativeBoolToBooleanObject(left == right)
+		return nativeBoolToBooleanObject(evalObjectsEqual(left, right))
 	case operator == "!=":
-		return nativeBoolToBooleanObject(left != right)
+		return nativeBoolToBooleanObject(!evalObjectsEqual(left, right))
 	case operator == "&&":
 		return nativeBoolToBooleanObject(isTruthy(left) && isTruthy(right))
 	case operator == "||":
@@ -821,6 +865,11 @@ func evalFloatInfixExpression(operator string, left, right object.Object) object
 		return &object.Float{Value: leftVal * rightVal}
 	case "/":
 		return &object.Float{Value: leftVal / rightVal}
+	case "%":
+		if rightVal == 0 {
+			return runtimeError(object.CategoryDivisionByZero, "modulo by zero")
+		}
+		return &object.Float{Value: math.Mod(leftVal, rightVal)}
 	case "<":
 		return nativeBoolToBooleanObject(leftVal < rightVal)
 	case ">":
@@ -849,6 +898,14 @@ func evalStringInfixExpression(operator string, left, right object.Object) objec
 		return nativeBoolToBooleanObject(leftVal == rightVal)
 	case "!=":
 		return nativeBoolToBooleanObject(leftVal != rightVal)
+	case "<":
+		return nativeBoolToBooleanObject(leftVal < rightVal)
+	case ">":
+		return nativeBoolToBooleanObject(leftVal > rightVal)
+	case "<=":
+		return nativeBoolToBooleanObject(leftVal <= rightVal)
+	case ">=":
+		return nativeBoolToBooleanObject(leftVal >= rightVal)
 	default:
 		return runtimeError(object.CategoryTypeError, "unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
@@ -878,7 +935,7 @@ func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object
 		return makeUINamespace()
 	}
 
-	if builtin, ok := Builtins[node.Value]; ok {
+	if builtin, ok := GetBuiltin(node.Value); ok {
 		return builtin
 	}
 

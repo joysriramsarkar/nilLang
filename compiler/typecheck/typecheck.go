@@ -526,6 +526,7 @@ func (c *Checker) checkStatement(stmt ast.Statement) {
 		for _, handler := range s.Handlers {
 			componentScope := c.currentScope
 			c.currentScope = NewScope(componentScope)
+			c.currentScope.SetVar("payload", types.Any)
 			for _, parameter := range handler.Parameters {
 				c.currentScope.SetVar(parameter.Value, types.Any)
 			}
@@ -1107,6 +1108,12 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 		return c.inferHashLiteral(e)
 
 	case *ast.IndexExpression:
+		if e.Left != nil {
+			c.inferExpression(e.Left)
+		}
+		if e.Index != nil {
+			c.inferExpression(e.Index)
+		}
 		return types.Any
 
 	case *ast.DotExpression:

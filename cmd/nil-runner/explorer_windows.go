@@ -25,6 +25,22 @@ type PROCESSENTRY32 struct {
 	ExeFile           [260]uint16
 }
 
+func init() {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	setConsoleOutputCP := kernel32.NewProc("SetConsoleOutputCP")
+	setConsoleOutputCP.Call(65001)
+
+	const enableVirtualTerminalProcessing = 0x0004
+	for _, stdHandle := range []int{syscall.STD_OUTPUT_HANDLE, syscall.STD_ERROR_HANDLE} {
+		if h, err := syscall.GetStdHandle(stdHandle); err == nil && h != 0 {
+			var mode uint32
+			if syscall.GetConsoleMode(h, &mode) == nil {
+				_, _, _ = kernel32.NewProc("SetConsoleMode").Call(uintptr(h), uintptr(mode|enableVirtualTerminalProcessing))
+			}
+		}
+	}
+}
+
 func getParentProcessName() string {
 	ppid := uint32(os.Getppid())
 	snapshot, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)

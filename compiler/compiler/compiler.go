@@ -107,10 +107,7 @@ var (
 
 func getBuiltinNames() []string {
 	sortedBuiltinNamesOnce.Do(func() {
-		names := make([]string, 0, len(evaluator.Builtins))
-		for k := range evaluator.Builtins {
-			names = append(names, k)
-		}
+		names := evaluator.BuiltinNames()
 		sort.Strings(names)
 		sortedBuiltinNames = names
 	})

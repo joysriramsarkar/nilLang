@@ -891,7 +891,7 @@ func (vm *VM) Run() error {
 			vm.currentFrame().ip += 1
 
 			name := compiler.GetBuiltinNamesSorted()[builtinIndex]
-			definition := evaluator.Builtins[name]
+			definition, _ := evaluator.GetBuiltin(name)
 
 			err := vm.push(definition)
 			if err != nil {
@@ -1110,10 +1110,15 @@ func (vm *VM) Run() error {
 				if res == nil {
 					res = Null
 				}
-				vm.push(res)
+				if err := vm.push(res); err != nil {
+					return err
+				}
+				if vmErr, failed := topError(res); failed {
+					return vmErr
+				}
 
 			default:
-				builtinFn, ok := evaluator.Builtins[name]
+				builtinFn, ok := evaluator.GetBuiltin(name)
 				if !ok {
 					return vmError(object.CategoryUnknownOperation, "native operation not implemented: %s", name)
 				}
@@ -1121,7 +1126,12 @@ func (vm *VM) Run() error {
 				if result == nil {
 					result = Null
 				}
-				vm.push(result)
+				if err := vm.push(result); err != nil {
+					return err
+				}
+				if vmErr, failed := topError(result); failed {
+					return vmErr
+				}
 			}
 		}
 	}
@@ -1367,16 +1377,21 @@ func (vm *VM) executeBangOperator() error {
 		return err
 	}
 
-	switch operand {
-	case True:
+	switch value := operand.(type) {
+	case *object.Boolean:
+		if value.Value {
+			return vm.push(False)
+		}
+		return vm.push(True)
+	case *object.Null:
+		return vm.push(True)
+	case *object.Integer:
+		if value.Value == 0 {
+			return vm.push(True)
+		}
 		return vm.push(False)
-	case False:
-		return vm.push(True)
-	case Null:
-		return vm.push(True)
 	default:
-		// Zero integer is falsy
-		if intObj, ok := operand.(*object.Integer); ok && intObj.Value == 0 {
+		if operand == nil {
 			return vm.push(True)
 		}
 		return vm.push(False)

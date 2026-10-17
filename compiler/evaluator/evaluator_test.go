@@ -352,3 +352,36 @@ func TestFloatDivisionByZero(t *testing.T) {
 		t.Fatalf("expected positive infinity, got %v", flt.Value)
 	}
 }
+
+func TestFloatMixedInfixAndModuloNoPanic(t *testing.T) {
+	// Previously panicked with interface conversion when one side was Float and the other was String/Null/Bool.
+	concat := testEval(`3.14 + "hello";`)
+	str, ok := concat.(*object.String)
+	if !ok || str.Value != "3.14hello" {
+		t.Fatalf("expected '3.14hello', got %T (%+v)", concat, concat)
+	}
+
+	eqNull := testEval(`3.14 == null;`)
+	bNull, ok := eqNull.(*object.Boolean)
+	if !ok || bNull.Value {
+		t.Fatalf("expected false for 3.14 == null, got %T (%+v)", eqNull, eqNull)
+	}
+
+	mod := testEval(`5.5 % 2.0;`)
+	flt, ok := mod.(*object.Float)
+	if !ok || flt.Value != 1.5 {
+		t.Fatalf("expected 1.5 for 5.5 %% 2.0, got %T (%+v)", mod, mod)
+	}
+}
+
+func TestStringRelationalAndNonSingletonBooleanEquality(t *testing.T) {
+	lt := testEval(`"apple" < "banana";`)
+	if b, ok := lt.(*object.Boolean); !ok || !b.Value {
+		t.Fatalf("expected true for \"apple\" < \"banana\", got %T (%+v)", lt, lt)
+	}
+
+	eqBool := testEval(`isOk(Err("fail")) == false;`)
+	if b, ok := eqBool.(*object.Boolean); !ok || !b.Value {
+		t.Fatalf("expected true for isOk(Err(\"fail\")) == false, got %T (%+v)", eqBool, eqBool)
+	}
+}

@@ -66,6 +66,8 @@ func getDB(dsn string) (*sql.DB, error) {
 // ordinary Nilang objects so the evaluator and VM can share the same contract.
 func CallHost(name string, args []object.Object) (object.Object, error) {
 	switch name {
+	case "__nil_win32_notes_gui":
+		return runWin32NotesGUI(args)
 	case NativeTimeSleep:
 		if len(args) != 1 {
 			return nil, fmt.Errorf("std.time.sleep expects 1 argument (milliseconds)")

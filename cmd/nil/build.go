@@ -709,8 +709,18 @@ func getOrBuildRunner(target PlatformTarget, currentDir string) ([]byte, error) 
 	homeDir, _ := os.UserHomeDir()
 	runnerPath := filepath.Join(homeDir, ".nil", "runners", target.RunnerName)
 
-	if data, err := os.ReadFile(runnerPath); err == nil && len(data) > 0 {
-		return data, nil
+	if runnerStat, err := os.Stat(runnerPath); err == nil && runnerStat.Size() > 0 {
+		stale := false
+		if selfPath, selfErr := os.Executable(); selfErr == nil {
+			if selfStat, statErr := os.Stat(selfPath); statErr == nil && selfStat.ModTime().After(runnerStat.ModTime()) {
+				stale = true
+			}
+		}
+		if !stale {
+			if data, readErr := os.ReadFile(runnerPath); readErr == nil && len(data) > 0 {
+				return data, nil
+			}
+		}
 	}
 
 	// Try locating runner source in known NilLang locations
