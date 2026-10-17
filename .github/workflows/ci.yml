@@ -315,6 +315,7 @@ jobs:
             Write-Error "rejection smoke failed (ok=$ok, bad=$bad)"
             exit 1
           }
+          exit 0
 
   # Phase 1 gate: the contract bundle is the ecosystem's cross-repo interface.
   # Two failures matter here and neither is a test failure in the usual sense:
