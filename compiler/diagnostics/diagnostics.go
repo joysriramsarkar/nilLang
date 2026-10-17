@@ -82,11 +82,17 @@ func (d *Diagnostic) Format(useColor bool) string {
 		if indent < len(lineNum) {
 			indent = len(lineNum)
 		}
+		if indent > 256 {
+			indent = 256
+		}
 		b.WriteString(strings.Repeat(" ", indent))
 
 		length := d.Span.EndCol - d.Span.StartCol
 		if length <= 0 {
 			length = 1
+		}
+		if length > 256 {
+			length = 256
 		}
 		pointer := strings.Repeat("^", length)
 		if useColor {

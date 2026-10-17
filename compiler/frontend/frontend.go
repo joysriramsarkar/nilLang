@@ -284,37 +284,41 @@ func (r Result) ErrSummary() string {
 	coded := r.errorDiagnostics()
 	if len(coded) > 0 {
 		errs := 0
-		out := ""
+		var b strings.Builder
 		for _, d := range coded {
 			if d.Severity != diagnostics.SeverityError {
 				continue
 			}
 			errs++
-			out += "\n  " + d.String()
+			b.WriteString("\n  ")
+			b.WriteString(d.String())
 		}
 		if errs > 0 {
-			return fmt.Sprintf("compilation failed with %d error(s):%s", errs, out)
+			return fmt.Sprintf("compilation failed with %d error(s):%s", errs, b.String())
 		}
 	}
 
 	if len(r.ParseErrors) > 0 {
-		out := fmt.Sprintf("compilation failed with %d error(s):", len(r.ParseErrors))
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("compilation failed with %d error(s):", len(r.ParseErrors)))
 		for _, msg := range r.ParseErrors {
-			out += "\n  " + msg
+			b.WriteString("\n  ")
+			b.WriteString(msg)
 		}
-		return out
+		return b.String()
 	}
 
 	errs := 0
-	out := ""
+	var b strings.Builder
 	for _, d := range r.Diagnostics {
 		if d.Severity != diagnostics.SeverityError {
 			continue
 		}
 		errs++
-		out += "\n  " + d.String()
+		b.WriteString("\n  ")
+		b.WriteString(d.String())
 	}
-	return fmt.Sprintf("compilation failed with %d error(s):%s", errs, out)
+	return fmt.Sprintf("compilation failed with %d error(s):%s", errs, b.String())
 }
 
 // errorDiagnostics returns the diagnostics that name a problem.
