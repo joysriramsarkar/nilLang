@@ -113,7 +113,7 @@ var p0Evidence = []p0Item{
 	{
 		Number: "P0.8", Title: "CI gate on every platform",
 		Evidence: []string{".github/workflows/ci.yml"},
-		CIFile: ".github/workflows/ci.yml", CIPattern: "windows-latest",
+		CIFile:   ".github/workflows/ci.yml", CIPattern: "windows-latest",
 	},
 
 	// Phase 0 of the ecosystem roadmap adds three items that are not in

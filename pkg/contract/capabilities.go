@@ -40,25 +40,25 @@ type PlannedEntry struct {
 
 // EnforcementBlock records where capabilities are enforced and where they are not.
 type EnforcementBlock struct {
-	LanguageGate      string   `json:"language_gate"`
-	KnownLimitations  []string `json:"known_limitations"`
-	OSGate            string   `json:"os_gate"`
+	LanguageGate     string   `json:"language_gate"`
+	KnownLimitations []string `json:"known_limitations"`
+	OSGate           string   `json:"os_gate"`
 }
 
 // Vocabulary is contracts/capabilities/vocabulary.json.
 type Vocabulary struct {
-	Contract         string            `json:"contract"`
-	Version          string            `json:"version"`
-	Status           string            `json:"status"`
-	Owner            string            `json:"owner"`
-	Spec             string            `json:"spec"`
-	SourceOfTruth    string            `json:"source_of_truth"`
-	DefaultDeny      string            `json:"default_deny"`
-	Capabilities     []CapabilityEntry `json:"capabilities"`
+	Contract           string            `json:"contract"`
+	Version            string            `json:"version"`
+	Status             string            `json:"status"`
+	Owner              string            `json:"owner"`
+	Spec               string            `json:"spec"`
+	SourceOfTruth      string            `json:"source_of_truth"`
+	DefaultDeny        string            `json:"default_deny"`
+	Capabilities       []CapabilityEntry `json:"capabilities"`
 	RecognisedUnlisted []RecognisedEntry `json:"recognised_unlisted"`
-	Aliases          []AliasEntry      `json:"aliases"`
-	Planned          []PlannedEntry    `json:"planned"`
-	Enforcement      EnforcementBlock  `json:"enforcement"`
+	Aliases            []AliasEntry      `json:"aliases"`
+	Planned            []PlannedEntry    `json:"planned"`
+	Enforcement        EnforcementBlock  `json:"enforcement"`
 
 	canonical map[string]CapabilityEntry
 	alias     map[string]string

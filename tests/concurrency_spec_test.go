@@ -76,9 +76,9 @@ type specRule struct {
 }
 
 const (
-	ruleImplemented      = "implemented"
-	rulePartial          = "partial"
-	ruleNotImplemented   = "not_implemented"
+	ruleImplemented    = "implemented"
+	rulePartial        = "partial"
+	ruleNotImplemented = "not_implemented"
 )
 
 // TestConcurrencySpecConformance is the table.
@@ -128,8 +128,8 @@ func TestConcurrencySpecConformance(t *testing.T) {
 			},
 		},
 		{
-			Ref:  "§2 Cancelled",
-			Rule: "a cancelled task reports Cancelled to await",
+			Ref:    "§2 Cancelled",
+			Rule:   "a cancelled task reports Cancelled to await",
 			Status: ruleImplemented,
 			Want: func(t *testing.T) {
 				// Reached through the only cancellation the language exposes

@@ -26,18 +26,18 @@ const (
 // compiler produces identical bytes, which is what makes "the contract matches
 // the code" a testable statement rather than an intention.
 type requirementsDoc struct {
-	Schema         string              `json:"$schema"`
-	Contract       string              `json:"contract"`
-	Version        string              `json:"version"`
-	Status         string              `json:"status"`
-	Owner          string              `json:"owner"`
-	Spec           string              `json:"spec"`
-	SourceOfTruth  string              `json:"source_of_truth"`
-	GeneratedBy    string              `json:"generated_by"`
-	Description    string              `json:"description"`
-	DefaultDeny    string              `json:"default_deny"`
-	UnknownOp      string              `json:"unknown_operation"`
-	Requirements   map[string][]string `json:"requirements"`
+	Schema        string              `json:"$schema"`
+	Contract      string              `json:"contract"`
+	Version       string              `json:"version"`
+	Status        string              `json:"status"`
+	Owner         string              `json:"owner"`
+	Spec          string              `json:"spec"`
+	SourceOfTruth string              `json:"source_of_truth"`
+	GeneratedBy   string              `json:"generated_by"`
+	Description   string              `json:"description"`
+	DefaultDeny   string              `json:"default_deny"`
+	UnknownOp     string              `json:"unknown_operation"`
+	Requirements  map[string][]string `json:"requirements"`
 }
 
 // BuildRequirements produces the bytes of capabilities/requirements.json from the
@@ -80,7 +80,7 @@ func BuildRequirements() ([]byte, error) {
 		DefaultDeny: "An operation absent from this table is refused. A verifier that cannot find an operation here " +
 			"must not report that it requires nothing: that is the difference between a typo being a refusal and a " +
 			"typo being a hole.",
-		UnknownOp:   "refused, with the same refusal an unknown operation gets at run time",
+		UnknownOp:    "refused, with the same refusal an unknown operation gets at run time",
 		Requirements: reqs,
 	}
 	return MarshalIndent(doc)
@@ -189,9 +189,9 @@ func BuildSigningVectors() ([]byte, error) {
 		Vectors: []signingVector{
 			{
 				Name: "known-good", Expect: "accept", Stage: "6",
-				Reason:   "Every step passes: the key is known and not revoked, the file digest matches, and the signature verifies over the reconstructed payload.",
-				Payload:  goodPayload,
-				PayloadHex: hex.EncodeToString([]byte(goodPayload)),
+				Reason:       "Every step passes: the key is known and not revoked, the file digest matches, and the signature verifies over the reconstructed payload.",
+				Payload:      goodPayload,
+				PayloadHex:   hex.EncodeToString([]byte(goodPayload)),
 				SignatureHex: goodSig,
 				KeyID:        keyID,
 				PublicKeyHex: hex.EncodeToString(pub),
@@ -201,9 +201,9 @@ func BuildSigningVectors() ([]byte, error) {
 			},
 			{
 				Name: "tampered-payload", Expect: "reject", Stage: "5",
-				Reason:      "The file's digest no longer matches the signed checksum. The signature over the original digest is still perfectly valid, which is exactly why integrity is checked before the signature.",
-				Payload:     goodPayload,
-				PayloadHex:  hex.EncodeToString([]byte(goodPayload)),
+				Reason:       "The file's digest no longer matches the signed checksum. The signature over the original digest is still perfectly valid, which is exactly why integrity is checked before the signature.",
+				Payload:      goodPayload,
+				PayloadHex:   hex.EncodeToString([]byte(goodPayload)),
 				SignatureHex: goodSig,
 				KeyID:        keyID,
 				PublicKeyHex: hex.EncodeToString(pub),
@@ -213,9 +213,9 @@ func BuildSigningVectors() ([]byte, error) {
 			},
 			{
 				Name: "signature-over-different-digest", Expect: "reject", Stage: "5",
-				Reason:      "A correctly formed signature over a digest that does not match the file. A verifier that checks only the signature accepts this package; one that checks integrity first does not.",
-				Payload:     tamperedChecksum,
-				PayloadHex:  hex.EncodeToString([]byte(tamperedChecksum)),
+				Reason:       "A correctly formed signature over a digest that does not match the file. A verifier that checks only the signature accepts this package; one that checks integrity first does not.",
+				Payload:      tamperedChecksum,
+				PayloadHex:   hex.EncodeToString([]byte(tamperedChecksum)),
 				SignatureHex: tamperedChecksumSig,
 				KeyID:        keyID,
 				PublicKeyHex: hex.EncodeToString(pub),
@@ -225,9 +225,9 @@ func BuildSigningVectors() ([]byte, error) {
 			},
 			{
 				Name: "timestamp-tampered", Expect: "reject", Stage: "6",
-				Reason:      "The timestamp is inside the signed payload, so changing it invalidates the signature. A verifier that reconstructs the payload from signed_at instead of from timestamp would accept this.",
-				Payload:     wrongTimePayload,
-				PayloadHex:  hex.EncodeToString([]byte(wrongTimePayload)),
+				Reason:       "The timestamp is inside the signed payload, so changing it invalidates the signature. A verifier that reconstructs the payload from signed_at instead of from timestamp would accept this.",
+				Payload:      wrongTimePayload,
+				PayloadHex:   hex.EncodeToString([]byte(wrongTimePayload)),
 				SignatureHex: wrongTimeSig,
 				KeyID:        keyID,
 				PublicKeyHex: hex.EncodeToString(pub),
@@ -237,9 +237,9 @@ func BuildSigningVectors() ([]byte, error) {
 			},
 			{
 				Name: "key-id-swapped", Expect: "reject", Stage: "6",
-				Reason:      "A key id altered after signing. The key id is inside the payload, so the signature fails — and the altered id is also absent from any trust store.",
-				Payload:     wrongKeyPayload,
-				PayloadHex:  hex.EncodeToString([]byte(wrongKeyPayload)),
+				Reason:       "A key id altered after signing. The key id is inside the payload, so the signature fails — and the altered id is also absent from any trust store.",
+				Payload:      wrongKeyPayload,
+				PayloadHex:   hex.EncodeToString([]byte(wrongKeyPayload)),
 				SignatureHex: wrongKeySig,
 				KeyID:        keyID[:31] + "0",
 				PublicKeyHex: hex.EncodeToString(pub),

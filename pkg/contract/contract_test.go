@@ -150,9 +150,9 @@ func TestManifestSchemaAgreesWithCode(t *testing.T) {
 		}
 
 		var schema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-			Required   []string                   `json:"required"`
-			AdditionalProperties any              `json:"additionalProperties"`
+			Properties           map[string]json.RawMessage `json:"properties"`
+			Required             []string                   `json:"required"`
+			AdditionalProperties any                        `json:"additionalProperties"`
 		}
 		if err := json.Unmarshal(data, &schema); err != nil {
 			t.Fatalf("format_version %d schema is not valid JSON: %v", version, err)
@@ -316,8 +316,8 @@ func TestInvalidManifestsAreRefused(t *testing.T) {
 			stage: StageCompatibility,
 		},
 		{
-			name: "entry point is not in the archive",
-			doc:  strings.Replace(goodV1, `"bytecode/main.nabc"`, `"bytecode/missing.nabc"`, 1),
+			name:  "entry point is not in the archive",
+			doc:   strings.Replace(goodV1, `"bytecode/main.nabc"`, `"bytecode/missing.nabc"`, 1),
 			stage: StageInstall,
 		},
 		{
@@ -374,7 +374,7 @@ func TestArchiveSafety(t *testing.T) {
 		{"backslash", FileArchive{{Path: `dir\file.nabc`}}},
 		{"duplicate entry", FileArchive{{Path: "a.nabc"}, {Path: "a.nabc"}}},
 		{"entry over the size limit", FileArchive{{Path: "big.nabc", Size: MaxEntryBytes + 1}}},
-		{"too many entries", FileArchive(makeEntries(MaxArchiveEntries+1))},
+		{"too many entries", FileArchive(makeEntries(MaxArchiveEntries + 1))},
 	}
 
 	for _, tc := range cases {

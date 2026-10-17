@@ -303,13 +303,16 @@ jobs:
       - name: CLI rejection smoke (Windows)
         if: matrix.os == 'windows-latest'
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $ErrorActionPreference = "Continue"
           [IO.File]::WriteAllText("$env:TEMP\ok.nil", "let x = 40; x + 2;")
           [IO.File]::WriteAllText("$env:TEMP\bad.nil", "let x = (1 + 2;")
           .\bin\nilc.exe "$env:TEMP\ok.nil"
           $ok = $LASTEXITCODE
-          .\bin\nilc.exe "$env:TEMP\bad.nil" | Out-Null
-          if ($LASTEXITCODE -eq 0 -or $ok -ne 0) {
-            Write-Error "rejection smoke failed (ok=$ok, bad=$LASTEXITCODE)"
+          .\bin\nilc.exe "$env:TEMP\bad.nil" 2>&1 | Out-Null
+          $bad = $LASTEXITCODE
+          if ($bad -eq 0 -or $ok -ne 0) {
+            Write-Error "rejection smoke failed (ok=$ok, bad=$bad)"
             exit 1
           }
 

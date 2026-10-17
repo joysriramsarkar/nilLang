@@ -74,11 +74,11 @@ type Set struct {
 	index Index
 	files map[string][]byte
 
-	vocab  *Vocabulary
-	reqs   *RequirementTable
-	abi    *ABI
+	vocab   *Vocabulary
+	reqs    *RequirementTable
+	abi     *ABI
 	signing *Signing
-	compat *Compatibility
+	compat  *Compatibility
 }
 
 // embedded caches the embedded bundle.

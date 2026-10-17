@@ -9,24 +9,24 @@ import "fmt"
 // and giving prose a struct invites a fake precision that the underlying
 // specification does not have yet.
 type ABI struct {
-	Contract   string `json:"contract"`
-	Version    string `json:"version"`
-	Status     string `json:"status"`
-	Owner      string `json:"owner"`
-	Spec       string `json:"spec"`
-	Language   ABILanguage `json:"language"`
-	RuntimeABI ABIRuntime `json:"runtime_abi"`
-	Targets    []ABITarget `json:"targets"`
+	Contract   string       `json:"contract"`
+	Version    string       `json:"version"`
+	Status     string       `json:"status"`
+	Owner      string       `json:"owner"`
+	Spec       string       `json:"spec"`
+	Language   ABILanguage  `json:"language"`
+	RuntimeABI ABIRuntime   `json:"runtime_abi"`
+	Targets    []ABITarget  `json:"targets"`
 	Backends   []ABIBackend `json:"backends"`
 }
 
 // ABILanguage records the language specification version a runtime implements.
 type ABILanguage struct {
-	Name           string           `json:"name"`
-	SpecVersion    string           `json:"spec_version"`
-	SpecFiles      []string         `json:"spec_files"`
-	Freeze         ABIFreeze        `json:"freeze"`
-	Compatibility  ABICompatibility `json:"compatibility_claim"`
+	Name          string           `json:"name"`
+	SpecVersion   string           `json:"spec_version"`
+	SpecFiles     []string         `json:"spec_files"`
+	Freeze        ABIFreeze        `json:"freeze"`
+	Compatibility ABICompatibility `json:"compatibility_claim"`
 }
 
 // ABIFreeze records the active core freeze.
@@ -44,12 +44,12 @@ type ABICompatibility struct {
 
 // ABIRuntime is the runtime ABI version and its release policy.
 type ABIRuntime struct {
-	Version           string `json:"version"`
-	CompatibleRange   string `json:"compatible_range"`
-	ReleasePolicy     string `json:"release_policy"`
-	MismatchBehaviour string `json:"mismatch_behaviour"`
-	DeclaredInManifest string `json:"declared_in_manifest"`
-	Surface           map[string]any `json:"surface"`
+	Version            string         `json:"version"`
+	CompatibleRange    string         `json:"compatible_range"`
+	ReleasePolicy      string         `json:"release_policy"`
+	MismatchBehaviour  string         `json:"mismatch_behaviour"`
+	DeclaredInManifest string         `json:"declared_in_manifest"`
+	Surface            map[string]any `json:"surface"`
 }
 
 // ABITarget is one build target.
@@ -112,24 +112,24 @@ func (s *Set) SupportsTarget(id string) error {
 
 // Signing is contracts/signing/signing.json.
 type Signing struct {
-	Contract   string `json:"contract"`
-	Version    string `json:"version"`
-	Status     string `json:"status"`
-	Owner      string `json:"owner"`
-	Spec       string `json:"spec"`
-	Algorithms []SigningAlgorithm `json:"algorithms"`
+	Contract    string             `json:"contract"`
+	Version     string             `json:"version"`
+	Status      string             `json:"status"`
+	Owner       string             `json:"owner"`
+	Spec        string             `json:"spec"`
+	Algorithms  []SigningAlgorithm `json:"algorithms"`
 	KeyIdentity SigningKeyIdentity `json:"key_identity"`
-	PackageV1  SigningPackageV1     `json:"package_signature_v1"`
+	PackageV1   SigningPackageV1   `json:"package_signature_v1"`
 }
 
 // SigningAlgorithm is one accepted signature algorithm.
 type SigningAlgorithm struct {
-	ID       string `json:"id"`
-	Status   string `json:"status"`
-	Curve    string `json:"curve"`
+	ID                string `json:"id"`
+	Status            string `json:"status"`
+	Curve             string `json:"curve"`
 	SignatureEncoding string `json:"signature_encoding"`
 	PublicKeyEncoding string `json:"public_key_encoding"`
-	Digest   string `json:"digest"`
+	Digest            string `json:"digest"`
 }
 
 // SigningKeyIdentity records how a key id is derived.
@@ -141,29 +141,29 @@ type SigningKeyIdentity struct {
 
 // SigningDerivedField is a derived key identifier.
 type SigningDerivedField struct {
-	Derivation string `json:"derivation"`
-	Length     int    `json:"length"`
+	Derivation   string `json:"derivation"`
+	Length       int    `json:"length"`
 	ExampleShape string `json:"example_shape"`
-	Recomputable bool  `json:"recomputable"`
-	Purpose    string `json:"purpose"`
+	Recomputable bool   `json:"recomputable"`
+	Purpose      string `json:"purpose"`
 }
 
 // SigningPackageV1 is the v1 package signature contract.
 type SigningPackageV1 struct {
-	Status          string          `json:"status"`
-	AppliesTo       string          `json:"applies_to"`
-	SignedPayload   SigningPayload  `json:"signed_payload"`
+	Status            string         `json:"status"`
+	AppliesTo         string         `json:"applies_to"`
+	SignedPayload     SigningPayload `json:"signed_payload"`
 	VerificationOrder []SigningStep  `json:"verification_order"`
-	OrderingRule    string          `json:"ordering_rule"`
+	OrderingRule      string         `json:"ordering_rule"`
 }
 
 // SigningPayload is the exact byte sequence a v1 signature covers.
 type SigningPayload struct {
-	Description     string                 `json:"description"`
-	FieldsInOrder   []SigningPayloadField  `json:"fields_in_order"`
-	CanonicalForm   string                 `json:"canonical_form"`
-	MustNotInclude  []string               `json:"must_not_include"`
-	WhyExcluded     string                 `json:"why_excluded"`
+	Description    string                `json:"description"`
+	FieldsInOrder  []SigningPayloadField `json:"fields_in_order"`
+	CanonicalForm  string                `json:"canonical_form"`
+	MustNotInclude []string              `json:"must_not_include"`
+	WhyExcluded    string                `json:"why_excluded"`
 }
 
 // SigningPayloadField is one field of the v1 signing payload.
@@ -175,8 +175,8 @@ type SigningPayloadField struct {
 
 // SigningStep is one step of signature verification.
 type SigningStep struct {
-	Step     int    `json:"step"`
-	Action   string `json:"action"`
+	Step      int    `json:"step"`
+	Action    string `json:"action"`
 	OnFailure string `json:"on_failure"`
 }
 
@@ -192,27 +192,27 @@ func (s *Set) AlgorithmSupported(id string) bool {
 
 // Compatibility is contracts/compatibility/matrix.json.
 type Compatibility struct {
-	Contract  string `json:"contract"`
-	Version   string `json:"version"`
-	Status    string `json:"status"`
-	Owner     string `json:"owner"`
-	Spec      string `json:"spec"`
-	Statuses  map[string]string `json:"statuses"`
-	EvidencePolicy EvidencePolicy `json:"evidence_policy"`
-	Backends  map[string]CompatibilityBackend `json:"backends"`
+	Contract       string                          `json:"contract"`
+	Version        string                          `json:"version"`
+	Status         string                          `json:"status"`
+	Owner          string                          `json:"owner"`
+	Spec           string                          `json:"spec"`
+	Statuses       map[string]string               `json:"statuses"`
+	EvidencePolicy EvidencePolicy                  `json:"evidence_policy"`
+	Backends       map[string]CompatibilityBackend `json:"backends"`
 }
 
 // EvidencePolicy is the rule that keeps the matrix honest.
 type EvidencePolicy struct {
-	Rule             string `json:"rule"`
-	CIJob            string `json:"ci_job"`
+	Rule               string `json:"rule"`
+	CIJob              string `json:"ci_job"`
 	WhereEvidenceLives string `json:"where_evidence_lives"`
 }
 
 // CompatibilityBackend is one backend's feature support.
 type CompatibilityBackend struct {
-	Description string                     `json:"description"`
-	Status      string                     `json:"status,omitempty"`
+	Description string                          `json:"description"`
+	Status      string                          `json:"status,omitempty"`
 	Features    map[string]CompatibilityFeature `json:"features"`
 }
 

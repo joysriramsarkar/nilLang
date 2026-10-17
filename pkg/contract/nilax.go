@@ -258,16 +258,16 @@ func parseManifestV1(raw map[string]json.RawMessage) (*Manifest, error) {
 // parseManifestV2 reads the proposed format.
 func parseManifestV2(raw map[string]json.RawMessage) (*Manifest, error) {
 	var doc struct {
-		FormatVersion   int    `json:"format_version"`
-		AppID           string `json:"app_id"`
-		Version         string `json:"version"`
-		Payload         struct {
+		FormatVersion int    `json:"format_version"`
+		AppID         string `json:"app_id"`
+		Version       string `json:"version"`
+		Payload       struct {
 			Type       string   `json:"type"`
 			Entrypoint string   `json:"entrypoint"`
 			Backends   []string `json:"backends"`
 		} `json:"payload"`
-		SourceRevision  string            `json:"source_revision"`
-		Compiler        struct {
+		SourceRevision string `json:"source_revision"`
+		Compiler       struct {
 			Name     string `json:"name"`
 			Version  string `json:"version"`
 			Revision string `json:"revision"`
@@ -340,12 +340,12 @@ type TrustStore interface {
 
 // TrustedKey is public verification material.
 type TrustedKey struct {
-	KeyID         string
-	PublicKeyHex  string
-	Revoked       bool
-	NotBefore     string
-	NotAfter      string
-	Algorithm     string
+	KeyID        string
+	PublicKeyHex string
+	Revoked      bool
+	NotBefore    string
+	NotAfter     string
+	Algorithm    string
 }
 
 // RequireTrust controls how hard the trust stage pushes.
