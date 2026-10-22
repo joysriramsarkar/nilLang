@@ -311,8 +311,12 @@ func executeSource(source string, sourceDir string, useVM bool, granted []string
 	// under a manifest that declares nothing. See docs/spec/CAPABILITIES.md and
 	// the master plan item L6 for closing the evaluator side properly.
 	if err := requireDeclaredCapabilities(program, granted); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ %s: %s\n", capability.Code, err.Error())
-		fmt.Fprintln(os.Stderr, "   ইফেক্ট-সংক্রান্ত গেটিং চালু করতে `nil run --vm` ব্যবহার করুন।")
+		if denied, isDenied := capability.AsDenied(err); isDenied {
+			fmt.Fprintf(os.Stderr, "❌ %s: %s\n", denied.DiagnosticCode(), denied.Error())
+			fmt.Fprintf(os.Stderr, "   = help: %s\n", denied.Suggestion())
+		} else {
+			fmt.Fprintf(os.Stderr, "❌ %s: %s\n", capability.Code, err.Error())
+		}
 		os.Exit(1)
 	}
 

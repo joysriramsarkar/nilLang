@@ -184,7 +184,7 @@ puts("5 * 2 = \(double(5))"); // 10
 let i = 0;
 while (i < 5) {
     puts("Iteration: \(i)");
-    let i = i + 1;
+    i = i + 1;
 }
 ```
 

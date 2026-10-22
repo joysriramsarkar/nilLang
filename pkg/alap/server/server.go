@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -417,7 +419,15 @@ func LoggingMiddleware(next routing.HandlerFunc) routing.HandlerFunc {
 		start := time.Now()
 		res, err := next(ctx)
 		duration := time.Since(start)
-		_ = duration
+		status := ctx.StatusCode
+		if status == 0 {
+			if err != nil {
+				status = 500
+			} else {
+				status = 200
+			}
+		}
+		log.Printf("[Alap] %s %s -> %d (%s)", ctx.Method, ctx.Path, status, duration)
 		return res, err
 	}
 }
@@ -445,10 +455,6 @@ type CORSConfig struct {
 
 // CORSMiddleware applies CORS headers
 func CORSMiddleware(cfg CORSConfig) Middleware {
-	origins := strings.Join(cfg.AllowOrigins, ", ")
-	if origins == "" {
-		origins = "*"
-	}
 	methods := strings.Join(cfg.AllowMethods, ", ")
 	if methods == "" {
 		methods = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
@@ -460,10 +466,48 @@ func CORSMiddleware(cfg CORSConfig) Middleware {
 
 	return func(next routing.HandlerFunc) routing.HandlerFunc {
 		return func(ctx *routing.Context) (interface{}, error) {
-			ctx.Headers["Access-Control-Allow-Origin"] = origins
+			reqOrigin := ctx.Headers["Origin"]
+			if reqOrigin == "" {
+				reqOrigin = ctx.Headers["origin"]
+			}
+
+			allowOrigin := ""
+			if len(cfg.AllowOrigins) == 0 {
+				if cfg.AllowCredentials && reqOrigin != "" {
+					allowOrigin = reqOrigin
+					ctx.Headers["Vary"] = "Origin"
+				} else if !cfg.AllowCredentials {
+					allowOrigin = "*"
+				}
+			} else if len(cfg.AllowOrigins) == 1 && reqOrigin == "" {
+				if cfg.AllowOrigins[0] != "*" || !cfg.AllowCredentials {
+					allowOrigin = cfg.AllowOrigins[0]
+				}
+			} else {
+				for _, allowed := range cfg.AllowOrigins {
+					if allowed == "*" {
+						if cfg.AllowCredentials && reqOrigin != "" {
+							allowOrigin = reqOrigin
+							ctx.Headers["Vary"] = "Origin"
+						} else if !cfg.AllowCredentials {
+							allowOrigin = "*"
+						}
+						break
+					}
+					if reqOrigin != "" && strings.EqualFold(allowed, reqOrigin) {
+						allowOrigin = allowed
+						ctx.Headers["Vary"] = "Origin"
+						break
+					}
+				}
+			}
+
+			if allowOrigin != "" {
+				ctx.Headers["Access-Control-Allow-Origin"] = allowOrigin
+			}
 			ctx.Headers["Access-Control-Allow-Methods"] = methods
 			ctx.Headers["Access-Control-Allow-Headers"] = headers
-			if cfg.AllowCredentials {
+			if cfg.AllowCredentials && allowOrigin != "" && allowOrigin != "*" {
 				ctx.Headers["Access-Control-Allow-Credentials"] = "true"
 			}
 
@@ -501,7 +545,24 @@ func (rl *RateLimiter) Allow(clientKey string) bool {
 	now := time.Now()
 	cutoff := now.Add(-rl.window)
 
-	validTimes := make([]time.Time, 0)
+	// Periodically evict expired client keys to bound memory growth
+	if len(rl.hits) > 256 {
+		for k, times := range rl.hits {
+			keep := times[:0]
+			for _, t := range times {
+				if t.After(cutoff) {
+					keep = append(keep, t)
+				}
+			}
+			if len(keep) == 0 {
+				delete(rl.hits, k)
+			} else {
+				rl.hits[k] = keep
+			}
+		}
+	}
+
+	validTimes := make([]time.Time, 0, len(rl.hits[clientKey]))
 	for _, t := range rl.hits[clientKey] {
 		if t.After(cutoff) {
 			validTimes = append(validTimes, t)
@@ -523,9 +584,12 @@ func RateLimitMiddleware(requestsPerMinute int) Middleware {
 	rl := NewRateLimiter(requestsPerMinute, time.Minute)
 	return func(next routing.HandlerFunc) routing.HandlerFunc {
 		return func(ctx *routing.Context) (interface{}, error) {
-			clientKey := ctx.Headers["X-Forwarded-For"]
+			clientKey := ctx.Headers["Remote-Addr"]
 			if clientKey == "" {
-				clientKey = ctx.Headers["Remote-Addr"]
+				if xff := ctx.Headers["X-Forwarded-For"]; xff != "" {
+					parts := strings.Split(xff, ",")
+					clientKey = strings.TrimSpace(parts[0])
+				}
 			}
 			if clientKey == "" {
 				clientKey = "default"
@@ -541,10 +605,14 @@ func RateLimitMiddleware(requestsPerMinute int) Middleware {
 
 // AuthMiddleware enforces bearer token verification
 func AuthMiddleware(validToken string) Middleware {
+	expected := []byte("Bearer " + validToken)
 	return func(next routing.HandlerFunc) routing.HandlerFunc {
 		return func(ctx *routing.Context) (interface{}, error) {
+			if validToken == "" {
+				return nil, fmt.Errorf("401: unauthorized")
+			}
 			token := ctx.Headers["Authorization"]
-			if token != "Bearer "+validToken {
+			if subtle.ConstantTimeCompare([]byte(token), expected) != 1 {
 				return nil, fmt.Errorf("401: unauthorized")
 			}
 			return next(ctx)

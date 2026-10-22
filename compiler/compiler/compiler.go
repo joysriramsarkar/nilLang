@@ -146,6 +146,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	switch node := node.(type) {
 	case *ast.Program:
+		if c.symbolTable.Outer == nil {
+			for _, s := range node.Statements {
+				if exp, ok := s.(*ast.ExportStatement); ok && exp.Decl != nil {
+					s = exp.Decl
+				}
+				if exprStmt, ok := s.(*ast.ExpressionStatement); ok {
+					if fn, ok := exprStmt.Expression.(*ast.FunctionLiteral); ok && fn.Name != "" {
+						c.symbolTable.Define(fn.Name)
+					}
+				}
+			}
+		}
 		for _, s := range node.Statements {
 			err := c.Compile(s)
 			if err != nil {

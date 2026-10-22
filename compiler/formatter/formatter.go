@@ -185,9 +185,25 @@ func (f *ASTFormatter) formatStatement(stmt ast.Statement) {
 		}
 		for _, handler := range s.Handlers {
 			f.writeIndent()
-			f.buf.WriteString(fmt.Sprintf("on %s ", handler.Event.Value))
+			paramsStr := ""
+			if len(handler.Parameters) > 0 {
+				var pNames []string
+				for _, p := range handler.Parameters {
+					if p != nil {
+						pNames = append(pNames, p.Value)
+					}
+				}
+				paramsStr = "(" + strings.Join(pNames, ", ") + ")"
+			}
+			f.buf.WriteString(fmt.Sprintf("on %s%s ", handler.Event.Value, paramsStr))
 			f.formatBlock(handler.Body)
 			f.buf.WriteByte('\n')
+		}
+		if s.Body != nil {
+			for _, bodyStmt := range s.Body.Statements {
+				f.formatStatement(bodyStmt)
+				f.buf.WriteByte('\n')
+			}
 		}
 		f.indent--
 		f.writeIndent()
@@ -272,7 +288,11 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 	case *ast.IntegerLiteral:
 		return fmt.Sprintf("%d", e.Value)
 	case *ast.FloatLiteral:
-		return fmt.Sprintf("%g", e.Value)
+		s := fmt.Sprintf("%g", e.Value)
+		if !strings.ContainsAny(s, ".eE") {
+			s += ".0"
+		}
+		return s
 	case *ast.StringLiteral:
 		return fmt.Sprintf("%q", e.Value)
 	case *ast.Boolean:

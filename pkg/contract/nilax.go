@@ -640,8 +640,13 @@ func (s *Set) stageTrust(m *Manifest, opts ValidateOptions) Violations {
 		vs.Add(StageTrust, "key_id", "", "signature does not name a signing key")
 		return vs
 	}
-	if _, ok := opts.TrustStore.Key(keyID); !ok {
+	tk, ok := opts.TrustStore.Key(keyID)
+	if !ok {
 		vs.Add(StageTrust, "key_id", keyID, "signing key is not in the trust store")
+		return vs
+	}
+	if tk.Revoked {
+		vs.Add(StageTrust, "key_id", keyID, "signing key has been revoked")
 	}
 	return vs
 }

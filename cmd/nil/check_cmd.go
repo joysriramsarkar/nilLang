@@ -31,13 +31,28 @@ func cmdCheck() {
 	fmt.Println("🛡️  NilLang & Alap Architectural Verification (docs/spec/ARCHITECTURE.md)")
 	fmt.Println("═══════════════════════════════════════════════════════════════")
 
-	// 1. Check if checking a project directory with nil.json
-	configFile := targetPath
-	if !strings.HasSuffix(targetPath, "nil.json") {
-		configFile = filepath.Join(targetPath, "nil.json")
+	// 1. Check if checking a project directory (or subdirectory/file) with nil.json
+	configDir := targetPath
+	if strings.HasSuffix(targetPath, "nil.json") {
+		configDir = filepath.Dir(targetPath)
+	} else if fi, statErr := os.Stat(targetPath); statErr == nil && !fi.IsDir() {
+		configDir = filepath.Dir(targetPath)
+	}
+	if absDir, absErr := filepath.Abs(configDir); absErr == nil {
+		for cur := absDir; ; {
+			if _, statErr := os.Stat(filepath.Join(cur, "nil.json")); statErr == nil {
+				configDir = cur
+				break
+			}
+			parent := filepath.Dir(cur)
+			if parent == cur {
+				break
+			}
+			cur = parent
+		}
 	}
 
-	cfg, err := config.LoadConfig(filepath.Dir(configFile))
+	cfg, err := config.LoadConfig(configDir)
 	if err == nil {
 		fmt.Printf("📦 প্রজেক্ট: %s (v%s) | প্রোফাইল: \033[1;36m%s\033[0m\n", cfg.Name, cfg.Version, cfg.Profile)
 		fmt.Println("🔍 ক্যাপাবিলিটি সিকিউরিটি যাচাই করা হচ্ছে...")
@@ -70,12 +85,12 @@ func cmdCheck() {
 		fmt.Println("ℹ️  লোকাল nil.json পাওয়া যায়নি, সরাসরি কোড অ্যানালাইসিস শুরু হচ্ছে...")
 	}
 
-	// 2. Language Oracle & AI Hallucination Guard
+	// 2. Language Oracle & Static Analysis Guard (local, deterministic - not an AI model)
 	oracleInstance := oracle.NewLanguageOracle()
 	aiTruth := ai.NewApplicationTruth()
 
 	fmt.Println()
-	fmt.Println("🧠 AI Oracle & Hallucination Guard সক্রিয় রয়েছে...")
+	fmt.Println("🧠 স্ট্যাটিক আর্কিটেকচার গার্ড সক্রিয় রয়েছে...")
 
 	// Discover .nil files to check
 	var filesToCheck []string
@@ -85,13 +100,22 @@ func cmdCheck() {
 			filesToCheck = append(filesToCheck, targetPath)
 		}
 	} else {
+		cleanTarget := filepath.Clean(targetPath)
 		_ = filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			if info.IsDir() {
+				if filepath.Clean(path) == cleanTarget {
+					return nil
+				}
 				name := info.Name()
-				if name == "build" || name == ".git" || name == "node_modules" || strings.HasPrefix(name, ".") {
+				// Build outputs and vendored third-party trees contain generated or
+				// foreign .nil files. Linting them reports errors the project cannot
+				// fix, so they are excluded like build/, .git/ and node_modules/.
+				if name == "build" || name == "out" || name == "dist" || name == "target" ||
+					name == "node_modules" || name == ".git" ||
+					(name != "." && name != ".." && strings.HasPrefix(name, ".")) {
 					return filepath.SkipDir
 				}
 				return nil
@@ -104,14 +128,19 @@ func cmdCheck() {
 	}
 
 	if len(filesToCheck) == 0 {
-		fmt.Println("ℹ️  স্ক্যান করার জন্য কোনো .nil ফাইল পাওয়া যায়নি।")
-		return
+		fmt.Fprintln(os.Stderr, "❌ স্ক্যান করার জন্য কোনো .nil ফাইল পাওয়া যায়নি।")
+		os.Exit(1)
 	}
 
 	fmt.Printf("📂 মোট %d টি সোর্স ফাইল স্ক্যান করা হচ্ছে...\n", len(filesToCheck))
 
 	totalErrors := []string{}
 	totalWarnings := []string{}
+
+	var caps []string
+	if cfg != nil {
+		caps = cfg.Capabilities
+	}
 
 	for _, file := range filesToCheck {
 		codeBytes, err := os.ReadFile(file)
@@ -121,8 +150,9 @@ func cmdCheck() {
 		}
 
 		res := frontend.Check(string(codeBytes), frontend.Options{
-			Filename:  file,
-			SourceDir: filepath.Dir(file),
+			Filename:     file,
+			SourceDir:    filepath.Dir(file),
+			Capabilities: caps,
 		})
 		if len(res.ParseErrors) > 0 {
 			for _, d := range res.Diagnostics {

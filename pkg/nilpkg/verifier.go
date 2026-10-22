@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
 	"github.com/joysriramsarkar/nilLang/pkg/contract"
+	"github.com/joysriramsarkar/nilLang/pkg/signing"
 )
 
 // Verifier handles package integrity verification
@@ -118,17 +120,75 @@ func (v *Verifier) VerifyBundle(path string) (*VerificationResult, error) {
 	// Contract validation. A bundle the contract cannot be read for is
 	// refused: a verifier that skips this because the contract failed to load
 	// is the hole the contract was added to close.
-	contractResult := verifyAgainstContract(path, reader)
+	contractResult := verifyAgainstContract(path, reader, v.trustStore())
 	result.ContractOK = contractResult.OK
 	result.Errors = append(result.Errors, contractResult.Errors...)
+
+	// Verify sidecar signature (<bundle>.sig) when present on disk.
+	sigPath := path + ".sig"
+	if sigBytes, sigErr := os.ReadFile(sigPath); sigErr == nil {
+		sig, parseErr := signing.SignatureFromJSON(sigBytes)
+		if parseErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("invalid signature file: %v", parseErr))
+		} else if sig.Checksum != checksum {
+			result.Errors = append(result.Errors, fmt.Sprintf("signature checksum mismatch: bundle=%s sig=%s", checksum, sig.Checksum))
+		} else if tk, ok := v.trustStore().Key(sig.SignerKeyID); !ok {
+			result.Errors = append(result.Errors, fmt.Sprintf("untrusted signing key: %s", sig.SignerKeyID))
+		} else if verifyErr := signing.VerifySignature(tk.PublicKeyHex, sig); verifyErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("invalid package signature: %v", verifyErr))
+		}
+	}
 
 	result.Valid = len(result.Errors) == 0
 
 	return result, nil
 }
 
+type mapTrustStore struct {
+	keys map[string]contract.TrustedKey
+}
+
+func (m mapTrustStore) Key(keyID string) (contract.TrustedKey, bool) {
+	tk, ok := m.keys[keyID]
+	return tk, ok
+}
+
+func (v *Verifier) trustStore() contract.TrustStore {
+	keys := map[string]contract.TrustedKey{
+		"onuron-team": {
+			KeyID:        "onuron-team",
+			PublicKeyHex: "d863fc2a699bc7733c621979ecef87e6958b5ff8d6c620e6c7c864739aaac7dd",
+			Algorithm:    "ed25519",
+		},
+	}
+	if v != nil && v.config != nil {
+		for id, pubHex := range v.config.TrustedKeys {
+			keys[id] = contract.TrustedKey{
+				KeyID:        id,
+				PublicKeyHex: pubHex,
+				Algorithm:    "ed25519",
+			}
+		}
+		if v.config.RootDir != "" {
+			ksPath := filepath.Join(v.config.RootDir, "keystore")
+			if ks, err := signing.NewKeyStore(ksPath, ""); err == nil {
+				for _, ki := range ks.ListKeys() {
+					if pubHex, err := ks.GetPublicKey(ki.KeyID); err == nil {
+						keys[ki.KeyID] = contract.TrustedKey{
+							KeyID:        ki.KeyID,
+							PublicKeyHex: pubHex,
+							Algorithm:    "ed25519",
+						}
+					}
+				}
+			}
+		}
+	}
+	return mapTrustStore{keys: keys}
+}
+
 // verifyAgainstContract runs the seven contract stages over a bundle.
-func verifyAgainstContract(path string, reader *bundle.Reader) contractCheck {
+func verifyAgainstContract(path string, reader *bundle.Reader, ts contract.TrustStore) contractCheck {
 	var out contractCheck
 
 	set, err := contract.Load()
@@ -157,8 +217,9 @@ func verifyAgainstContract(path string, reader *bundle.Reader) contractCheck {
 	}
 
 	_, vs := set.ValidateJSON(manifestJSON, contract.ValidateOptions{
-		Archive: contract.FileArchive(entries),
-		Trust:   contract.TrustIfPresent,
+		Archive:    contract.FileArchive(entries),
+		Trust:      contract.TrustIfPresent,
+		TrustStore: ts,
 	})
 	out.OK = true
 	for _, v := range vs {
