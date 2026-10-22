@@ -178,6 +178,58 @@ func (c *Checker) registerDeclarations(prog *ast.Program) {
 		}
 		return true
 	})
+
+	// Pre-register top-level named function declarations so a function can call
+	// another top-level function declared later in the same file.
+	for _, stmt := range prog.Statements {
+		if exp, ok := stmt.(*ast.ExportStatement); ok && exp.Decl != nil {
+			stmt = exp.Decl
+		}
+		exprStmt, ok := stmt.(*ast.ExpressionStatement)
+		if !ok {
+			continue
+		}
+		fn, ok := exprStmt.Expression.(*ast.FunctionLiteral)
+		if !ok || fn.Name == "" {
+			continue
+		}
+		if _, exists := c.currentScope.GetFunc(fn.Name); exists {
+			continue
+		}
+		previousTypeVars := c.withTypeParams(fn.TypeParams)
+		paramTypes := make([]types.Type, 0, len(fn.Parameters))
+		for _, p := range fn.Parameters {
+			if p == nil || p.Name == nil {
+				continue
+			}
+			pt := types.Type(types.Any)
+			if p.TypeAnnotation != "" {
+				if resolved, err := c.resolveType(p.TypeAnnotation); err == nil && c.isKnownTypeName(p.TypeAnnotation) {
+					pt = resolved
+				}
+			}
+			paramTypes = append(paramTypes, pt)
+		}
+		returnType := types.Type(types.Any)
+		if fn.ReturnType != "" {
+			if resolved, err := c.resolveType(fn.ReturnType); err == nil && c.isKnownTypeName(fn.ReturnType) {
+				returnType = resolved
+			}
+		}
+		c.typeVars = previousTypeVars
+		fnType := &types.FunctionType{
+			Params:     paramTypes,
+			ReturnType: returnType,
+			Effects:    functionEffects(fn),
+			MinArgs:    len(paramTypes),
+			MaxArgs:    len(paramTypes),
+			Requires:   fn.Requires,
+			IsPure:     fn.IsPure,
+			IsUnsafe:   fn.IsUnsafe,
+		}
+		c.currentScope.SetFunc(fn.Name, fnType)
+		c.currentScope.SetVar(fn.Name, fnType)
+	}
 }
 
 // resolveType parses a written type and substitutes any aliases it names.
@@ -805,8 +857,8 @@ func (c *Checker) checkFunctionBody(fn *ast.FunctionLiteral, declared types.Type
 	}
 
 	for i, stmt := range fn.Body.Statements {
-		c.checkStatement(stmt)
 		if i < len(fn.Body.Statements)-1 {
+			c.checkStatement(stmt)
 			continue
 		}
 
@@ -817,6 +869,7 @@ func (c *Checker) checkFunctionBody(fn *ast.FunctionLiteral, declared types.Type
 		case *ast.ReturnStatement:
 			return c.inferExpression(last.ReturnValue)
 		default:
+			c.checkStatement(stmt)
 			return types.Void
 		}
 	}

@@ -18,14 +18,15 @@ const (
 
 // Config represents nilpkg configuration
 type Config struct {
-	RootDir          string   `json:"root_dir"`
-	PackagesDir      string   `json:"packages_dir"`
-	RegistryDir      string   `json:"registry_dir"`
-	CacheDir         string   `json:"cache_dir"`
-	Repositories     []string `json:"repositories"`
-	AutoUpdate       bool     `json:"auto_update"`
-	VerifySignatures bool     `json:"verify_signatures"`
-	ParallelJobs     int      `json:"parallel_jobs"`
+	RootDir          string            `json:"root_dir"`
+	PackagesDir      string            `json:"packages_dir"`
+	RegistryDir      string            `json:"registry_dir"`
+	CacheDir         string            `json:"cache_dir"`
+	Repositories     []string          `json:"repositories"`
+	AutoUpdate       bool              `json:"auto_update"`
+	VerifySignatures bool              `json:"verify_signatures"`
+	TrustedKeys      map[string]string `json:"trusted_keys,omitempty"`
+	ParallelJobs     int               `json:"parallel_jobs"`
 }
 
 // DefaultConfig returns the default configuration
@@ -40,8 +41,11 @@ func DefaultConfig() *Config {
 		CacheDir:         filepath.Join(rootDir, CacheDirName),
 		Repositories:     []string{"https://registry.nilang.dev"},
 		AutoUpdate:       true,
-		VerifySignatures: false, // Enable when signing is implemented
-		ParallelJobs:     4,
+		VerifySignatures: true,
+		TrustedKeys: map[string]string{
+			"onuron-team": "d863fc2a699bc7733c621979ecef87e6958b5ff8d6c620e6c7c864739aaac7dd",
+		},
+		ParallelJobs: 4,
 	}
 }
 

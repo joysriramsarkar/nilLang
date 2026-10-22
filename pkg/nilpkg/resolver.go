@@ -2,6 +2,8 @@ package nilpkg
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // Resolver handles dependency resolution
@@ -68,10 +70,12 @@ func versionSatisfies(installed, required string) bool {
 	// Simple version comparison
 	// In production, use semantic versioning
 	if required == "*" || required == "latest" {
-		return true
+		_, ok := parseVersion(installed)
+		return ok
 	}
 	if required == installed {
-		return true
+		_, ok := parseVersion(installed)
+		return ok
 	}
 
 	// Handle >= prefix
@@ -89,8 +93,11 @@ func versionSatisfies(installed, required string) bool {
 
 func compareVersions(a, b string) int {
 	// Simple version comparison (major.minor.patch)
-	aParts := parseVersion(a)
-	bParts := parseVersion(b)
+	aParts, aOK := parseVersion(a)
+	bParts, bOK := parseVersion(b)
+	if !aOK || !bOK {
+		return -1
+	}
 
 	for i := 0; i < 3; i++ {
 		if aParts[i] < bParts[i] {
@@ -104,30 +111,29 @@ func compareVersions(a, b string) int {
 }
 
 func compareMajorVersions(a, b string) bool {
-	aParts := parseVersion(a)
-	bParts := parseVersion(b)
+	aParts, aOK := parseVersion(a)
+	bParts, bOK := parseVersion(b)
+	if !aOK || !bOK {
+		return false
+	}
 	return aParts[0] == bParts[0]
 }
 
-func parseVersion(v string) [3]int {
+func parseVersion(v string) ([3]int, bool) {
 	var parts [3]int
-	var current int
-	partIndex := 0
-
-	for _, ch := range v {
-		if ch == '.' {
-			if partIndex < 3 {
-				parts[partIndex] = current
-				partIndex++
-			}
-			current = 0
-		} else if ch >= '0' && ch <= '9' {
-			current = current*10 + int(ch-'0')
+	segments := strings.Split(v, ".")
+	if len(segments) != 3 {
+		return parts, false
+	}
+	for i, segment := range segments {
+		if segment == "" || (len(segment) > 1 && segment[0] == '0') {
+			return parts, false
 		}
+		n, err := strconv.ParseUint(segment, 10, 31)
+		if err != nil {
+			return parts, false
+		}
+		parts[i] = int(n)
 	}
-	if partIndex < 3 {
-		parts[partIndex] = current
-	}
-
-	return parts
+	return parts, true
 }

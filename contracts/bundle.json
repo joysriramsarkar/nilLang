@@ -49,8 +49,8 @@
     {
       "path": "testdata/signing/v1-vectors.json",
       "status": "stable",
-      "sha256": "3e5e159d138a6b93b4ad616dc3f9b9a5067f85a71a829777c60aacbd5f98687d",
-      "bytes": 7194,
+      "sha256": "4e5ac6a81c64dfb0973988133546656e090c51c20c8b6c4879a093c9a2f40584",
+      "bytes": 8254,
       "generated": true
     }
   ]

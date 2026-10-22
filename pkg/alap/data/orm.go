@@ -225,6 +225,9 @@ type DBPool struct {
 	activeTx int
 	tables   map[string][]map[string]interface{}
 	mu       sync.RWMutex
+	// txMu serialises whole transactions so concurrent callers cannot
+	// interleave their writes (snapshot/isolation guard, see M-11).
+	txMu sync.Mutex
 }
 
 // NewDBPool creates a configured DB pool
@@ -413,7 +416,13 @@ func (p *DBPool) Begin() (*Tx, error) {
 	snapshot := make(map[string][]map[string]interface{}, len(p.tables))
 	for tbl, rows := range p.tables {
 		snapRows := make([]map[string]interface{}, len(rows))
-		copy(snapRows, rows)
+		for i, r := range rows {
+			cp := make(map[string]interface{}, len(r))
+			for k, v := range r {
+				cp[k] = v
+			}
+			snapRows[i] = cp
+		}
 		snapshot[tbl] = snapRows
 	}
 
@@ -426,6 +435,11 @@ func (p *DBPool) Begin() (*Tx, error) {
 
 // Transaction executes a function inside an atomic transaction with full rollback on error
 func (p *DBPool) Transaction(fn func(tx *Tx) error) (err error) {
+	// Serialize whole transactions so concurrent callers cannot interleave
+	// their writes (snapshot isolation, see M-11).
+	p.txMu.Lock()
+	defer p.txMu.Unlock()
+
 	tx, err := p.Begin()
 	if err != nil {
 		return err

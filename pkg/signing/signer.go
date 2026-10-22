@@ -51,6 +51,7 @@ func (s *Signer) SignFile(filePath string) (*PackageSignature, error) {
 
 	// Create signing payload
 	payload := SigningPayload{
+		PackageName: "", PackageVersion: "", Algorithm: "Ed25519", Version: 1,
 		Checksum:  checksumHex,
 		Timestamp: time.Now().Unix(),
 		KeyID:     s.keyPair.KeyID,
@@ -81,6 +82,7 @@ func (s *Signer) SignFile(filePath string) (*PackageSignature, error) {
 // SignChecksum signs a pre-calculated checksum
 func (s *Signer) SignChecksum(checksum string, packageName, version string) (*PackageSignature, error) {
 	payload := SigningPayload{
+		PackageName: packageName, PackageVersion: version, Algorithm: "Ed25519", Version: 1,
 		Checksum:  checksum,
 		Timestamp: time.Now().Unix(),
 		KeyID:     s.keyPair.KeyID,
@@ -111,9 +113,13 @@ func (s *Signer) SignChecksum(checksum string, packageName, version string) (*Pa
 
 // SigningPayload is the data that gets signed
 type SigningPayload struct {
-	Checksum  string `json:"checksum"`
-	Timestamp int64  `json:"timestamp"`
-	KeyID     string `json:"key_id"`
+	Version        int    `json:"version"`
+	PackageName    string `json:"package_name"`
+	PackageVersion string `json:"package_version"`
+	Algorithm      string `json:"algorithm"`
+	Checksum       string `json:"checksum"`
+	Timestamp      int64  `json:"timestamp"`
+	KeyID          string `json:"key_id"`
 }
 
 // VerifySignature verifies a package signature
@@ -139,6 +145,7 @@ func VerifySignature(pubKeyHex string, sig *PackageSignature) error {
 		timestamp = sig.SignedAt.Unix()
 	}
 	payload := SigningPayload{
+		Version: 1, PackageName: sig.PackageName, PackageVersion: sig.PackageVersion, Algorithm: sig.Algorithm,
 		Checksum:  sig.Checksum,
 		Timestamp: timestamp,
 		KeyID:     sig.SignerKeyID,

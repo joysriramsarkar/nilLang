@@ -38,3 +38,6 @@ coverage/
 
 # Local planning docs (not for upstream)
 পরিকল্পনা/
+
+# Signing keys (NEVER COMMIT) — keep outside any tracked tree if possible
+.onuron-keys/
