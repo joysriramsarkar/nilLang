@@ -204,10 +204,17 @@ func (ks *KeyStore) DeleteKey(keyID string) error {
 // --- Crypto Helpers ---
 
 func deriveKey(password string, salt []byte) []byte {
-	// Simple key derivation (in production, use Argon2 or scrypt)
-	combined := append([]byte(password), salt...)
-	hash := sha256.Sum256(combined)
-	return hash[:]
+	// Use a deliberately expensive, versioned KDF until an Argon2 dependency is
+	// available. A single fast hash permits cheap offline password guessing.
+	state := sha256.Sum256(append([]byte("nilLang-keystore-v2\x00"+password+"\x00"), salt...))
+	for i := 0; i < 300000; i++ {
+		buf := make([]byte, 0, len(state)+len(salt)+8)
+		buf = append(buf, state[:]...)
+		buf = append(buf, salt...)
+		buf = append(buf, byte(i>>24), byte(i>>16), byte(i>>8), byte(i))
+		state = sha256.Sum256(buf)
+	}
+	return state[:]
 }
 
 func encrypt(key, plaintext []byte) ([]byte, []byte, error) {

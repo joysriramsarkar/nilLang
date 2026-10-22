@@ -1795,8 +1795,9 @@ func (vm *VM) callWithTimeout(args []object.Object, numArgs int) error {
 // timeoutOutcome is the result of a runWithTimeout goroutine: the value the
 // closure produced, or the error it failed with.
 type timeoutOutcome struct {
-	value object.Object
-	err   error
+	value   object.Object
+	err     error
+	globals []object.Object
 }
 
 // runWithTimeout executes the closure off-goroutine and waits up to the
@@ -1814,21 +1815,53 @@ func (vm *VM) runWithTimeout(timeoutMs int64, closure *object.Closure) object.Ob
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				done <- timeoutOutcome{nil, errTaskFaulted("task panicked: %v", r)}
+				done <- timeoutOutcome{value: nil, err: errTaskFaulted("task panicked: %v", r)}
 			}
 		}()
-		value, err := vm.runClosureShared(closure, scope)
-		done <- timeoutOutcome{value, err}
+		value, err, globals := vm.runClosureTransactional(closure, scope)
+		done <- timeoutOutcome{value, err, globals}
 	}()
 
 	select {
 	case out := <-done:
+		if out.err == nil && out.globals != nil {
+			mu := vm.ensureGlobalsMu()
+			mu.Lock()
+			copy(vm.globals, out.globals)
+			mu.Unlock()
+		}
 		return vm.finishTimeout(out)
 	case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
 		scope.Cancel()
 		return object.RuntimeErrorf(object.CategoryTaskCancelled,
 			"withTimeout: task timeout exceeded after %dms", timeoutMs)
 	}
+}
+
+// runClosureTransactional gives a timed closure a private global snapshot.
+// Effects are committed only when the closure finishes before its deadline;
+// a late or cancelled worker therefore cannot mutate the parent VM.
+func (vm *VM) runClosureTransactional(closure *object.Closure, scope *concurrency.Task) (object.Object, error, []object.Object) {
+	mu := vm.ensureGlobalsMu()
+	mu.Lock()
+	globals := append([]object.Object(nil), vm.globals...)
+	mu.Unlock()
+	child := &VM{
+		constants: vm.constants, stack: make([]object.Object, StackSize), globals: globals,
+		globalsMu: &sync.Mutex{}, globalNames: vm.globalNames, frames: make([]*Frame, MaxFrames),
+		taskScope: scope, cancellable: true, NativeCallHandler: vm.NativeCallHandler,
+		CapabilityChecker: vm.CapabilityChecker,
+	}
+	if err := child.push(closure); err != nil {
+		return nil, err, nil
+	}
+	if err := child.callClosure(closure, 0); err != nil {
+		return nil, err, nil
+	}
+	if err := child.Run(); err != nil {
+		return nil, err, nil
+	}
+	return child.StackTop(), nil, child.globals
 }
 
 // finishTimeout converts a runWithTimeout goroutine result into the value or

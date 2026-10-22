@@ -380,9 +380,9 @@ func RecoveryMiddleware(next routing.HandlerFunc) routing.HandlerFunc {
 		defer func() {
 			if r := recover(); r != nil {
 				stack := string(debug.Stack())
-				_ = stack
-				err = fmt.Errorf("500: internal server panic: %v", r)
-				ctx.AbortWithStatus(500, fmt.Sprintf("panic: %v", r))
+				log.Printf("[Alap] recovered panic request_id=%s: %v\n%s", ctx.Headers["X-Request-ID"], r, stack)
+				err = fmt.Errorf("500: internal server panic")
+				ctx.AbortWithStatus(500, "internal server error")
 			}
 		}()
 		return next(ctx)

@@ -3,6 +3,7 @@ package evaluator
 import (
 	"github.com/joysriramsarkar/nilLang/compiler/ast"
 	"github.com/joysriramsarkar/nilLang/compiler/object"
+	"math"
 )
 
 // Loop control signals.
@@ -153,28 +154,19 @@ func runFor(fs *ast.ForStatement, items []loopItem, env *object.Environment) obj
 // `for i in 10..0` is a natural countdown rather than an error.
 func runRange(fs *ast.ForStatement, start, end int64, inclusive bool, env *object.Environment) object.Object {
 	var result object.Object = NULL
-
-	// Determine the iteration count up front so the loop needs no comparison
-	// against a mutable cursor.
-	var count int64
-	if end >= start {
-		count = end - start
-		if inclusive {
-			count++
+	descending := end < start
+	if descending {
+		if start-end < 0 || (inclusive && start-end == math.MaxInt64) {
+			return runtimeError(object.CategoryTypeError, "range is too large to iterate")
 		}
-	} else {
-		count = start - end
-		if inclusive {
-			count++
-		}
+	} else if end-start < 0 || (inclusive && end-start == math.MaxInt64) {
+		return runtimeError(object.CategoryTypeError, "range is too large to iterate")
 	}
 
-	descending := end < start
-
-	for i := int64(0); i < count; i++ {
-		value := start + i
-		if descending {
-			value = start - i
+	for value := start; ; {
+		if (!descending && (value > end || (!inclusive && value == end))) ||
+			(descending && (value < end || (!inclusive && value == end))) {
+			break
 		}
 
 		iterationEnv := object.NewEnclosedEnvironment(env)
@@ -196,6 +188,14 @@ func runRange(fs *ast.ForStatement, start, end int64, inclusive bool, env *objec
 				return evaluated
 			}
 			result = evaluated
+		}
+		if value == end {
+			break
+		}
+		if descending {
+			value--
+		} else {
+			value++
 		}
 	}
 
