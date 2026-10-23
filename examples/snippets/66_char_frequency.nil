@@ -1,0 +1,23 @@
+﻿fn charFreq(str) {
+    let map = {};
+    let seenKeys = [];
+    for ch in str {
+        if (ch != " ") {
+            let found = false;
+            for k in seenKeys {
+                if (k == ch) { found = true; }
+            }
+            if (found) {
+                map[ch] = map[ch] + 1;
+            } else {
+                map[ch] = 1;
+                seenKeys = push(seenKeys, ch);
+            }
+        }
+    }
+    return { "map": map, "keys": seenKeys };
+}
+let res = charFreq("banana");
+for k in res.keys {
+    puts("অক্ষর " + k + ": \(res.map[k]) বার");
+}

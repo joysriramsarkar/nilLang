@@ -1,0 +1,5 @@
+﻿fn formatLog(service, level, msg) {
+    return "[\(service)] [\(level)] " + msg;
+}
+puts(formatLog("nilinit", "DEBUG", "কার্নেল সার্ভিস চালু হয়েছে"));
+puts(formatLog("nilrt", "INFO", "স্যান্ডবক্স ক্যাপাবিলিটি গ্রান্ট সম্পন্ন"));

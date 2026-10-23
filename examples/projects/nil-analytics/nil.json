@@ -1,0 +1,8 @@
+{
+  "name": "nil-analytics",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Matrix Algebra & Statistical Data Science Suite in Nilang",
+  "entry": "src/main.nil",
+  "capabilities": ["stdout", "clock", "random", "filesystem"]
+}

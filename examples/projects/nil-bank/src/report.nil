@@ -1,0 +1,74 @@
+// ============================================================================
+// NilBank - Reporting & Statement Generator
+// ============================================================================
+
+import "./types.nil" as Types;
+import "./account.nil" as Account;
+import "./ledger.nil" as Ledger;
+
+// Print a formatted account statement
+let printAccountStatement = fn(accNumber) {
+    let opt = Account.findAccount(accNumber);
+    if (isNone(opt)) {
+        puts("❌ স্টেটমেন্ট ব্যর্থ: অ্যাকাউন্ট নং " + accNumber + " পাওয়া যায়নি।");
+        return null;
+    }
+
+    let acc = unwrapOr(opt, null);
+    let history = Ledger.getHistory(accNumber);
+
+    puts("╔══════════════════════════════════════════════════════════════════════════╗");
+    puts("║                     নীলাং কোর ব্যাংক - অ্যাকাউন্ট স্টেটমেন্ট               ║");
+    puts("╠══════════════════════════════════════════════════════════════════════════╣");
+    puts("  অ্যাকাউন্ট নং : " + acc.accNumber);
+    puts("  গ্রাহকের নাম   : " + acc.holderName);
+    puts("  হিসাবের ধরন   : " + acc.accType + " (" + acc.tier + " TIER)");
+    puts("  বর্তমান ব্যালেন্স: " + str(acc.balance) + " " + acc.currency);
+    puts("  স্ট্যাটাস      : " + acc.status);
+    puts("╟──────────────────────────────────────────────────────────────────────────╢");
+    puts("  লেনদেনের বিবরণী (" + str(len(history)) + " টি রেকর্ড):");
+    puts("  ID     | ধরন      | পরিমাণ       | উৎস -> গন্তব্য        | স্ট্যাটাস");
+    puts("  --------------------------------------------------------------------------");
+
+    let i = 0;
+    while (i < len(history)) {
+        let tx = history[i];
+        let idStr = str(tx.id);
+        let typeStr = tx.txType;
+        let amtStr = str(tx.amount) + " " + tx.currency;
+        let routeStr = tx.fromAccount + " -> " + tx.toAccount;
+        let statStr = tx.status;
+        puts("  " + idStr + " | " + typeStr + " | " + amtStr + " | " + routeStr + " | " + statStr);
+        i = i + 1;
+    }
+    puts("╚══════════════════════════════════════════════════════════════════════════╝\n");
+    return true;
+};
+
+// Print Bank Health and Liquidity Report
+let printBankHealthReport = fn() {
+    let allAccs = Account.getAllAccounts();
+    let totalDepositsBDT = Account.calculateTotalDepositsBDT();
+    let allTx = Ledger.getAllEntries();
+
+    let flaggedCount = 0;
+    let i = 0;
+    while (i < len(allTx)) {
+        let tx = allTx[i];
+        if (tx.status == Types.TX_STATUS_FLAGGED) {
+            flaggedCount = flaggedCount + 1;
+        }
+        i = i + 1;
+    }
+
+    puts("╔══════════════════════════════════════════════════════════════════════════╗");
+    puts("║               নীলাং সেন্ট্রাল ব্যাংক - লিকুইডিটি ও রিজার্ভ রিপোর্ট         ║");
+    puts("╠══════════════════════════════════════════════════════════════════════════╣");
+    puts("  মোট সক্রিয় অ্যাকাউন্ট : " + str(len(allAccs)) + " টি");
+    puts("  মোট আমানত (BDT সমতুল্য): ৳ " + str(totalDepositsBDT));
+    puts("  মোট নিষ্পন্ন লেনদেন  : " + str(len(allTx)) + " টি");
+    puts("  AML সন্দেহজনক লেনদেন : " + str(flaggedCount) + " টি (রিভিউ চলছে)");
+    puts("  সিস্টেম সার্বিক অবস্থা : সুস্থ ও ব্যালেন্সড [OK]");
+    puts("╚══════════════════════════════════════════════════════════════════════════╝\n");
+    return true;
+};

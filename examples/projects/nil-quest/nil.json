@@ -1,0 +1,8 @@
+{
+  "name": "nil-quest",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Turn-Based RPG Game Engine and Combat Simulator in Nilang",
+  "entry": "src/main.nil",
+  "capabilities": ["stdout", "clock", "random", "filesystem"]
+}

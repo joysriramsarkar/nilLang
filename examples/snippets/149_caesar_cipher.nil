@@ -1,0 +1,21 @@
+﻿fn shiftChar(ch, shift) {
+    let alphabet = "abcdefghijklmnopqrstuvwxyz";
+    let i = 0;
+    while (i < len(alphabet)) {
+        if (alphabet[i] == ch) {
+            let newIdx = (i + shift) % 26;
+            return alphabet[newIdx];
+        }
+        i = i + 1;
+    }
+    return ch;
+}
+fn caesarCipher(text, shift) {
+    let res = "";
+    for ch in text {
+        res = res + shiftChar(ch, shift);
+    }
+    return res;
+}
+let cipher = caesarCipher("nilang", 3);
+puts("nilang সাইফার (shift 3): " + cipher);

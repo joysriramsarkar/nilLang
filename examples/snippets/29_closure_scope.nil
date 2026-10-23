@@ -1,0 +1,6 @@
+﻿let prefix = "[লগ] ";
+let logger = fn(msg) {
+    return prefix + msg;
+};
+puts(logger("সিস্টেম চালু হয়েছে"));
+puts(logger("সব ঠিক আছে"));

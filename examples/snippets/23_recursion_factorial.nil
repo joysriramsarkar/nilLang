@@ -1,0 +1,6 @@
+﻿fn factorial(n) {
+    if (n <= 1) { return 1; }
+    return n * factorial(n - 1);
+}
+puts("5! = \(factorial(5))");
+puts("6! = \(factorial(6))");

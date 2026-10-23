@@ -1,0 +1,117 @@
+// ============================================================================
+// NilDB - In-Memory Relational Database & Query Engine Demo
+// ============================================================================
+
+import "./types.nil" as Types;
+import "./schema.nil" as Schema;
+import "./table.nil" as Table;
+import "./query.nil" as Query;
+
+puts("╔══════════════════════════════════════════════════════════════════════════╗");
+puts("║               🗄️ NILDB: IN-MEMORY RELATIONAL DATABASE ENGINE 🚀          ║");
+puts("║                    Powered by Nilang • Onuron OS Ecosystem               ║");
+puts("╚══════════════════════════════════════════════════════════════════════════╝\n");
+
+// ----------------------------------------------------------------------------
+// ধাপ ১: ডেটাবেস টেবিল স্কিমা তৈরি
+// ----------------------------------------------------------------------------
+puts("🔹 ধাপ ১: রিলেশনাল টেবিল স্কিমা ডিক্লারেশন...");
+
+// Users Table Schema
+let userCols = [
+    Schema.createColumn("id", Types.COL_INT, true, true),
+    Schema.createColumn("name", Types.COL_STRING, false, true),
+    Schema.createColumn("email", Types.COL_STRING, false, true),
+    Schema.createColumn("role", Types.COL_STRING, false, true)
+];
+let userTable = Table.createTable(Schema.createSchema("users", userCols));
+
+// Products Table Schema
+let prodCols = [
+    Schema.createColumn("id", Types.COL_INT, true, true),
+    Schema.createColumn("name", Types.COL_STRING, false, true),
+    Schema.createColumn("category", Types.COL_STRING, false, true),
+    Schema.createColumn("price", Types.COL_FLOAT, false, true),
+    Schema.createColumn("stock", Types.COL_INT, false, true)
+];
+let prodTable = Table.createTable(Schema.createSchema("products", prodCols));
+
+puts("  ✅ 'users' এবং 'products' টেবিল স্কিমা প্রস্তুত।\n");
+
+// ----------------------------------------------------------------------------
+// ধাপ ২: রেকর্ড ইনসার্ট (CRUD - Create)
+// ----------------------------------------------------------------------------
+puts("🔹 ধাপ ২: ডেটাবেসে রেকর্ড ইনসার্ট করা হচ্ছে...");
+
+Table.insert(userTable, { "name": "জয়শ্রীরাম সরকার", "email": "joy@onuron.org", "role": "ADMIN" });
+Table.insert(userTable, { "name": "রহিম আহমেদ", "email": "rahim@mail.com", "role": "CUSTOMER" });
+Table.insert(userTable, { "name": "করিম উদ্দিন", "email": "karim@mail.com", "role": "CUSTOMER" });
+
+Table.insert(prodTable, { "name": "গেমিং ল্যাপটপ", "category": "ইলেকট্রনিক্স", "price": 125000.0, "stock": 10 });
+Table.insert(prodTable, { "name": "মেকানিক্যাল কীবোর্ড", "category": "এক্সেসরিজ", "price": 4500.0, "stock": 25 });
+Table.insert(prodTable, { "name": "ওয়্যারলেস মাউস", "category": "এক্সেসরিজ", "price": 1800.0, "stock": 40 });
+Table.insert(prodTable, { "name": "৪কে আল্ট্রা মনিটর", "category": "ইলেকট্রনিক্স", "price": 38000.0, "stock": 8 });
+
+puts("  মোট ব্যবহারকারী ইনসার্ট: " + str(Table.countRows(userTable)) + " জন");
+puts("  মোট পণ্য ইনসার্ট: " + str(Table.countRows(prodTable)) + " টি\n");
+
+// ----------------------------------------------------------------------------
+// ধাপ ৩: কুয়েরি ও ফিল্টারিং (WHERE, SELECT, LIMIT)
+// ----------------------------------------------------------------------------
+puts("🔹 ধাপ ৩: SQL-স্টাইল কুয়েরি ফিল্টারিং...");
+
+// কুয়েরি ১: ৫,০০০ টাকার বেশি মূল্যের পণ্যসমূহ (WHERE price > 5000)
+puts("  [কুয়েরি ১] ৫,০০০ টাকার বেশি মূল্যের পণ্য (WHERE price > 5000):");
+let expensive = Query.where(Table.getAllRows(prodTable), "price", Types.OP_GT, 5000.0);
+let i = 0;
+while (i < len(expensive)) {
+    let p = expensive[i];
+    puts("  - " + p.name + " | মূল্য: ৳" + str(p.price));
+    i = i + 1;
+}
+
+// কুয়েরি ২: শুধুমাত্র সাধারণ গ্রাহক ফিল্টার (WHERE role == 'CUSTOMER')
+puts("\n  [কুয়েরি ২] সাধারণ গ্রাহক তালিকা (WHERE role == 'CUSTOMER'):");
+let customers = Query.where(Table.getAllRows(userTable), "role", Types.OP_EQ, "CUSTOMER");
+let j = 0;
+while (j < len(customers)) {
+    let u = customers[j];
+    puts("  - " + u.name + " (" + u.email + ")");
+    j = j + 1;
+}
+
+// কুয়েরি ৩: প্রজেকশন ও লিমিট (SELECT name, price LIMIT 2)
+puts("\n  [কুয়েরি ৩] শীর্ষ ২টি পণ্যের নাম ও দাম (SELECT name, price LIMIT 2):");
+let topTwo = Query.limit(Query.selectColumns(Table.getAllRows(prodTable), ["name", "price"]), 2);
+let k = 0;
+while (k < len(topTwo)) {
+    let item = topTwo[k];
+    puts("  - " + item["name"] + " -> ৳" + str(item["price"]));
+    k = k + 1;
+}
+
+// ----------------------------------------------------------------------------
+// ধাপ ৪: এগ্রিগেশন (SUM, AVG)
+// ----------------------------------------------------------------------------
+puts("\n🔹 ধাপ ৪: পরিসংখ্যান ও এগ্রিগেশন হিসাব...");
+let allProds = Table.getAllRows(prodTable);
+let totalVal = Query.sumColumn(allProds, "price");
+let avgVal = Query.avgColumn(allProds, "price");
+puts("  সকল পণ্যের মোট মূল্য যোগফল : ৳" + str(totalVal));
+puts("  পণ্যের গড় মূল্য (Average)    : ৳" + str(avgVal) + "\n");
+
+// ----------------------------------------------------------------------------
+// ধাপ ৫: রেকর্ড আপডেট ও ডিলিট (Update, Delete)
+// ----------------------------------------------------------------------------
+puts("🔹 ধাপ ৫: ডেটা পরিবর্তন ও মোছা (Update & Delete)...");
+puts("  ল্যাপটপের নতুন স্টক ৫০ নির্ধারণ করা হচ্ছে...");
+Table.update(prodTable, 1, { "stock": 50 }, ["stock"]);
+let optLap = Table.findById(prodTable, 1);
+let lap = unwrapOr(optLap, null);
+puts("  আপডেটের পর ল্যাপটপ স্টক: " + str(lap.stock));
+
+puts("  আইডি ৩ (ওয়্যারলেস মাউস) ডিলিট করা হচ্ছে...");
+Table.deleteById(prodTable, 3);
+puts("  ডিলিটের পর মোট পণ্য সংখ্যা: " + str(Table.countRows(prodTable)) + " টি\n");
+
+puts("🎉 NilDB ইন-মেমরি ডেটাবেস ইঞ্জিন সকল কুয়েরি সফলভাবে সম্পন্ন করেছে!");

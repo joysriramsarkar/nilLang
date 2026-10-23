@@ -1,0 +1,6 @@
+﻿let counter = 10;
+puts("শুরুর মান: \(counter)");
+counter = counter + 5;
+puts("যোগ করার পর: \(counter)");
+counter = counter * 2;
+puts("গুণ করার পর: \(counter)");

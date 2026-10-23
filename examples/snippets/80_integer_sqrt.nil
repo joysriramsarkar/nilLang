@@ -1,0 +1,13 @@
+﻿fn intSqrt(n) {
+    if (n < 2) { return n; }
+    let x0 = n / 2;
+    let x1 = (x0 + n / x0) / 2;
+    while (x1 < x0) {
+        x0 = x1;
+        x1 = (x0 + n / x0) / 2;
+    }
+    return x0;
+}
+puts("sqrt(64) = \(intSqrt(64))");
+puts("sqrt(100) = \(intSqrt(100))");
+puts("sqrt(50) = \(intSqrt(50))");

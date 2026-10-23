@@ -1,0 +1,16 @@
+﻿fn mergeConfig(defaults, overrides, keys) {
+    let res = {};
+    for k in keys {
+        if (overrides[k] != null) {
+            res[k] = overrides[k];
+        } else {
+            res[k] = defaults[k];
+        }
+    }
+    return res;
+}
+let defs = { "timeout": 30, "retries": 3, "port": 80 };
+let userConf = { "timeout": 60, "port": 8080 };
+let keys = ["timeout", "retries", "port"];
+let merged = mergeConfig(defs, userConf, keys);
+puts("Timeout: \(merged.timeout), Retries: \(merged.retries), Port: \(merged.port)");

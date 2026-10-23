@@ -1,0 +1,9 @@
+﻿fn multiplier(factor) {
+    return fn(num) {
+        return num * factor;
+    };
+}
+let double = multiplier(2);
+let triple = multiplier(3);
+puts("5 x 2 = \(double(5))");
+puts("5 x 3 = \(triple(5))");

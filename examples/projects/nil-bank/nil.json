@@ -1,0 +1,8 @@
+{
+  "name": "nil-bank",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Enterprise Core Banking & Double-Entry Transaction Ledger Engine in Nilang",
+  "entry": "src/main.nil",
+  "capabilities": ["stdout", "clock", "random", "filesystem"]
+}

@@ -1,0 +1,10 @@
+﻿fn safeSquare(res) {
+    if (isOk(res)) {
+        let val = unwrapOr(res, 0);
+        return Ok(val * val);
+    }
+    return res;
+}
+let okVal = Ok(5);
+let sq = safeSquare(okVal);
+puts("৫ এর বর্গ রেজাল্ট: \(unwrapOr(sq, 0))");

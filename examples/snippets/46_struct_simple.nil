@@ -1,0 +1,7 @@
+﻿struct Employee {
+    name: String,
+    salary: Int
+}
+let emp = Employee { name: "রাহুল", salary: 50000 };
+puts("কর্মচারী: " + emp.name);
+puts("বেতন: \(emp.salary)");

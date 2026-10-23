@@ -1,0 +1,5 @@
+﻿let config = { "host": "localhost", "port": 8080, "protocol": "http" };
+let keys = ["host", "port", "protocol"];
+for k in keys {
+    puts("কনফিগ \(k) = \(config[k])");
+}

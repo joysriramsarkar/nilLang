@@ -1,0 +1,9 @@
+﻿fn compose(f, g) {
+    return fn(x) {
+        return f(g(x));
+    };
+}
+let addTwo = fn(x) { return x + 2; };
+let square = fn(x) { return x * x; };
+let addThenSquare = compose(square, addTwo);
+puts("(5 + 2)^2 = \(addThenSquare(5))");

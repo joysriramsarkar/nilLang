@@ -1,0 +1,8 @@
+﻿fn checkPerm(mask, readBit, writeBit, execBit) {
+    let canRead = (mask / readBit) % 2 == 1;
+    let canWrite = (mask / writeBit) % 2 == 1;
+    let canExec = (mask / execBit) % 2 == 1;
+    return { "read": canRead, "write": canWrite, "exec": canExec };
+}
+let p = checkPerm(7, 4, 2, 1);
+puts("অনুমতি rwx: Read=\(p.read), Write=\(p.write), Exec=\(p.exec)");

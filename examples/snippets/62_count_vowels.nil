@@ -1,0 +1,14 @@
+﻿fn countVowels(str) {
+    let count = 0;
+    let vowels = ["a", "e", "i", "o", "u", "A", "E", "I", "O", "U"];
+    for ch in str {
+        for v in vowels {
+            if (ch == v) {
+                count = count + 1;
+            }
+        }
+    }
+    return count;
+}
+let text = "Hello World from Nilang";
+puts("মোট স্বরবর্ণ (vowels): \(countVowels(text))");

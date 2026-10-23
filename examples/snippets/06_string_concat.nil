@@ -1,0 +1,5 @@
+﻿let first = "জয়";
+let last = "শ্রীরাম";
+let full = first + last;
+puts("পুরো নাম: " + full);
+puts("দৈর্ঘ্য: \(len(full))");

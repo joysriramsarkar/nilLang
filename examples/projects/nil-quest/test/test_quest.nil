@@ -1,0 +1,68 @@
+// ============================================================================
+// NilQuest - Unit & Integration Test Suite
+// ============================================================================
+
+import "../src/types.nil" as Types;
+import "../src/items.nil" as Items;
+import "../src/monster.nil" as Monster;
+import "../src/combat.nil" as Combat;
+import "../src/quest.nil" as Quest;
+
+puts("🧪 NilQuest গেম ইঞ্জিন টেস্ট স্যুট চালু হচ্ছে...\n");
+
+let passed = 0;
+let total = 0;
+
+let assertTest = fn(name, condition) {
+    total = total + 1;
+    if (condition) {
+        puts("  ✅ [PASS] " + name);
+        passed = passed + 1;
+    } else {
+        puts("  ❌ [FAIL] " + name);
+    }
+};
+
+// 1. হিরো তৈরি টেস্ট
+let warrior = Quest.createHero("টেস্ট যোদ্ধা", Types.CLASS_WARRIOR);
+assertTest("যোদ্ধার ডিফল্ট HP ১২০", warrior.hp == 120);
+assertTest("যোদ্ধার আক্রমণ ২২", warrior.attack == 22);
+
+let mage = Quest.createHero("টেস্ট জাদুকর", Types.CLASS_MAGE);
+assertTest("জাদুকরের ডিফল্ট MP ১০০", mage.mp == 100);
+
+// 2. আইটেম ইকুইপ টেস্ট
+let sword = Items.createWeapon("ব্রোঞ্জ তরবারি", 10, Types.ELEM_PHYSICAL);
+Items.equipItem(warrior, sword);
+assertTest("তরবারি পরিধানের পর আক্রমণ বৃদ্ধি পেয়ে ৩২ হয়েছে", warrior.attack == 32);
+
+let shield = Items.createArmor("কাঠের ঢাল", 5);
+Items.equipItem(warrior, shield);
+assertTest("ঢাল পরিধানের পর প্রতিরক্ষা বৃদ্ধি পেয়ে ১৫ হয়েছে", warrior.defense == 15);
+
+// 3. কমব্যাট ও ক্ষতি টেস্ট
+let goblin = Monster.createGoblin();
+let initHp = goblin.hp;
+let atkRes = Combat.heroAttack(warrior, goblin);
+assertTest("হিরো আক্রমণে গোবলিন ক্ষতিগ্রস্থ হয়েছে", goblin.hp < initHp);
+
+// 4. পোশন টেস্ট
+warrior["hp"] = 50;
+let pot = Items.createPotion("স্বাস্থ্য পোশন", 40, 0);
+Items.usePotion(warrior, pot);
+assertTest("পোশন ব্যবহারে HP ৫০ থেকে ৯০ হয়েছে", warrior.hp == 90);
+
+// 5. লেভেল আপ টেস্ট
+warrior["xp"] = 0;
+let lvlRes = Quest.awardXP(warrior, 100);
+assertTest("১০০ XP অর্জনে লেভেল বৃদ্ধি পেয়ে ২ হয়েছে", lvlRes.leveledUp && warrior.level == 2);
+
+// 6. স্পেল কাস্ট টেস্ট
+let skel = Monster.createSkeleton();
+let spellRes = Combat.heroCastSpell(mage, "অগ্নিবাণ (Fireball)", skel);
+assertTest("জাদুকরের অগ্নিবাণ নিক্ষেপ সফল হয়েছে", isOk(spellRes));
+
+puts("\n📊 টেস্ট ফলাফল: " + str(passed) + "/" + str(total) + " টি টেস্ট পাস করেছে।");
+if (passed == total) {
+    puts("🎉 NilQuest-এর সকল টেস্ট সফলভাবে পাস করেছে!");
+}

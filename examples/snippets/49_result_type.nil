@@ -1,0 +1,14 @@
+﻿fn safeDiv(a, b) {
+    if (b == 0) {
+        return Err("বিভাজন ত্রুটি: শূন্য দিয়ে ভাগ করা যাবে না");
+    }
+    return Ok(a / b);
+}
+let okResult = safeDiv(100, 5);
+if (isOk(okResult)) {
+    puts("ভাগফল: \(unwrapOr(okResult, 0))");
+}
+let errResult = safeDiv(100, 0);
+if (isErr(errResult)) {
+    puts("ত্রুটি সফলভাবে হ্যান্ডেল করা হয়েছে!");
+}

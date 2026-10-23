@@ -1,0 +1,11 @@
+﻿fn parseEnv(line) {
+    let parts = split(line, "=");
+    if (len(parts) >= 2) {
+        return { "key": parts[0], "val": parts[1] };
+    }
+    return { "key": "", "val": "" };
+}
+let e1 = parseEnv("PORT=8080");
+let e2 = parseEnv("NODE_ENV=production");
+puts("এনভায়রনমেন্ট: \(e1.key) -> \(e1.val)");
+puts("এনভায়রনমেন্ট: \(e2.key) -> \(e2.val)");

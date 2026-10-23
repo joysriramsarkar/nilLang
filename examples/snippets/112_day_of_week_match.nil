@@ -1,0 +1,9 @@
+﻿fn dayCategory(day) {
+    return match day {
+        "Friday" => "ছুটির দিন (উইকেন্ড)",
+        "Saturday" => "ছুটির দিন (উইকেন্ড)",
+        _ => "কর্মদিবস"
+    };
+}
+puts("Friday: " + dayCategory("Friday"));
+puts("Monday: " + dayCategory("Monday"));

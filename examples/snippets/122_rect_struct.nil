@@ -1,0 +1,9 @@
+﻿struct Rect {
+    w: Int,
+    h: Int
+}
+fn rectArea(r) { return r.w * r.h; }
+fn rectPeri(r) { return 2 * (r.w + r.h); }
+let myBox = Rect { w: 10, h: 5 };
+puts("আয়তক্ষেত্রের ক্ষেত্রফল: \(rectArea(myBox))");
+puts("আয়তক্ষেত্রের পরিসীমা: \(rectPeri(myBox))");

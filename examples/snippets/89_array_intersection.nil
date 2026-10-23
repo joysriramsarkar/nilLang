@@ -1,0 +1,15 @@
+﻿fn intersect(a, b) {
+    let res = [];
+    for x in a {
+        for y in b {
+            if (x == y) {
+                res = push(res, x);
+                break;
+            }
+        }
+    }
+    return res;
+}
+let a = [1, 2, 3, 4, 5];
+let b = [3, 4, 5, 6, 7];
+puts("ছেদ (Intersection): \(intersect(a, b))");

@@ -1,0 +1,13 @@
+﻿fn isArmstrong(n) {
+    let temp = n;
+    let sum = 0;
+    while (temp > 0) {
+        let d = temp % 10;
+        sum = sum + (d * d * d);
+        temp = temp / 10;
+    }
+    return sum == n;
+}
+puts("153 কি আর্মস্ট্রং সংখ্যা? \(isArmstrong(153))");
+puts("370 কি আর্মস্ট্রং সংখ্যা? \(isArmstrong(370))");
+puts("123 কি আর্মস্ট্রং সংখ্যা? \(isArmstrong(123))");

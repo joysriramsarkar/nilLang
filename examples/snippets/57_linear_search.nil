@@ -1,0 +1,15 @@
+﻿fn linearSearch(arr, target) {
+    let i = 0;
+    while (i < len(arr)) {
+        if (arr[i] == target) {
+            return i;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+let fruits = ["আম", "জাম", "কাঁঠাল", "লিচু"];
+let idxKathal = linearSearch(fruits, "কাঁঠাল");
+let idxKola = linearSearch(fruits, "কলা");
+puts("কাঁঠাল পাওয়া গেছে ইনডেক্স: \(idxKathal)");
+puts("কলা পাওয়া গেছে: \(idxKola)");

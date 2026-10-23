@@ -1,0 +1,8 @@
+﻿fn clamp(val, minV, maxV) {
+    if (val < minV) { return minV; }
+    if (val > maxV) { return maxV; }
+    return val;
+}
+puts("clamp(120, 0, 100) = \(clamp(120, 0, 100))");
+puts("clamp(-10, 0, 100) = \(clamp(-10, 0, 100))");
+puts("clamp(45, 0, 100) = \(clamp(45, 0, 100))");

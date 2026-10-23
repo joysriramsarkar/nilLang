@@ -1,0 +1,11 @@
+﻿struct Transaction {
+    id: Int,
+    fromAcc: String,
+    toAcc: String,
+    amount: Int
+}
+fn verifyTx(tx) {
+    return tx.amount > 0 && tx.fromAcc != tx.toAcc;
+}
+let tx1 = Transaction { id: 1, fromAcc: "ACC-01", toAcc: "ACC-02", amount: 5000 };
+puts("ট্রানজ্যাকশন আইডি \(tx1.id) বৈধ? \(verifyTx(tx1))");

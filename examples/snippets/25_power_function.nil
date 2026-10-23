@@ -1,0 +1,11 @@
+﻿fn power(base, exp) {
+    let res = 1;
+    let i = 0;
+    while (i < exp) {
+        res = res * base;
+        i = i + 1;
+    }
+    return res;
+}
+puts("2^5 = \(power(2, 5))");
+puts("3^3 = \(power(3, 3))");

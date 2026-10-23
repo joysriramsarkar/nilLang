@@ -1,0 +1,199 @@
+// ============================================================================
+// NilBank - Double-Entry Ledger & Transaction Engine
+// ============================================================================
+
+import "./types.nil" as Types;
+import "./account.nil" as Account;
+
+// Ledger transaction logs
+let journalEntries = [];
+let nextTxId = 1001;
+
+// Fraud threshold
+let AML_THRESHOLD = 150000;
+let DAILY_WITHDRAW_LIMIT = 200000;
+
+// Record a deposit
+let deposit = fn(accNumber, amount, note) {
+    if (!Types.isValidAmount(amount)) {
+        return Err("জমার পরিমাণ ধনাত্মক সংখ্যা হতে হবে");
+    }
+
+    let opt = Account.findAccount(accNumber);
+    if (isNone(opt)) {
+        return Err("অ্যাকাউন্ট নং " + accNumber + " পাওয়া যায়নি");
+    }
+
+    let acc = unwrapOr(opt, null);
+    if (acc.status != Types.STATUS_ACTIVE) {
+        return Err("অ্যাকাউন্টটি নিষ্ক্রিয় বা ফ্রিজ করা রয়েছে");
+    }
+
+    let newBalance = acc.balance + amount;
+    Account.updateBalance(accNumber, newBalance);
+
+    let txStatus = Types.TX_STATUS_SUCCESS;
+    if (amount >= AML_THRESHOLD) {
+        txStatus = Types.TX_STATUS_FLAGGED;
+    }
+
+    let entry = {
+        "id": nextTxId,
+        "txType": Types.TX_DEPOSIT,
+        "fromAccount": "CASH_VAULT",
+        "toAccount": accNumber,
+        "amount": amount,
+        "currency": acc.currency,
+        "status": txStatus,
+        "balanceAfter": newBalance,
+        "note": note,
+        "timestamp": time()
+    };
+
+    nextTxId = nextTxId + 1;
+    journalEntries = push(journalEntries, entry);
+    return Ok(entry);
+};
+
+// Record a withdrawal
+let withdraw = fn(accNumber, amount, note) {
+    if (!Types.isValidAmount(amount)) {
+        return Err("উত্তোলনের পরিমাণ ধনাত্মক হতে হবে");
+    }
+
+    let opt = Account.findAccount(accNumber);
+    if (isNone(opt)) {
+        return Err("অ্যাকাউন্ট নং " + accNumber + " পাওয়া যায়নি");
+    }
+
+    let acc = unwrapOr(opt, null);
+    if (acc.status != Types.STATUS_ACTIVE) {
+        return Err("অ্যাকাউন্টটি সচল নয়");
+    }
+
+    if (acc.balance < amount) {
+        return Err("অপর্যাপ্ত ব্যালেন্স! বর্তমান ব্যালেন্স: " + str(acc.balance));
+    }
+
+    let newDaily = acc.dailyWithdrawn + amount;
+    if (newDaily > DAILY_WITHDRAW_LIMIT) {
+        return Err("দৈনিক উত্তোলনের সীমা (200,000) অতিক্রম করেছে!");
+    }
+
+    let newBalance = acc.balance - amount;
+    Account.updateBalance(accNumber, newBalance);
+    acc["dailyWithdrawn"] = newDaily;
+
+    let txStatus = Types.TX_STATUS_SUCCESS;
+    if (amount >= AML_THRESHOLD) {
+        txStatus = Types.TX_STATUS_FLAGGED;
+    }
+
+    let entry = {
+        "id": nextTxId,
+        "txType": Types.TX_WITHDRAW,
+        "fromAccount": accNumber,
+        "toAccount": "CASH_VAULT",
+        "amount": amount,
+        "currency": acc.currency,
+        "status": txStatus,
+        "balanceAfter": newBalance,
+        "note": note,
+        "timestamp": time()
+    };
+
+    nextTxId = nextTxId + 1;
+    journalEntries = push(journalEntries, entry);
+    return Ok(entry);
+};
+
+// Record a peer-to-peer transfer
+let transfer = fn(fromAccNumber, toAccNumber, amount, note) {
+    if (fromAccNumber == toAccNumber) {
+        return Err("একই অ্যাকাউন্টে ফান্ড ট্রান্সফার করা যাবে না");
+    }
+    if (!Types.isValidAmount(amount)) {
+        return Err("স্থানান্তরের পরিমাণ ধনাত্মক হতে হবে");
+    }
+
+    let optFrom = Account.findAccount(fromAccNumber);
+    let optTo = Account.findAccount(toAccNumber);
+
+    if (isNone(optFrom)) {
+        return Err("প্রেরকের অ্যাকাউন্ট পাওয়া যায়নি: " + fromAccNumber);
+    }
+    if (isNone(optTo)) {
+        return Err("প্রাপকের অ্যাকাউন্ট পাওয়া যায়নি: " + toAccNumber);
+    }
+
+    let fromAcc = unwrapOr(optFrom, null);
+    let toAcc = unwrapOr(optTo, null);
+
+    if (fromAcc.status != Types.STATUS_ACTIVE) {
+        return Err("প্রেরকের অ্যাকাউন্ট ফ্রিজ বা নিষ্ক্রিয়");
+    }
+    if (toAcc.status != Types.STATUS_ACTIVE) {
+        return Err("প্রাপকের অ্যাকাউন্ট ফ্রিজ বা নিষ্ক্রিয়");
+    }
+
+    if (fromAcc.balance < amount) {
+        return Err("প্রেরকের অপর্যাপ্ত ব্যালেন্স!");
+    }
+
+    // Currency conversion if different
+    let amountToCredit = amount;
+    if (fromAcc.currency != toAcc.currency) {
+        let bdtValue = Types.convertToBDT(amount, fromAcc.currency);
+        amountToCredit = Types.convertFromBDT(bdtValue, toAcc.currency);
+    }
+
+    // Atomic debit & credit
+    let newFromBal = fromAcc.balance - amount;
+    let newToBal = toAcc.balance + amountToCredit;
+
+    Account.updateBalance(fromAccNumber, newFromBal);
+    Account.updateBalance(toAccNumber, newToBal);
+
+    let txStatus = Types.TX_STATUS_SUCCESS;
+    if (amount >= AML_THRESHOLD) {
+        txStatus = Types.TX_STATUS_FLAGGED;
+    }
+
+    let entry = {
+        "id": nextTxId,
+        "txType": Types.TX_TRANSFER,
+        "fromAccount": fromAccNumber,
+        "toAccount": toAccNumber,
+        "amount": amount,
+        "currency": fromAcc.currency,
+        "receivedAmount": amountToCredit,
+        "receivedCurrency": toAcc.currency,
+        "status": txStatus,
+        "balanceAfter": newFromBal,
+        "note": note,
+        "timestamp": time()
+    };
+
+    nextTxId = nextTxId + 1;
+    journalEntries = push(journalEntries, entry);
+    return Ok(entry);
+};
+
+// Filter transaction history for a specific account
+let getHistory = fn(accNumber) {
+    let history = [];
+    let i = 0;
+    while (i < len(journalEntries)) {
+        let tx = journalEntries[i];
+        if (tx.fromAccount == accNumber || tx.toAccount == accNumber) {
+            history = push(history, tx);
+        }
+        i = i + 1;
+    }
+    return history;
+};
+
+// Get all journal entries
+let getAllEntries = fn() {
+    return journalEntries;
+};

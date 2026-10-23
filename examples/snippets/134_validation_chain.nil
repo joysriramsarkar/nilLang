@@ -1,0 +1,13 @@
+﻿fn validateUsername(name) {
+    if (len(name) < 3) {
+        return Err("ব্যবহারকারীর নাম কমপক্ষে ৩ অক্ষরের হতে হবে");
+    }
+    if (len(name) > 15) {
+        return Err("ব্যবহারকারীর নাম ১৫ অক্ষরের বেশি হতে পারবে না");
+    }
+    return Ok(name);
+}
+let v1 = validateUsername("joy");
+puts("v1 বৈধ? \(isOk(v1))");
+let v2 = validateUsername("ab");
+puts("v2 বৈধ? \(isOk(v2))");

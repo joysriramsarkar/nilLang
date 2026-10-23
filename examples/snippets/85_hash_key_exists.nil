@@ -1,0 +1,12 @@
+﻿fn hasKey(hash, key, allKeys) {
+    for k in allKeys {
+        if (k == key) { return true; }
+    }
+    return false;
+}
+let conf = { "port": 80, "ssl": true };
+let keys = ["port", "ssl"];
+let hasPort = hasKey(conf, "port", keys);
+let hasHost = hasKey(conf, "host", keys);
+puts("port কী আছে? \(hasPort)");
+puts("host কী আছে? \(hasHost)");

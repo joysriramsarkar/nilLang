@@ -1,0 +1,51 @@
+// ============================================================================
+// NilDoc - Terminal ANSI & Formatted Document Renderer
+// ============================================================================
+
+import "./types.nil" as Types;
+
+// Render AST into Terminal
+let renderTerminal = fn(astDoc) {
+    let nodes = astDoc.children;
+    let i = 0;
+
+    while (i < len(nodes)) {
+        let node = nodes[i];
+        let k = node.nodeKind;
+
+        if (k == Types.NODE_HEADING) {
+            if (node.level == 1) {
+                puts("\n╔══════════════════════════════════════════════════════════════════════════╗");
+                puts("  # " + upper(node.text));
+                puts("╚══════════════════════════════════════════════════════════════════════════╝");
+            } else if (node.level == 2) {
+                puts("\n📌 " + node.text);
+                puts("──────────────────────────────────────────────────────────────────────────");
+            } else {
+                puts("\n▸ " + node.text);
+            }
+        } else if (k == Types.NODE_PARA) {
+            puts(node.text);
+        } else if (k == Types.NODE_LIST_ITEM) {
+            puts("   • " + node.text);
+        } else if (k == Types.NODE_QUOTE) {
+            puts("   │ ❝ " + node.text + " ❞");
+        } else if (k == Types.NODE_HR) {
+            puts("\n--------------------------------------------------------------------------\n");
+        } else if (k == Types.NODE_CODE_BLOCK) {
+            let langLabel = node.lang != "" ? node.lang : "code";
+            puts("   ┌── [" + langLabel + "] ───────────────────────────────────────────────────");
+            let codeLines = split(node.text, "\n");
+            let c = 0;
+            while (c < len(codeLines)) {
+                puts("   │  " + codeLines[c]);
+                c = c + 1;
+            }
+            puts("   └──────────────────────────────────────────────────────────────────────");
+        }
+
+        i = i + 1;
+    }
+
+    return true;
+};

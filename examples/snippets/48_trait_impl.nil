@@ -1,0 +1,13 @@
+﻿trait SoundMaker {
+    fn makeSound(self) -> String
+}
+struct Cat {
+    name: String
+}
+impl SoundMaker for Cat {
+    fn makeSound(self) -> String {
+        return self.name + " ডাকছে: মিউ মিউ!";
+    }
+}
+let kitty = Cat { name: "মিনি" };
+puts(kitty.makeSound());

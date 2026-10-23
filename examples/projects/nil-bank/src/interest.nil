@@ -1,0 +1,73 @@
+// ============================================================================
+// NilBank - Interest Engine & Loan Amortization
+// ============================================================================
+
+import "./types.nil" as Types;
+import "./account.nil" as Account;
+import "./ledger.nil" as Ledger;
+
+// Tiered Annual Percentage Yield (APY)
+let getAPY = fn(tier, accType) {
+    if (accType != Types.ACC_SAVINGS && accType != Types.ACC_INVESTMENT) {
+        return 0.0;
+    }
+    if (tier == "PLATINUM") {
+        return 0.075; // 7.5%
+    }
+    if (tier == "GOLD") {
+        return 0.060; // 6.0%
+    }
+    return 0.045; // 4.5%
+};
+
+// Calculate 1 month's interest for an account
+let calculateMonthlyInterest = fn(acc) {
+    let apy = getAPY(acc.tier, acc.accType);
+    if (apy == 0.0 || acc.balance <= 0) {
+        return 0.0;
+    }
+    let monthlyRate = apy / 12.0;
+    return acc.balance * monthlyRate;
+};
+
+// Apply monthly interest to all qualifying accounts
+let applyMonthlyInterestToAll = fn() {
+    let allAccs = Account.getAllAccounts();
+    let processedCount = 0;
+    let totalPaid = 0.0;
+
+    let i = 0;
+    while (i < len(allAccs)) {
+        let acc = allAccs[i];
+        if (acc.status == Types.STATUS_ACTIVE) {
+            let interestAmount = calculateMonthlyInterest(acc);
+            if (interestAmount > 0.5) {
+                // Deposit interest as a transaction
+                let note = "মাসিক মুনাফা প্রদান (" + str(acc.tier) + " @ " + str(getAPY(acc.tier, acc.accType) * 100.0) + "%)";
+                Ledger.deposit(acc.accNumber, interestAmount, note);
+                processedCount = processedCount + 1;
+                totalPaid = totalPaid + interestAmount;
+            }
+        }
+        i = i + 1;
+    }
+
+    return {
+        "accountsProcessed": processedCount,
+        "totalInterestDisbursed": totalPaid
+    };
+};
+
+// Loan EMI Estimator
+let calculateSimpleLoanEstimate = fn(principal, annualRate, tenureMonths) {
+    let totalInterest = (principal * annualRate * tenureMonths) / (12.0 * 100.0);
+    let totalRepayment = principal + totalInterest;
+    let monthlyEmi = totalRepayment / tenureMonths;
+
+    return {
+        "principal": principal,
+        "totalInterest": totalInterest,
+        "totalRepayment": totalRepayment,
+        "monthlyEmi": monthlyEmi
+    };
+};

@@ -1,0 +1,13 @@
+﻿fn normalizePath(p) {
+    let res = "";
+    for ch in p {
+        if (ch == "\\") {
+            res = res + "/";
+        } else {
+            res = res + ch;
+        }
+    }
+    return res;
+}
+let winPath = "C:\\onuronOS\\system\\boot.nil";
+puts("নরমালাইজড পাথ: " + normalizePath(winPath));

@@ -1,0 +1,10 @@
+﻿fn gcd(a, b) {
+    while (b != 0) {
+        let temp = b;
+        b = a % b;
+        a = temp;
+    }
+    return a;
+}
+puts("gcd(48, 18) = \(gcd(48, 18))");
+puts("gcd(101, 103) = \(gcd(101, 103))");

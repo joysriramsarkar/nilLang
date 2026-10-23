@@ -1,0 +1,6 @@
+﻿let profile = {
+    "name": "জয়",
+    "location": { "city": "ঢাকা", "country": "বাংলাদেশ" }
+};
+puts("নাম: " + profile.name);
+puts("শহর: " + profile.location.city);

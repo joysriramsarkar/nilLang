@@ -1,0 +1,27 @@
+// ============================================================================
+// NilQuest - Core Types, Character Classes & Constants
+// ============================================================================
+
+// Character Classes
+let CLASS_WARRIOR = "WARRIOR";
+let CLASS_MAGE = "MAGE";
+let CLASS_ROGUE = "ROGUE";
+
+// Item Kinds
+let ITEM_WEAPON = "WEAPON";
+let ITEM_ARMOR = "ARMOR";
+let ITEM_POTION = "POTION";
+
+// Combat Status
+let STATUS_ALIVE = "ALIVE";
+let STATUS_DEFEATED = "DEFEATED";
+
+// Elements
+let ELEM_PHYSICAL = "PHYSICAL";
+let ELEM_FIRE = "FIRE";
+let ELEM_ICE = "ICE";
+
+// Calculate XP required for next level
+let xpRequiredForLevel = fn(level) {
+    return level * 100;
+};

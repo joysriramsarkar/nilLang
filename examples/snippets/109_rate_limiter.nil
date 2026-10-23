@@ -1,0 +1,14 @@
+﻿fn createLimiter(maxTokens) {
+    return { "tokens": maxTokens, "max": maxTokens };
+}
+fn takeToken(limiter) {
+    if (limiter.tokens > 0) {
+        limiter.tokens = limiter.tokens - 1;
+        return true;
+    }
+    return false;
+}
+let lim = createLimiter(2);
+puts("অনুরোধ ১ অনুমোদিত? \(takeToken(lim))");
+puts("অনুরোধ ২ অনুমোদিত? \(takeToken(lim))");
+puts("অনুরোধ ৩ অনুমোদিত? \(takeToken(lim)) (রেট লিমিট সক্রিয়)");

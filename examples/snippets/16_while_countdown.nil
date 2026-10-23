@@ -1,0 +1,6 @@
+﻿let count = 5;
+while (count > 0) {
+    puts("কাউন্ট: \(count)");
+    count = count - 1;
+}
+puts("উৎক্ষেপণ সম্পন্ন!");

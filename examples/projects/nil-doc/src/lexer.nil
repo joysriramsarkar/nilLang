@@ -1,0 +1,65 @@
+// ============================================================================
+// NilDoc - Markdown Line Scanner & Lexer Utilities
+// ============================================================================
+
+import "./types.nil" as Types;
+
+// Check if string starts with prefix
+let startsWith = fn(text, prefix) {
+    let tLen = len(text);
+    let pLen = len(prefix);
+    if (tLen < pLen) {
+        return false;
+    }
+    let i = 0;
+    while (i < pLen) {
+        if (text[i] != prefix[i]) {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+};
+
+// Extract substring from start index to end
+let sliceString = fn(text, startIdx) {
+    let res = "";
+    let i = startIdx;
+    while (i < len(text)) {
+        res = res + text[i];
+        i = i + 1;
+    }
+    return res;
+};
+
+// Classify a single markdown line
+let classifyLine = fn(rawLine) {
+    let line = trim(rawLine);
+
+    if (line == "") {
+        return { "kind": "EMPTY", "text": "", "level": 0 };
+    }
+    if (startsWith(line, "```")) {
+        return { "kind": Types.NODE_CODE_BLOCK, "text": sliceString(line, 3), "level": 0 };
+    }
+    if (startsWith(line, "### ")) {
+        return { "kind": Types.NODE_HEADING, "text": sliceString(line, 4), "level": 3 };
+    }
+    if (startsWith(line, "## ")) {
+        return { "kind": Types.NODE_HEADING, "text": sliceString(line, 3), "level": 2 };
+    }
+    if (startsWith(line, "# ")) {
+        return { "kind": Types.NODE_HEADING, "text": sliceString(line, 2), "level": 1 };
+    }
+    if (startsWith(line, "- ") || startsWith(line, "* ")) {
+        return { "kind": Types.NODE_LIST_ITEM, "text": sliceString(line, 2), "level": 0 };
+    }
+    if (startsWith(line, "> ")) {
+        return { "kind": Types.NODE_QUOTE, "text": sliceString(line, 2), "level": 0 };
+    }
+    if (line == "---" || line == "***") {
+        return { "kind": Types.NODE_HR, "text": "", "level": 0 };
+    }
+
+    return { "kind": Types.NODE_PARA, "text": line, "level": 0 };
+};

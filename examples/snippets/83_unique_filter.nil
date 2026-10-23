@@ -1,0 +1,17 @@
+﻿fn unique(arr) {
+    let res = [];
+    for item in arr {
+        let found = false;
+        for existing in res {
+            if (existing == item) {
+                found = true;
+            }
+        }
+        if (!found) {
+            res = push(res, item);
+        }
+    }
+    return res;
+}
+let nums = [1, 2, 2, 3, 4, 4, 4, 5, 1];
+puts("অনন্য উপাদানসমূহ: \(unique(nums))");

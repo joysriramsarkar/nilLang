@@ -1,0 +1,48 @@
+// ============================================================================
+// NilQuest - Monster Catalog & Combat AI
+// ============================================================================
+
+import "./types.nil" as Types;
+
+// Monster Factory
+let createMonster = fn(name, monsterKind, hp, attack, defense, xpReward) {
+    return {
+        "name": name,
+        "monsterKind": monsterKind,
+        "hp": hp,
+        "maxHp": hp,
+        "attack": attack,
+        "defense": defense,
+        "xpReward": xpReward,
+        "status": Types.STATUS_ALIVE
+    };
+};
+
+let createGoblin = fn() {
+    return createMonster("বনচর গোবলিন", "GOBLIN", 65, 16, 5, 50);
+};
+
+let createSkeleton = fn() {
+    return createMonster("কঙ্কাল যোদ্ধা", "SKELETON", 110, 24, 10, 95);
+};
+
+let createDragonBoss = fn() {
+    return createMonster("কালান্তক রক্ত ড্রাগন [BOSS]", "DRAGON", 140, 32, 12, 350);
+};
+
+// Monster AI: Decide action
+let decideMonsterAction = fn(monster) {
+    // If HP drops below 30%, trigger Enrage
+    if (monster.hp < (monster.maxHp * 0.3)) {
+        return {
+            "action": "ENRAGED_STRIKE",
+            "damageMultiplier": 1.5,
+            "message": monster.name + " ক্রুদ্ধ হয়ে দ্বিগুণ শক্তিতে আক্রমণ করেছে!"
+        };
+    }
+    return {
+        "action": "ATTACK",
+        "damageMultiplier": 1.0,
+        "message": monster.name + " সাধারণ আঘাত হেনেছে।"
+    };
+};
