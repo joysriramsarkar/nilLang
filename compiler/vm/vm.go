@@ -440,7 +440,102 @@ func (vm *VM) truncateStack(newSP int) {
 	vm.sp = newSP
 }
 
-func (vm *VM) Run() error {
+// readU16 reads a two-byte operand at ip+1, refusing truncated bytecode
+// instead of slicing past the end of the instruction stream.
+func (vm *VM) readU16(ins code.Instructions, ip int) (uint16, error) {
+	if ip < 0 || ip+2 >= len(ins) {
+		return 0, errInvalidBytecode("truncated instruction operand")
+	}
+	return code.ReadUint16(ins[ip+1:]), nil
+}
+
+// readU8 reads a one-byte operand at ip+1, refusing truncated bytecode.
+func (vm *VM) readU8(ins code.Instructions, ip int) (uint8, error) {
+	if ip < 0 || ip+1 >= len(ins) {
+		return 0, errInvalidBytecode("truncated instruction operand")
+	}
+	return code.ReadUint8(ins[ip+1:]), nil
+}
+
+// readU8At reads a one-byte operand at an absolute position, for instructions
+// whose second operand does not sit at ip+1 (OpClosure, OpNativeCall).
+func (vm *VM) readU8At(ins code.Instructions, at int) (uint8, error) {
+	if at < 0 || at >= len(ins) {
+		return 0, errInvalidBytecode("truncated instruction operand")
+	}
+	return code.ReadUint8(ins[at:]), nil
+}
+
+// constantAt fetches a constant by index. Hand-built bytecode can name any
+// index, so this is a bounds check, not an assertion about the compiler.
+func (vm *VM) constantAt(index int) (object.Object, error) {
+	if index < 0 || index >= len(vm.constants) {
+		return nil, errInvalidBytecode("constant index %d out of range (%d constants)", index, len(vm.constants))
+	}
+	c := vm.constants[index]
+	if c == nil {
+		return nil, errInvalidBytecode("constant %d is nil", index)
+	}
+	return c, nil
+}
+
+// globalAt reads a global slot by index.
+func (vm *VM) globalAt(index int) (object.Object, error) {
+	if index < 0 || index >= len(vm.globals) {
+		return nil, errInvalidBytecode("global index %d out of range (%d globals)", index, len(vm.globals))
+	}
+	return vm.globals[index], nil
+}
+
+// checkJumpTarget refuses jump destinations outside the instruction stream.
+// Without it a jump past the end silently succeeds and one before the start
+// re-executes arbitrary bytes.
+func (vm *VM) checkJumpTarget(pos, length int) error {
+	if pos < 0 || pos >= length {
+		return errInvalidBytecode("jump target %d out of range (%d bytes)", pos, length)
+	}
+	return nil
+}
+
+// typeName names an object for diagnostics without panicking on nil.
+func typeName(obj object.Object) string {
+	if obj == nil {
+		return "nil"
+	}
+	return string(obj.Type())
+}
+
+// freeCellAt fetches a captured-variable cell from the current closure.
+// Hand-built bytecode can name any index and run outside any closure.
+func (vm *VM) freeCellAt(index int) (*object.CaptureCell, error) {
+	cl := vm.currentFrame().cl
+	if cl == nil {
+		return nil, errInvalidBytecode("free variable outside a function")
+	}
+	if index < 0 || index >= len(cl.Free) {
+		return nil, errInvalidBytecode("free index %d out of range (%d cells)", index, len(cl.Free))
+	}
+	cell := cl.Free[index]
+	if cell == nil {
+		return nil, errInvalidBytecode("free variable %d is nil", index)
+	}
+	return cell, nil
+}
+
+func (vm *VM) Run() (err error) {
+	// Hostile or corrupted bytecode must surface as an error, never as a Go
+	// panic in the host process. Every known indexing site below is checked,
+	// and this backstop converts anything missed into invalid-bytecode.
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(error); ok && e != nil {
+				err = errInvalidBytecode("invalid bytecode: %s", e.Error())
+			} else {
+				err = errInvalidBytecode("invalid bytecode: %v", r)
+			}
+		}
+	}()
+
 	var ip int
 	var ins code.Instructions
 	var op code.Opcode
@@ -464,6 +559,9 @@ func (vm *VM) Run() error {
 
 		ip = vm.currentFrame().ip
 		ins = vm.currentFrame().Instructions()
+		if ip < 0 || ip >= len(ins) {
+			return errInvalidBytecode("instruction pointer %d out of range (%d bytes)", ip, len(ins))
+		}
 		op = code.Opcode(ins[ip])
 
 		if vm.Debug != nil {
@@ -475,11 +573,17 @@ func (vm *VM) Run() error {
 
 		switch op {
 		case code.OpConstant:
-			constIndex := code.ReadUint16(ins[ip+1:])
+			constIndex, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 2
 
-			err := vm.push(vm.constants[constIndex])
+			constant, err := vm.constantAt(int(constIndex))
 			if err != nil {
+				return err
+			}
+			if err := vm.push(constant); err != nil {
 				return err
 			}
 
@@ -523,10 +627,8 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
-			if isTruthy(left) && isTruthy(right) {
-				_ = vm.push(True)
-			} else {
-				_ = vm.push(False)
+			if err := vm.push(nativeBoolToBooleanObject(isTruthy(left) && isTruthy(right))); err != nil {
+				return err
 			}
 
 		case code.OpOr:
@@ -538,10 +640,8 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
-			if isTruthy(left) || isTruthy(right) {
-				_ = vm.push(True)
-			} else {
-				_ = vm.push(False)
+			if err := vm.push(nativeBoolToBooleanObject(isTruthy(left) || isTruthy(right))); err != nil {
+				return err
 			}
 
 		case code.OpBang:
@@ -557,11 +657,20 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpJump:
-			pos := int(code.ReadUint16(ins[ip+1:]))
-			vm.currentFrame().ip = pos - 1
+			jumpPos, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
+			if err := vm.checkJumpTarget(int(jumpPos), len(ins)); err != nil {
+				return err
+			}
+			vm.currentFrame().ip = int(jumpPos) - 1
 
 		case code.OpJumpNotTruthy:
-			pos := int(code.ReadUint16(ins[ip+1:]))
+			jumpPos, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 2
 
 			condition, err := vm.pop()
@@ -569,7 +678,10 @@ func (vm *VM) Run() error {
 				return err
 			}
 			if !isTruthy(condition) {
-				vm.currentFrame().ip = pos - 1
+				if err := vm.checkJumpTarget(int(jumpPos), len(ins)); err != nil {
+					return err
+				}
+				vm.currentFrame().ip = int(jumpPos) - 1
 			}
 
 		case code.OpNull:
@@ -579,8 +691,14 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpSetGlobal:
-			globalIndex := code.ReadUint16(ins[ip+1:])
+			globalIndex, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 2
+			if int(globalIndex) >= len(vm.globals) {
+				return errInvalidBytecode("global index out of range")
+			}
 
 			val, err := vm.pop()
 			if err != nil {
@@ -600,8 +718,14 @@ func (vm *VM) Run() error {
 			mu.Unlock()
 
 		case code.OpGetGlobal:
-			globalIndex := code.ReadUint16(ins[ip+1:])
+			globalIndex, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 2
+			if int(globalIndex) >= len(vm.globals) {
+				return errInvalidBytecode("global index out of range")
+			}
 
 			mu := vm.ensureGlobalsMu()
 			mu.Lock()
@@ -619,9 +743,16 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpArray:
-			numElements := int(code.ReadUint16(ins[ip+1:]))
+			numElementsRaw, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
+			numElements := int(numElementsRaw)
 			vm.currentFrame().ip += 2
 
+			if numElements < 0 || numElements > vm.sp {
+				return errInvalidBytecode("array of %d elements with only %d values on the stack", numElements, vm.sp)
+			}
 			array := vm.buildArray(vm.sp-numElements, vm.sp)
 			vm.truncateStack(vm.sp - numElements)
 
@@ -636,9 +767,16 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpHash:
-			numElements := int(code.ReadUint16(ins[ip+1:]))
+			numHashElementsRaw, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
+			numElements := int(numHashElementsRaw)
 			vm.currentFrame().ip += 2
 
+			if numElements < 0 || numElements > vm.sp || numElements%2 != 0 {
+				return errInvalidBytecode("hash of %d elements with %d values on the stack", numElements, vm.sp)
+			}
 			hash, err := vm.buildHash(vm.sp-numElements, vm.sp)
 			if err != nil {
 				return err
@@ -701,7 +839,10 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpCall:
-			numArgs := code.ReadUint8(ins[ip+1:])
+			numArgs, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
 			err := vm.executeCall(int(numArgs))
@@ -751,7 +892,10 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpSetLocal:
-			localIndex := code.ReadUint8(ins[ip+1:])
+			localIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
 			val, err := vm.pop()
@@ -772,7 +916,10 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpGetLocal:
-			localIndex := code.ReadUint8(ins[ip+1:])
+			localIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
 			frame := vm.currentFrame()
@@ -794,7 +941,10 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpBoxLocal:
-			localIndex := code.ReadUint8(ins[ip+1:])
+			localIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
 			frame := vm.currentFrame()
@@ -822,7 +972,10 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpSetLocalFresh:
-			localIndex := code.ReadUint8(ins[ip+1:])
+			localIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
 			val, err := vm.pop()
@@ -848,8 +1001,14 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpSetGlobalFresh:
-			globalIndex := code.ReadUint16(ins[ip+1:])
+			globalIndex, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 2
+			if int(globalIndex) >= len(vm.globals) {
+				return errInvalidBytecode("global index out of range")
+			}
 
 			val, err := vm.pop()
 			if err != nil {
@@ -867,8 +1026,14 @@ func (vm *VM) Run() error {
 			mu.Unlock()
 
 		case code.OpBoxGlobal:
-			globalIndex := code.ReadUint16(ins[ip+1:])
+			globalIndex, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 2
+			if int(globalIndex) >= len(vm.globals) {
+				return errInvalidBytecode("global index out of range")
+			}
 
 			mu := vm.ensureGlobalsMu()
 			mu.Lock()
@@ -887,11 +1052,17 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpGetBuiltin:
-			builtinIndex := code.ReadUint8(ins[ip+1:])
+			builtinIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
-			name := compiler.GetBuiltinNamesSorted()[builtinIndex]
-			definition, _ := evaluator.GetBuiltin(name)
+			names := compiler.GetBuiltinNamesSorted()
+			if int(builtinIndex) >= len(names) {
+				return errInvalidBytecode("builtin index %d out of range (%d builtins)", builtinIndex, len(names))
+			}
+			definition, _ := evaluator.GetBuiltin(names[builtinIndex])
 
 			err := vm.push(definition)
 			if err != nil {
@@ -899,22 +1070,37 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpClosure:
-			constIndex := code.ReadUint16(ins[ip+1:])
-			numFree := code.ReadUint8(ins[ip+3:])
+			constIndex, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
+			numFreeByte, operandErr := vm.readU8At(ins, ip+3)
+			if operandErr != nil {
+				return operandErr
+			}
+			numFree := int(numFreeByte)
 			vm.currentFrame().ip += 3
 
-			err := vm.pushClosure(int(constIndex), int(numFree))
+			if numFree < 0 || numFree > vm.sp {
+				return errInvalidBytecode("closure captures %d values with only %d on the stack", numFree, vm.sp)
+			}
+			err := vm.pushClosure(int(constIndex), numFree)
 			if err != nil {
 				return err
 			}
 
 		case code.OpGetFree:
-			freeIndex := code.ReadUint8(ins[ip+1:])
+			freeIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
-			currentClosure := vm.currentFrame().cl
-			err := vm.push(currentClosure.Free[freeIndex].Value)
+			freeCell, err := vm.freeCellAt(int(freeIndex))
 			if err != nil {
+				return err
+			}
+			if err := vm.push(freeCell.Value); err != nil {
 				return err
 			}
 
@@ -922,17 +1108,26 @@ func (vm *VM) Run() error {
 			// Pushes the raw *CaptureCell pointer (not the unwrapped value).
 			// Used only in the free-variable setup before OpClosure so that
 			// the inner closure can share the same heap cell as the outer one.
-			freeIndex := code.ReadUint8(ins[ip+1:])
+			freeIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
-			currentClosure := vm.currentFrame().cl
-			err := vm.push(currentClosure.Free[freeIndex]) // push the cell itself
+			freeCell, err := vm.freeCellAt(int(freeIndex))
+			if err != nil {
+				return err
+			}
+			err = vm.push(freeCell) // push the cell itself
 			if err != nil {
 				return err
 			}
 
 		case code.OpSetFree:
-			freeIndex := code.ReadUint8(ins[ip+1:])
+			freeIndex, operandErr := vm.readU8(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
 			vm.currentFrame().ip += 1
 
 			// Write the new value back into the shared mutable cell.
@@ -941,10 +1136,17 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
-			vm.currentFrame().cl.Free[freeIndex].Value = newVal
+			freeCell, err := vm.freeCellAt(int(freeIndex))
+			if err != nil {
+				return err
+			}
+			freeCell.Value = newVal
 
 		case code.OpCurrentClosure:
 			currentClosure := vm.currentFrame().cl
+			if currentClosure == nil {
+				return errInvalidBytecode("current closure is nil outside a function")
+			}
 			err := vm.push(currentClosure)
 			if err != nil {
 				return err
@@ -1055,18 +1257,42 @@ func (vm *VM) Run() error {
 			if errL != nil {
 				return errL
 			}
-			leftStr := left.(*object.String).Value
-			rightStr := right.(*object.String).Value
-			if err := vm.push(&object.String{Value: leftStr + rightStr}); err != nil {
+			leftStr, ok := left.(*object.String)
+			if !ok {
+				return errTypeMismatch("string concatenation on %s", typeName(left))
+			}
+			rightStr, ok := right.(*object.String)
+			if !ok {
+				return errTypeMismatch("string concatenation on %s", typeName(right))
+			}
+			if err := vm.push(&object.String{Value: leftStr.Value + rightStr.Value}); err != nil {
 				return err
 			}
 
 		case code.OpNativeCall:
-			nativeIndex := int(code.ReadUint16(ins[ip+1:]))
-			numArgs := int(code.ReadUint8(ins[ip+3:]))
+			nativeIndex, operandErr := vm.readU16(ins, ip)
+			if operandErr != nil {
+				return operandErr
+			}
+			numArgsByte, operandErr := vm.readU8At(ins, ip+3)
+			if operandErr != nil {
+				return operandErr
+			}
+			numArgs := int(numArgsByte)
 			vm.currentFrame().ip += 3
 
-			name := vm.constants[nativeIndex].(*object.String).Value
+			nameConst, err := vm.constantAt(int(nativeIndex))
+			if err != nil {
+				return err
+			}
+			nameStr, ok := nameConst.(*object.String)
+			if !ok {
+				return errInvalidBytecode("native call name is %s, want string", typeName(nameConst))
+			}
+			name := nameStr.Value
+			if numArgs < 0 || numArgs > vm.sp {
+				return errInvalidBytecode("native call with %d args and %d values on the stack", numArgs, vm.sp)
+			}
 			args := make([]object.Object, numArgs)
 			for i := numArgs - 1; i >= 0; i-- {
 				arg, err := vm.pop()
@@ -1133,6 +1359,9 @@ func (vm *VM) Run() error {
 					return vmErr
 				}
 			}
+
+		default:
+			return errInvalidBytecode("unknown opcode %d", int(op))
 		}
 	}
 
@@ -1403,6 +1632,9 @@ func (vm *VM) executeMinusOperator() error {
 	if err != nil {
 		return err
 	}
+	if operand == nil {
+		return errTypeMismatch("negation of nil")
+	}
 
 	switch operand := operand.(type) {
 	case *object.Integer:
@@ -1426,6 +1658,9 @@ func numericValue(value object.Object) float64 {
 }
 
 func (vm *VM) executeIndexExpression(left, index object.Object) error {
+	if left == nil || index == nil {
+		return errTypeMismatch("indexing with nil operand")
+	}
 	switch {
 	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
 		return vm.executeArrayIndex(left, index)
@@ -1454,6 +1689,9 @@ func (vm *VM) executeIndexExpression(left, index object.Object) error {
 // the same one, and the VM therefore answered null for a dot access the
 // evaluator refused — the two engines disagreed about the same program.
 func (vm *VM) executeGetField(left, member object.Object) error {
+	if left == nil || member == nil {
+		return errTypeMismatch("member access with nil operand")
+	}
 	name, ok := member.(*object.String)
 	if !ok {
 		return errTypeMismatch("a field name must be a string, got %s", member.Type())
@@ -1503,6 +1741,9 @@ func (vm *VM) executeStringIndex(str, index object.Object) error {
 }
 
 func (vm *VM) executeSetIndex(target, index, val object.Object) error {
+	if target == nil || index == nil {
+		return errTypeMismatch("index-assignment with nil operand")
+	}
 	switch t := target.(type) {
 	case *object.Array:
 		idxObj, ok := index.(*object.Integer)
@@ -1593,7 +1834,13 @@ func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
 }
 
 func (vm *VM) executeCall(numArgs int) error {
+	if numArgs < 0 || vm.sp-1-numArgs < 0 {
+		return errInvalidBytecode("call with %d args and %d values on the stack", numArgs, vm.sp)
+	}
 	callee := vm.stack[vm.sp-1-numArgs]
+	if callee == nil {
+		return errInvalidBytecode("call target is nil")
+	}
 	switch callee := callee.(type) {
 	case *object.Closure:
 		return vm.callClosure(callee, numArgs)
@@ -1938,7 +2185,10 @@ type uncategorisedError struct {
 func (e uncategorisedError) Error() string { return e.message }
 
 func (vm *VM) pushClosure(constIndex, numFree int) error {
-	constant := vm.constants[constIndex]
+	constant, err := vm.constantAt(constIndex)
+	if err != nil {
+		return err
+	}
 	function, ok := constant.(*object.CompiledFunction)
 	if !ok {
 		return errInvalidBytecode("not a function: %+v", constant)
@@ -2017,9 +2267,19 @@ func DisassembleWithConstants(ins code.Instructions, constants []object.Object) 
 		def, err := code.Lookup(ins[i])
 		if err != nil {
 			fmt.Fprintf(&out, "ERROR: %s\n", err)
+			i++
 			continue
 		}
 
+		need := 0
+		for _, w := range def.OperandWidths {
+			need += w
+		}
+		if len(ins)-(i+1) < need {
+			fmt.Fprintf(&out, "ERROR: %s at %d is truncated: need %d operand bytes, have %d\n",
+				def.Name, i, need, len(ins)-(i+1))
+			break
+		}
 		operands, read := code.ReadOperands(def, ins[i+1:])
 
 		operandText := make([]string, len(operands))

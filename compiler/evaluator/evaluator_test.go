@@ -130,6 +130,21 @@ let name = "Onuron";
 	}
 }
 
+func TestEscapedBackslashBeforeParen(t *testing.T) {
+	// `\\(` is an escaped backslash plus a literal paren, not an
+	// interpolation: the value keeps one backslash and no error is raised.
+	// A real interpolation later in the same string still expands.
+	input := []byte("let name = \"Onuron\";\n\"a\\\\(b \\(name)\";\n")
+	evaluated := testEval(string(input))
+	str, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("object is not String. got=%T (%+v)", evaluated, evaluated)
+	}
+	if str.Value != "a\\(b Onuron" {
+		t.Errorf("String has wrong value. got=%q", str.Value)
+	}
+}
+
 func testIntegerObject(t *testing.T, obj object.Object, expected int64) bool {
 	result, ok := obj.(*object.Integer)
 	if !ok {

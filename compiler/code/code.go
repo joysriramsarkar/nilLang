@@ -15,10 +15,24 @@ func (ins Instructions) String() string {
 	for i < len(ins) {
 		def, err := Lookup(ins[i])
 		if err != nil {
+			// An undefined opcode is one corrupt byte, not an infinite loop:
+			// report it and step past it.
 			fmt.Fprintf(&out, "ERROR: %s\n", err)
+			i++
 			continue
 		}
 
+		// A valid opcode with missing operand bytes is truncated input, not
+		// a zero operand: report it instead of indexing past the end.
+		need := 0
+		for _, w := range def.OperandWidths {
+			need += w
+		}
+		if len(ins)-(i+1) < need {
+			fmt.Fprintf(&out, "ERROR: %s at %d is truncated: need %d operand bytes, have %d\n",
+				def.Name, i, need, len(ins)-(i+1))
+			break
+		}
 		operands, read := ReadOperands(def, ins[i+1:])
 
 		fmt.Fprintf(&out, "%04d %s\n", i, ins.fmtInstruction(def, operands))
@@ -205,6 +219,15 @@ func Make(op Opcode, operands ...int) []byte {
 		return []byte{}
 	}
 
+	// Operand count and range are compiler bugs, and a compiler bug must fail
+	// loudly at compile time. The alternative — indexing past OperandWidths
+	// or silently wrapping 65536 to 0 — is a miscompiled program that fails
+	// somewhere else entirely.
+	if len(operands) != len(def.OperandWidths) {
+		panic(fmt.Sprintf("code.Make: %s wants %d operands, got %d",
+			def.Name, len(def.OperandWidths), len(operands)))
+	}
+
 	instructionLen := 1
 	for _, w := range def.OperandWidths {
 		instructionLen += w
@@ -218,9 +241,20 @@ func Make(op Opcode, operands ...int) []byte {
 		width := def.OperandWidths[i]
 		switch width {
 		case 1:
+			if o < 0 || o > 0xFF {
+				panic(fmt.Sprintf("code.Make: %s operand %d value %d does not fit in 1 byte",
+					def.Name, i, o))
+			}
 			instruction[offset] = byte(o)
 		case 2:
+			if o < 0 || o > 0xFFFF {
+				panic(fmt.Sprintf("code.Make: %s operand %d value %d does not fit in 2 bytes",
+					def.Name, i, o))
+			}
 			binary.BigEndian.PutUint16(instruction[offset:], uint16(o))
+		default:
+			panic(fmt.Sprintf("code.Make: %s has unsupported operand width %d",
+				def.Name, width))
 		}
 		offset += width
 	}

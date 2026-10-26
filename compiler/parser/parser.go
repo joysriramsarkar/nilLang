@@ -93,6 +93,14 @@ type Parser struct {
 	// a flag because a condition can contain another condition.
 	conditionDepth int
 
+	// depth counts nested parseExpression/parseStatement calls. A hostile or
+	// generated file with millions of nested parens, blocks or prefix
+	// operators would otherwise exhaust the goroutine stack, which is a fatal
+	// crash no recover can catch. The limit is high enough that no
+	// hand-written program reaches it; flat operator chains do not accumulate
+	// depth at one precedence level.
+	depth int
+
 	prefixParseFns map[token.TokenType]prefixParseFn
 	infixParseFns  map[token.TokenType]infixParseFn
 }
@@ -370,7 +378,35 @@ func isNilStatement(s ast.Statement) bool {
 	return v.Kind() == reflect.Ptr && v.IsNil()
 }
 
+// maxParseDepth caps expression and statement nesting. Past this point the
+// input is treated as hostile or generated, and parsing stops with an error
+// instead of growing the stack until the process dies. Nested parens and
+// blocks cost two to three levels each, so this allows tens of thousands of
+// real nesting levels — flat operator chains and long prefix runs never come
+// close — while keeping worst-case stack growth far below the runtime limit.
+const maxParseDepth = 100000
+
+func (p *Parser) enterDepth() bool {
+	p.depth++
+	if p.depth > maxParseDepth {
+		p.depth--
+		return false
+	}
+	return true
+}
+
+func (p *Parser) leaveDepth() {
+	p.depth--
+}
+
 func (p *Parser) parseStatement() ast.Statement {
+	if !p.enterDepth() {
+		p.recordError(CodeSyntaxError, p.curToken,
+			"expression nesting too deep",
+			"the parser gave up after 100000 nested levels: split the expression or check for a runaway generator")
+		return nil
+	}
+	defer p.leaveDepth()
 	switch p.curToken.Type {
 	case token.EXPORT, token.PRIVATE:
 		return p.parseExportStatement()
@@ -790,6 +826,12 @@ func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
 
 	p.nextToken()
 
+	// A bare `return`, `return;` or `return` at the end of a block returns
+	// with no value rather than being a syntax error: the value is Null.
+	if p.curTokenIs(token.SEMICOLON) || p.curTokenIs(token.RBRACE) || p.curTokenIs(token.EOF) {
+		return stmt
+	}
+
 	stmt.ReturnValue = p.parseExpression(LOWEST)
 
 	if p.peekTokenIs(token.SEMICOLON) {
@@ -1013,6 +1055,13 @@ func (p *Parser) parseExpressionStatement() ast.Statement {
 }
 
 func (p *Parser) parseExpression(precedence int) ast.Expression {
+	if !p.enterDepth() {
+		p.recordError(CodeSyntaxError, p.curToken,
+			"expression nesting too deep",
+			"the parser gave up after 100000 nested levels: split the expression or check for a runaway generator")
+		return nil
+	}
+	defer p.leaveDepth()
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
 		p.noPrefixParseFnError(p.curToken.Type)
@@ -1076,18 +1125,71 @@ func (p *Parser) parseKeywordIdentifier() ast.Expression {
 func (p *Parser) parseIntegerLiteral() ast.Expression {
 	lit := &ast.IntegerLiteral{Token: p.curToken}
 
-	// Bengali (০-৯) and fullwidth digits are accepted, as are '_' separators and
-	// 0x/0o/0b radix prefixes. See compiler/parser/numerals.go.
+	// ASCII and Unicode decimal digits (Bengali ০-৯, fullwidth, Devanagari,
+	// Arabic-Indic and the rest of Nd) are accepted, as are '_' separators
+	// and 0x/0o/0b radix prefixes. See compiler/parser/numerals.go.
 	value, err := parseIntLiteral(p.curToken.Literal)
 	if err != nil {
 		p.recordError(CodeUnexpectedToken, p.curToken,
 			fmt.Sprintf("could not parse %q as integer", p.curToken.Literal),
-			"an integer literal may use Bengali or ASCII digits, '_' separators, and a 0x/0o/0b radix prefix")
+			"an integer literal may use Unicode decimal digits, '_' separators, and a 0x/0o/0b radix prefix")
 		return nil
 	}
 
+	p.checkRadixAdjacency(p.curToken.Literal)
+
 	lit.Value = value
 	return lit
+}
+
+// checkRadixAdjacency rejects a radix literal with a digit of the wrong base
+// glued to it. The lexer ends `0b102` at `0b10` and `0o89` at `0`, leaving a
+// stray token that would otherwise parse as a second statement and silently
+// change the program's meaning. Adjacency is what distinguishes a mistake
+// from two statements: `0b10 2` with a space stays two statements.
+func (p *Parser) checkRadixAdjacency(lit string) {
+	rs := []rune(lit)
+	if len(rs) == 0 {
+		return
+	}
+	radixShaped := len(rs) > 1 && isRadixMarker(rs[1])
+	loneZero := len(rs) == 1 && isZeroDigit(rs[0])
+	if !radixShaped && !loneZero {
+		return
+	}
+	if p.peekToken.Line != p.curToken.Line {
+		return
+	}
+	if p.peekToken.Column != p.curToken.Column+len(rs) {
+		return
+	}
+	switch p.peekToken.Type {
+	case token.INT, token.FLOAT, token.IDENT:
+		if radixShaped {
+			p.recordError(CodeSyntaxError, p.peekToken,
+				fmt.Sprintf("malformed number: %q is not a valid digit here", p.peekToken.Literal),
+				fmt.Sprintf("in %q only the base's own digits may follow the prefix", lit))
+		} else {
+			p.recordError(CodeSyntaxError, p.peekToken,
+				fmt.Sprintf("unexpected %q directly after a number", p.peekToken.Literal),
+				"leave a space between two values, or finish the radix literal (0x/0o/0b)")
+		}
+	}
+}
+
+// isRadixMarker reports whether r can introduce a base-prefixed literal.
+func isRadixMarker(r rune) bool {
+	switch r {
+	case 'x', 'X', 'b', 'B', 'o', 'O':
+		return true
+	}
+	return false
+}
+
+// isZeroDigit reports whether r is a zero in any supported script.
+func isZeroDigit(r rune) bool {
+	v, ok := lexer.DigitValue(r)
+	return ok && v == 0
 }
 
 func (p *Parser) parseFloatLiteral() ast.Expression {
@@ -1115,43 +1217,56 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	return p.parseStringTemplate(rawValue)
 }
 
+// unescapeTemplateLiteral collapses the `\\` runs the lexer preserves
+// before `(` back to single backslashes. Every other escape was already
+// processed by the lexer, so only these runs can remain doubled.
+func unescapeTemplateLiteral(lit string) string {
+	if !strings.Contains(lit, "\\\\") {
+		return lit
+	}
+	return strings.ReplaceAll(lit, "\\\\", "\\")
+}
+
 func (p *Parser) parseStringTemplate(raw string) ast.Expression {
 	template := &ast.StringTemplate{Token: p.curToken, Parts: []ast.TemplatePart{}}
 
 	i := 0
 	for i < len(raw) {
-		interpStart := strings.Index(raw[i:], "\\(")
-		if interpStart == -1 {
+		// The lexer keeps `\\` before `(` doubled so the scan below can
+		// tell an escaped backslash from an interpolation opener, and it
+		// rejects strings whose interpolations never balance. The scan
+		// still fails on programmatically built fragments, so the
+		// fallback stays as a safety net for those.
+		marker := lexer.FindInterpolationStart(raw, i)
+		if marker == -1 {
 			if i < len(raw) {
 				template.Parts = append(template.Parts, ast.TemplatePart{
 					IsExpression: false,
-					Literal:      raw[i:],
+					Literal:      unescapeTemplateLiteral(raw[i:]),
 				})
 			}
 			break
 		}
+		interpStart := marker - i
 
 		if interpStart > 0 {
 			template.Parts = append(template.Parts, ast.TemplatePart{
 				IsExpression: false,
-				Literal:      raw[i : i+interpStart],
+				Literal:      unescapeTemplateLiteral(raw[i : i+interpStart]),
 			})
 		}
 
-		exprStart := i + interpStart + 2
-		parenDepth := 1
-		exprEnd := exprStart
-
-		for exprEnd < len(raw) && parenDepth > 0 {
-			switch raw[exprEnd] {
-			case '(':
-				parenDepth++
-			case ')':
-				parenDepth--
-			}
-			if parenDepth > 0 {
-				exprEnd++
-			}
+		exprStart := marker + 2
+		exprEnd, ok := lexer.ScanBalanced(raw, exprStart)
+		if !ok {
+			p.recordError(CodeSyntaxError, p.curToken,
+				"unbalanced parentheses in string interpolation",
+				"every \\( opened inside a template needs its closing \\)")
+			template.Parts = append(template.Parts, ast.TemplatePart{
+				IsExpression: false,
+				Literal:      raw[marker:],
+			})
+			break
 		}
 
 		exprStr := raw[exprStart:exprEnd]
@@ -1436,6 +1551,14 @@ func (p *Parser) parseRequiresClause() ([]string, bool) {
 
 func (p *Parser) parseFunctionLiteral() ast.Expression {
 	lit := &ast.FunctionLiteral{Token: p.curToken}
+
+	// A function literal opens a fresh expression context: a `{` inside it
+	// belongs to a struct literal or a nested body, never to an enclosing
+	// `while`/`if` condition. Without the reset, a literal in a condition
+	// swallows its own body as the loop body.
+	savedDepth := p.conditionDepth
+	p.conditionDepth = 0
+	defer func() { p.conditionDepth = savedDepth }()
 
 	if p.peekTokenIs(token.IDENT) {
 		p.nextToken()
@@ -1728,6 +1851,14 @@ func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 
 func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
 	list := []ast.Expression{}
+
+	// An argument or element list is its own expression context, the same as
+	// a function literal: a `{` inside it belongs to a struct literal or a
+	// nested body, never to an enclosing condition. The depth is restored
+	// before the closing bracket, so a trailing `{` still opens the loop body.
+	savedDepth := p.conditionDepth
+	p.conditionDepth = 0
+	defer func() { p.conditionDepth = savedDepth }()
 
 	if p.peekTokenIs(end) {
 		p.nextToken()

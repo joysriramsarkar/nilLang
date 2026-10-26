@@ -16,6 +16,14 @@ var bytecodeMagic = [4]byte{'N', 'A', 'B', 'C'}
 const (
 	bytecodeVersion uint16 = 2
 	maxImageItems          = 1 << 24
+	// maxConstantCount bounds the constant pool separately from blob sizes: a
+	// four-byte count otherwise commits a ~256 MiB slice before any element
+	// is validated. A million constants is already absurd for this format.
+	maxConstantCount = 1 << 20
+	// maxFunctionSlots bounds decoded frame metadata. The VM rejects frames
+	// larger than its stack at call time; the decoder refuses absurd values
+	// earlier so a crafted image cannot even name them.
+	maxFunctionSlots = 1 << 16
 
 	constantInteger  byte = 1
 	constantFloat    byte = 2
@@ -74,6 +82,9 @@ func DecodeBytecode(image []byte) (*corecompiler.Bytecode, error) {
 	constantCount, err := readLength(reader)
 	if err != nil {
 		return nil, fmt.Errorf("decode constants: %w", err)
+	}
+	if constantCount > maxConstantCount {
+		return nil, fmt.Errorf("constant count %d exceeds limit %d", constantCount, maxConstantCount)
 	}
 	constants := make([]object.Object, constantCount)
 	for index := range constants {
@@ -168,6 +179,9 @@ func decodeConstant(reader io.Reader, version uint16) (object.Object, error) {
 		}
 		if locals < 0 || parameters < 0 {
 			return nil, fmt.Errorf("negative function metadata")
+		}
+		if locals > maxFunctionSlots || parameters > maxFunctionSlots {
+			return nil, fmt.Errorf("function metadata exceeds the %d slot limit", maxFunctionSlots)
 		}
 		fn := &object.CompiledFunction{
 			Instructions:  instructions,

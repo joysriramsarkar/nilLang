@@ -113,10 +113,10 @@ component state     render    emit      on        build     style
 - **Null**: `null`.
 - **Strings**: Enclosed in double quotes `"..."`. Supports escape sequences (`\n`, `\t`, `\"`, `\\`) and string interpolation `\(expression)`.
 
-  *Known limitation:* a string literal cannot appear inside an interpolation,
-  because the lexer terminates a string at the first unescaped quote. Write
-  `let parts = ["a", "b"]; "\(join(parts, "-"))"` rather than
-  `"\(join(["a", "b"], "-"))"`.
+  A string literal may appear inside an interpolation: the lexer tracks
+  interpolation parentheses and quotes, so `"\(join(["a", "b"], "-"))"`
+  evaluates to `"a-b"`. An even-length backslash run before `(` is an escaped
+  backslash plus a literal paren, not an interpolation.
 
 See `SYNTACTIC_DIAGNOSTICS.md` for the folding rules and their scope.
 

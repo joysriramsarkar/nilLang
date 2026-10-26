@@ -770,6 +770,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpAwait)
 
 	case *ast.ReturnStatement:
+		if node.ReturnValue == nil {
+			c.emit(code.OpReturn)
+			break
+		}
 		err := c.Compile(node.ReturnValue)
 		if err != nil {
 			return err

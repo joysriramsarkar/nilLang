@@ -93,9 +93,12 @@ type User struct {
 	ID        string    `json:"id"`
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
-	APIKey    string    `json:"api_key"`
+	APIKey    string    `json:"api_key,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	IsAdmin   bool      `json:"is_admin"`
+	// PasswordHash and PasswordSalt are never serialized.
+	PasswordHash string `json:"-"`
+	PasswordSalt string `json:"-"`
 }
 
 // VersionInfo represents version information

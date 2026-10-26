@@ -464,6 +464,36 @@ static void test_collector(void) {
   check_text("a pinned value survives the allocation beside it", copy, "held-copy");
   nil_gc_unpin_all();
   nil_gc_collect();
+
+  /* An allocation that trips the collection threshold keeps the object it just
+   * made. The allocator used to link the object first and collect second, so
+   * the sweep freed the newborn while the caller still held it and the next
+   * write landed in freed memory. The first loop leaves only garbage behind,
+   * which resets the threshold to its floor; the second loop then roots
+   * exactly enough live objects that one allocation trips a collection while
+   * the newborn is still unreferenced. That member must still be valid. */
+  for (int i = 0; i < 100001; i++) {
+    (void)nil_array_new(0);
+  }
+  NilValue herd_slot = NIL_TAG_NIL;
+  nil_gc_root_register(&herd_slot);
+  herd_slot = nil_array_new(0);
+  for (int i = 0; i < 100000; i++) {
+    nil_array_push(herd_slot, nil_array_new(0));
+  }
+  int64_t survivors = 0;
+  int64_t herd_len = nil_array_len(herd_slot);
+  for (int64_t i = 0; i < herd_len; i++) {
+    NilValue member = nil_array_get(herd_slot, nil_int_new(i));
+    if (nil_object_kind(member) == NIL_OBJ_ARRAY && nil_array_len(member) == 0) {
+      survivors++;
+    }
+  }
+  check("the allocation that tripped the threshold survived its own collection",
+        herd_len == 100000 && survivors == 100000);
+  nil_gc_root_unregister(&herd_slot);
+  herd_slot = NIL_TAG_NIL;
+  nil_gc_collect();
 }
 /* ── Indexing ─────────────────────────────────────────────────────────── */
 

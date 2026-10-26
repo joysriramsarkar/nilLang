@@ -9,7 +9,17 @@ import (
 	"time"
 
 	"github.com/joysriramsarkar/nilLang/pkg/bundle"
+	"github.com/joysriramsarkar/nilLang/pkg/signing"
 )
+
+// unsignedTestConfig returns a verifier configuration that accepts unsigned
+// packages. The default configuration requires signatures, so tests that use
+// unsigned fixtures must opt out explicitly rather than inheriting it.
+func unsignedTestConfig() *Config {
+	cfg := DefaultConfig()
+	cfg.VerifySignatures = false
+	return cfg
+}
 
 // The verifier's job is not only to say "this is a zip with a manifest". It is
 // to say whether the package satisfies the ecosystem contract, and to refuse
@@ -72,7 +82,7 @@ func contractManifest(appName, version, targets, permissions string) string {
 func TestVerifyBundleAcceptsAConformingPackage(t *testing.T) {
 	path := writeBundle(t, contractManifest("org.onuron.notes", "1.2.0", `["onuron"]`, `["stdout"]`), nil)
 
-	vr, err := NewVerifier(DefaultConfig()).VerifyBundle(path)
+	vr, err := NewVerifier(unsignedTestConfig()).VerifyBundle(path)
 	if err != nil {
 		t.Fatalf("verify returned an error instead of a result: %v", err)
 	}
@@ -143,7 +153,7 @@ func TestVerifyBundleRefusesWhatTheContractRefuses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeBundle(t, tc.manifest, tc.extra)
 
-			vr, err := NewVerifier(DefaultConfig()).VerifyBundle(path)
+			vr, err := NewVerifier(unsignedTestConfig()).VerifyBundle(path)
 			if err != nil {
 				t.Fatalf("verify returned an error instead of a result: %v", err)
 			}
@@ -174,7 +184,7 @@ func TestVerifyBundleDetectsTamperedPayload(t *testing.T) {
 		map[string]string{"resources/secret.txt": "original"},
 	)
 
-	before, err := NewVerifier(DefaultConfig()).VerifyBundle(path)
+	before, err := NewVerifier(unsignedTestConfig()).VerifyBundle(path)
 	if err != nil || !before.Valid {
 		t.Fatalf("the untouched package was not valid: %v %v", before, err)
 	}
@@ -213,7 +223,7 @@ func TestVerifyBundleDetectsTamperedPayload(t *testing.T) {
 	zw.Close()
 	f.Close()
 
-	after, err := NewVerifier(DefaultConfig()).VerifyBundle(repacked)
+	after, err := NewVerifier(unsignedTestConfig()).VerifyBundle(repacked)
 	if err != nil {
 		t.Fatalf("verify returned an error instead of a result: %v", err)
 	}
@@ -236,7 +246,7 @@ func TestVerifyBundleRejectsUnknownFormatVersionBeforeParsing(t *testing.T) {
 		strings.Replace(contractManifest("org.onuron.x", "1.0.0", `["onuron"]`, `["stdout"]`), `"format_version": 1`, `"format_version": 7`, 1),
 		nil)
 
-	vr, err := NewVerifier(DefaultConfig()).VerifyBundle(path)
+	vr, err := NewVerifier(unsignedTestConfig()).VerifyBundle(path)
 	if err != nil {
 		t.Fatalf("verify returned an error instead of a result: %v", err)
 	}
@@ -247,7 +257,7 @@ func TestVerifyBundleRejectsUnknownFormatVersionBeforeParsing(t *testing.T) {
 
 func TestVerificationResultStringMentionsContract(t *testing.T) {
 	path := writeBundle(t, contractManifest("org.onuron.notes", "1.2.0", `["onuron"]`, `["root"]`), nil)
-	vr, err := NewVerifier(DefaultConfig()).VerifyBundle(path)
+	vr, err := NewVerifier(unsignedTestConfig()).VerifyBundle(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,5 +267,76 @@ func TestVerificationResultStringMentionsContract(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "capability") {
 		t.Errorf("the rendered result does not name the refused capability:\n%s", rendered)
+	}
+}
+
+// TestVerifyBundleRefusesUnsignedWhenSignaturesRequired pins the
+// VerifySignatures configuration to behaviour: the default configuration
+// requires a signature, so an unsigned package is refused rather than waved
+// through.
+func TestVerifyBundleRefusesUnsignedWhenSignaturesRequired(t *testing.T) {
+	path := writeBundle(t, contractManifest("org.onuron.notes", "1.2.0", `["onuron"]`, `["stdout"]`), nil)
+
+	vr, err := NewVerifier(DefaultConfig()).VerifyBundle(path)
+	if err != nil {
+		t.Fatalf("verify returned an error instead of a result: %v", err)
+	}
+	if vr.Valid {
+		t.Fatal("an unsigned package was accepted with VerifySignatures=true")
+	}
+	if vr.ContractOK {
+		t.Error("ContractOK is true for an unsigned package under TrustRequired")
+	}
+	joined := strings.Join(vr.Errors, "\n")
+	if !strings.Contains(joined, "signature") {
+		t.Errorf("expected a refusal mentioning the missing signature, got:\n%s", joined)
+	}
+}
+
+// TestVerifyBundleAcceptsSidecarSignedPackage pins the other half: a package
+// whose sidecar .sig verifies against a trusted key installs cleanly even
+// with VerifySignatures=true.
+func TestVerifyBundleAcceptsSidecarSignedPackage(t *testing.T) {
+	path := writeBundle(t, contractManifest("org.onuron.notes", "1.2.0", `["onuron"]`, `["stdout"]`), nil)
+
+	kp, ki, err := signing.GenerateKeyPair("tester", "tester@example.com", "signing")
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+	sig, err := signing.NewSigner(kp, ki).SignFile(path)
+	if err != nil {
+		t.Fatalf("SignFile failed: %v", err)
+	}
+	sigJSON, err := sig.ToJSON()
+	if err != nil {
+		t.Fatalf("ToJSON failed: %v", err)
+	}
+	if err := os.WriteFile(path+".sig", sigJSON, 0644); err != nil {
+		t.Fatalf("writing the sidecar failed: %v", err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.TrustedKeys[kp.KeyID] = kp.GetPublicKeyHex()
+	vr, err := NewVerifier(cfg).VerifyBundle(path)
+	if err != nil {
+		t.Fatalf("verify returned an error instead of a result: %v", err)
+	}
+	if !vr.Valid {
+		t.Fatalf("a sidecar-signed package was refused: %v", vr.Errors)
+	}
+
+	// A tampered package under the same signature must be refused.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.Write([]byte("tamper"))
+	_ = f.Close()
+	after, err := NewVerifier(cfg).VerifyBundle(path)
+	if err != nil {
+		t.Fatalf("verify returned an error instead of a result: %v", err)
+	}
+	if after.Valid {
+		t.Fatal("a tampered package passed with a stale signature")
 	}
 }

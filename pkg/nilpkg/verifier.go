@@ -117,14 +117,10 @@ func (v *Verifier) VerifyBundle(path string) (*VerificationResult, error) {
 
 	result.Manifest = manifest
 
-	// Contract validation. A bundle the contract cannot be read for is
-	// refused: a verifier that skips this because the contract failed to load
-	// is the hole the contract was added to close.
-	contractResult := verifyAgainstContract(path, reader, v.trustStore())
-	result.ContractOK = contractResult.OK
-	result.Errors = append(result.Errors, contractResult.Errors...)
-
-	// Verify sidecar signature (<bundle>.sig) when present on disk.
+	// Verify sidecar signature (<bundle>.sig) when present on disk. The
+	// sidecar is the v1 signature mechanism: it binds the whole-file checksum
+	// cryptographically, which the v1 embedded manifest mark cannot do.
+	sidecarTrusted := false
 	sigPath := path + ".sig"
 	if sigBytes, sigErr := os.ReadFile(sigPath); sigErr == nil {
 		sig, parseErr := signing.SignatureFromJSON(sigBytes)
@@ -136,8 +132,30 @@ func (v *Verifier) VerifyBundle(path string) (*VerificationResult, error) {
 			result.Errors = append(result.Errors, fmt.Sprintf("untrusted signing key: %s", sig.SignerKeyID))
 		} else if verifyErr := signing.VerifySignature(tk.PublicKeyHex, sig); verifyErr != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("invalid package signature: %v", verifyErr))
+		} else {
+			sidecarTrusted = true
 		}
 	}
+
+	// Contract validation. A bundle the contract cannot be read for is
+	// refused: a verifier that skips this because the contract failed to load
+	// is the hole the contract was added to close.
+	//
+	// The trust posture comes from the configuration instead of a hardcoded
+	// constant: VerifySignatures=true means TrustRequired, so an unsigned
+	// package is refused rather than waved through. A cryptographically
+	// verified sidecar already satisfies trust, so the contract run does not
+	// demand an embedded signature on top of it.
+	trust := contract.TrustIfPresent
+	if v != nil && v.config != nil && v.config.VerifySignatures {
+		trust = contract.TrustRequired
+	}
+	if sidecarTrusted {
+		trust = contract.TrustIfPresent
+	}
+	contractResult := verifyAgainstContract(path, reader, v.trustStore(), trust)
+	result.ContractOK = contractResult.OK
+	result.Errors = append(result.Errors, contractResult.Errors...)
 
 	result.Valid = len(result.Errors) == 0
 
@@ -188,7 +206,7 @@ func (v *Verifier) trustStore() contract.TrustStore {
 }
 
 // verifyAgainstContract runs the seven contract stages over a bundle.
-func verifyAgainstContract(path string, reader *bundle.Reader, ts contract.TrustStore) contractCheck {
+func verifyAgainstContract(path string, reader *bundle.Reader, ts contract.TrustStore, trust contract.RequireTrust) contractCheck {
 	var out contractCheck
 
 	set, err := contract.Load()
@@ -218,7 +236,7 @@ func verifyAgainstContract(path string, reader *bundle.Reader, ts contract.Trust
 
 	_, vs := set.ValidateJSON(manifestJSON, contract.ValidateOptions{
 		Archive:    contract.FileArchive(entries),
-		Trust:      contract.TrustIfPresent,
+		Trust:      trust,
 		TrustStore: ts,
 	})
 	out.OK = true

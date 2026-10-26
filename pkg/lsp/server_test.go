@@ -16,6 +16,93 @@ func writeLSPMessage(w io.Writer, payload string) {
 	fmt.Fprintf(w, "Content-Length: %d\r\n\r\n%s", len(payload), payload)
 }
 
+func TestFramingRefusesOversizeLength(t *testing.T) {
+	clientToServerR, clientToServerW := io.Pipe()
+	serverToClientR, serverToClientW := io.Pipe()
+	defer serverToClientR.Close()
+
+	server := NewServer(clientToServerR, serverToClientW)
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- server.Serve()
+	}()
+
+	fmt.Fprintf(clientToServerW, "Content-Length: %d\r\n\r\n", maxMessageBytes+1)
+	select {
+	case err := <-serverDone:
+		if err == nil {
+			t.Fatal("an over-limit Content-Length was accepted")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not refuse the over-limit Content-Length")
+	}
+}
+
+func TestFramingRefusesMissingLength(t *testing.T) {
+	clientToServerR, clientToServerW := io.Pipe()
+	serverToClientR, serverToClientW := io.Pipe()
+	defer serverToClientR.Close()
+
+	server := NewServer(clientToServerR, serverToClientW)
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- server.Serve()
+	}()
+
+	fmt.Fprintf(clientToServerW, "X-Other: 1\r\n\r\n{}")
+	select {
+	case err := <-serverDone:
+		if err == nil {
+			t.Fatal("a missing Content-Length was accepted")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not refuse the missing Content-Length")
+	}
+}
+
+func TestFramingReportsParseErrorAndContinues(t *testing.T) {
+	clientToServerR, clientToServerW := io.Pipe()
+	serverToClientR, serverToClientW := io.Pipe()
+
+	server := NewServer(clientToServerR, serverToClientW)
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- server.Serve()
+	}()
+	clientReader := bufio.NewReader(serverToClientR)
+
+	writeLSPMessage(clientToServerW, `not json at all`)
+	respBytes, err := readLSPMessage(clientReader)
+	if err != nil {
+		t.Fatalf("no parse-error response: %v", err)
+	}
+	var resp Response
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		t.Fatalf("parse-error response is not JSON: %v", err)
+	}
+	if resp.Error == nil || resp.Error.Code != -32700 {
+		t.Fatalf("expected a -32700 parse error, got %+v", resp.Error)
+	}
+
+	// The connection is still usable: a valid request is answered.
+	writeLSPMessage(clientToServerW, `{"jsonrpc":"2.0","id":9,"method":"initialize","params":{}}`)
+	respBytes, err = readLSPMessage(clientReader)
+	if err != nil {
+		t.Fatalf("server did not answer after a parse error: %v", err)
+	}
+	var initResp Response
+	if err := json.Unmarshal(respBytes, &initResp); err != nil || initResp.Error != nil {
+		t.Fatalf("initialize after parse error failed: %v %+v", err, initResp.Error)
+	}
+
+	writeLSPMessage(clientToServerW, `{"jsonrpc":"2.0","method":"exit"}`)
+	select {
+	case <-serverDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not exit")
+	}
+}
+
 // Helper to read an LSP message
 func readLSPMessage(br *bufio.Reader) ([]byte, error) {
 	contentLength := 0

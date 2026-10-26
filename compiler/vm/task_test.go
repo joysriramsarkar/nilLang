@@ -71,9 +71,10 @@ func TestOpTaskFaultCancelsSiblings(t *testing.T) {
 }
 
 // TestOpTaskPanicBecomesFault feeds the child a closure whose first
-// instruction indexes past the constant pool: a genuine Go panic inside the
+// instruction indexes past the constant pool: invalid bytecode inside the
 // child's Run, which must surface as a TaskFaulted fault rather than crash
-// the test process (L6.5).
+// the test process (L6.5). The child reports a typed error, not a panic.
+
 func TestOpTaskPanicBecomesFault(t *testing.T) {
 	badFn := &object.CompiledFunction{
 		Instructions:  code.Instructions{byte(code.OpConstant), 0x00, 0x63},
@@ -98,8 +99,8 @@ func TestOpTaskPanicBecomesFault(t *testing.T) {
 	if !ok || category != object.CategoryTaskFaulted {
 		t.Fatalf("category = %q, want TaskFaulted (got %v)", category, err)
 	}
-	if !strings.Contains(err.Error(), "panicked") {
-		t.Errorf("fault should report the panic, got %q", err.Error())
+	if !strings.Contains(err.Error(), "constant index 99") {
+		t.Errorf("fault should name the bad constant index, got %q", err.Error())
 	}
 }
 

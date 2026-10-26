@@ -61,6 +61,19 @@ func TestPublishInstallVerifyRoundTrip(t *testing.T) {
 	if err := signing.VerifySignature(kp.GetPublicKeyHex(), sig); err != nil {
 		t.Fatalf("signature verify failed: %v", err)
 	}
+	// The sidecar travels with the bundle, and the key is trusted: the
+	// installer refuses unsigned packages with VerifySignatures=true.
+	sigJSON, err := sig.ToJSON()
+	if err != nil {
+		t.Fatalf("signature serialisation failed: %v", err)
+	}
+	if err := os.WriteFile(bundlePath+".sig", sigJSON, 0644); err != nil {
+		t.Fatalf("writing the sidecar signature failed: %v", err)
+	}
+	if cfg.TrustedKeys == nil {
+		cfg.TrustedKeys = map[string]string{}
+	}
+	cfg.TrustedKeys[kp.KeyID] = kp.GetPublicKeyHex()
 
 	// 4. Publish: record the signed artefact in the registry index.
 	reg, err := NewRegistry(cfg)
