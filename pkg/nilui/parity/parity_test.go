@@ -74,9 +74,14 @@ func TestParity(t *testing.T) {
 // TestPerfBudget is the CI perf gate (U14.10): full-frame raster + layout
 // workload must fit the 60Hz budget at p95.
 //
-// The budget scales under `-race` (see perf_scale_race.go): instrumented
-// timing cannot assert native frame times, but it can still catch a large
-// regression, and the raw numbers are always logged so the trend is visible.
+// The budget is enforced only on non-race runs. Under `-race` the detector
+// instruments every memory access (40x+ on this rasterizer's pixel loops on
+// loaded CI machines, far beyond the old 10x allowance), so a wall-clock
+// assertion there fails a fast renderer for being observed slowly. The race
+// run still executes every frame and logs the raw numbers, so a functional
+// regression still fails and the trend stays visible; the strict budget is
+// asserted by every non-race run — including CI on Windows, which runs
+// without `-race`.
 func TestPerfBudget(t *testing.T) {
 	budget := time.Duration(float64(render.Budget60Hz) * perfBudgetScale())
 	ft := render.NewFrameTimer(budget)
@@ -92,6 +97,10 @@ func TestPerfBudget(t *testing.T) {
 		})
 	}
 	t.Logf("perf: %s (scale %.0fx)", ft.Report(), perfBudgetScale())
+	if !perfBudgetEnforced() {
+		t.Logf("perf: race build measures only; budget not enforced (see perf_scale_race.go)")
+		return
+	}
 	if ft.P95() > budget {
 		t.Fatalf("frame over budget: %s (scale %.0fx)", ft.Report(), perfBudgetScale())
 	}
