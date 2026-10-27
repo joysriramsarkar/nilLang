@@ -1,7 +1,3 @@
-// ============================================================================
-// NilDoc - Document AST Node Kinds & Constants
-// ============================================================================
-
 let NODE_DOC = "DOCUMENT";
 let NODE_HEADING = "HEADING";
 let NODE_PARA = "PARAGRAPH";
@@ -9,13 +5,6 @@ let NODE_LIST_ITEM = "LIST_ITEM";
 let NODE_CODE_BLOCK = "CODE_BLOCK";
 let NODE_QUOTE = "BLOCKQUOTE";
 let NODE_HR = "HORIZONTAL_RULE";
-
-// AST Node Factory
 let createNode = fn(kind, text, level, children) {
-    return {
-        "nodeKind": kind,
-        "text": text,
-        "level": level,
-        "children": children
-    };
+    return {"nodeKind": kind, "text": text, "level": level, "children": children};
 };

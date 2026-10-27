@@ -1,11 +1,8 @@
-﻿struct Product {
-    name: String,
-    price: Int,
-    discountPct: Int
-}
+struct Product { name: String, price: Int, discountPct: Int }
 fn finalPrice(p) {
-    let discount = (p.price * p.discountPct) / 100;
+    let discount = p.price * p.discountPct / 100;
     return p.price - discount;
 }
+
 let item = Product { name: "ল্যাপটপ", price: 80000, discountPct: 10 };
 puts(item.name + " এর চূড়ান্ত দাম: ৳\(finalPrice(item))");

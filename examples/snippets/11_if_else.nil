@@ -1,8 +1,10 @@
-﻿let marks = 75;
+let marks = 75;
 if (marks >= 80) {
     puts("গ্রেড: A+");
-} else if (marks >= 70) {
-    puts("গ্রেড: A");
 } else {
-    puts("গ্রেড: B");
+    if (marks >= 70) {
+        puts("গ্রেড: A");
+    } else {
+        puts("গ্রেড: B");
+    }
 }

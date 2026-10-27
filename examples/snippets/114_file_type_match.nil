@@ -1,11 +1,12 @@
-﻿fn fileKind(ext) {
+fn fileKind(ext) {
     return match ext {
         "nil" => "নীলাং সোর্স ফাইল",
         "nib" => "অনুরণ বাইটকোড বাইনারি",
         "nilax" => "অনুরণ প্যাকেজ আর্কাইভ",
         "json" => "কনফিগারেশন ডেটা",
-        _ => "সাধারণ ফাইল"
+        _ => "সাধারণ ফাইল",
     };
 }
+
 puts("nilax: " + fileKind("nilax"));
 puts("nib: " + fileKind("nib"));

@@ -1,12 +1,10 @@
-﻿struct Point2D {
-    x: Int,
-    y: Int
-}
+struct Point2D { x: Int, y: Int }
 fn distSq(p1, p2) {
     let dx = p1.x - p2.x;
     let dy = p1.y - p2.y;
-    return (dx * dx) + (dy * dy);
+    return dx * dx + dy * dy;
 }
+
 let ptA = Point2D { x: 0, y: 0 };
 let ptB = Point2D { x: 3, y: 4 };
 puts("বিন্দুদ্বয়ের দূরত্বের বর্গ: \(distSq(ptA, ptB))");

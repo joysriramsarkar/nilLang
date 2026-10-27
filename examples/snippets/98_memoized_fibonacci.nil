@@ -1,6 +1,8 @@
-﻿let memo = {};
+let memo = {};
 fn memoFib(n) {
-    if (n <= 1) { return n; }
+    if (n <= 1) {
+        return n;
+    }
     let key = "\(n)";
     if (memo[key] != null) {
         return memo[key];
@@ -9,5 +11,6 @@ fn memoFib(n) {
     memo[key] = res;
     return res;
 }
+
 puts("memoFib(10) = \(memoFib(10))");
 puts("memoFib(15) = \(memoFib(15))");

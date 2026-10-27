@@ -1,10 +1,11 @@
-﻿fn bankAccount(initial) {
+fn bankAccount(initial) {
     let balance = initial;
     return fn(deposit) {
         balance = balance + deposit;
         return balance;
     };
 }
+
 let myAcc = bankAccount(500);
 puts("নতুন ব্যালেন্স: \(myAcc(200))");
 puts("নতুন ব্যালেন্স: \(myAcc(300))");

@@ -1,4 +1,4 @@
-﻿let square = fn(x) {
+let square = fn(x) {
     return x * x;
 };
 puts("৪ এর বর্গ: \(square(4))");

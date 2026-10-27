@@ -1,9 +1,14 @@
-﻿fn anyMatch(arr, predicate) {
+fn anyMatch(arr, predicate) {
     for item in arr {
-        if (predicate(item)) { return true; }
+        if (predicate(item)) {
+            return true;
+        }
     }
     return false;
 }
+
 let nums = [1, 3, 5, 8, 9];
-let hasEven = anyMatch(nums, fn(x) { return x % 2 == 0; });
+let hasEven = anyMatch(nums, fn(x) {
+    return x % 2 == 0;
+});
 puts("তালিকায় কোনো জোড় সংখ্যা আছে? \(hasEven)");

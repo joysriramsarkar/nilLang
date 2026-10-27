@@ -1,8 +1,3 @@
-// ============================================================================
-// NilAnalytics - Vector Algebra Operations
-// ============================================================================
-
-// Vector Dot Product: v1 . v2
 let dot = fn(v1, v2) {
     let size = len(v1);
     if (size != len(v2)) {
@@ -11,13 +6,11 @@ let dot = fn(v1, v2) {
     let total = 0.0;
     let i = 0;
     while (i < size) {
-        total = total + (v1[i] * v2[i]);
+        total = total + v1[i] * v2[i];
         i = i + 1;
     }
     return total;
 };
-
-// Vector Addition: v1 + v2
 let add = fn(v1, v2) {
     let size = len(v1);
     let res = [];
@@ -28,8 +21,6 @@ let add = fn(v1, v2) {
     }
     return res;
 };
-
-// Vector Subtraction: v1 - v2
 let sub = fn(v1, v2) {
     let size = len(v1);
     let res = [];
@@ -40,8 +31,6 @@ let sub = fn(v1, v2) {
     }
     return res;
 };
-
-// Scalar Multiply: v * scalar
 let scale = fn(v, scalar) {
     let res = [];
     let i = 0;
@@ -51,8 +40,6 @@ let scale = fn(v, scalar) {
     }
     return res;
 };
-
-// Sum of elements
 let sum = fn(v) {
     let total = 0.0;
     let i = 0;
@@ -62,8 +49,6 @@ let sum = fn(v) {
     }
     return total;
 };
-
-// Squared Norm (magnitude squared): sum of x^2
 let normSq = fn(v) {
     return dot(v, v);
 };

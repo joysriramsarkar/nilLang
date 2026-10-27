@@ -1,3 +1,3 @@
-﻿let user = { "username": "joy", "role": "admin" };
+let user = {"username": "joy", "role": "admin"};
 puts("ব্যবহারকারী: " + user["username"]);
 puts("ভূমিকা: " + user["role"]);

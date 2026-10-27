@@ -1,4 +1,4 @@
-﻿let curriedAdd = fn(a) {
+let curriedAdd = fn(a) {
     return fn(b) {
         return a + b;
     };

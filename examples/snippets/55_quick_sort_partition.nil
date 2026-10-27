@@ -1,4 +1,4 @@
-﻿fn partition(arr, low, high) {
+fn partition(arr, low, high) {
     let pivot = arr[high];
     let i = low - 1;
     let j = low;
@@ -16,6 +16,7 @@
     arr[high] = temp2;
     return i + 1;
 }
+
 let arr = [10, 80, 30, 90, 40, 50, 70];
 let pIdx = partition(arr, 0, len(arr) - 1);
 puts("কুইক সর্ট পিভট ইনডেক্স: \(pIdx)");

@@ -1,10 +1,4 @@
-// ============================================================================
-// NilAnalytics - Descriptive Statistics & Numerical Math
-// ============================================================================
-
 import "./vector.nil" as Vector;
-
-// Square Root using Newton-Raphson method
 let sqrt = fn(val) {
     if (val <= 0.0) {
         return 0.0;
@@ -12,13 +6,11 @@ let sqrt = fn(val) {
     let x = val;
     let i = 0;
     while (i < 25) {
-        x = 0.5 * (x + (val / x));
+        x = 0.5 * (x + val / x);
         i = i + 1;
     }
     return x;
 };
-
-// Arithmetic Mean
 let mean = fn(v) {
     let n = len(v);
     if (n == 0) {
@@ -26,10 +18,10 @@ let mean = fn(v) {
     }
     return Vector.sum(v) / (n * 1.0);
 };
-
-// Minimum value
 let minVal = fn(v) {
-    if (len(v) == 0) { return 0.0; }
+    if (len(v) == 0) {
+        return 0.0;
+    }
     let m = v[0];
     let i = 1;
     while (i < len(v)) {
@@ -40,10 +32,10 @@ let minVal = fn(v) {
     }
     return m;
 };
-
-// Maximum value
 let maxVal = fn(v) {
-    if (len(v) == 0) { return 0.0; }
+    if (len(v) == 0) {
+        return 0.0;
+    }
     let m = v[0];
     let i = 1;
     while (i < len(v)) {
@@ -54,8 +46,6 @@ let maxVal = fn(v) {
     }
     return m;
 };
-
-// Variance: sum((x - mean)^2) / N
 let variance = fn(v) {
     let n = len(v);
     if (n <= 1) {
@@ -63,23 +53,17 @@ let variance = fn(v) {
     }
     let m = mean(v);
     let sumSqDiff = 0.0;
-
     let i = 0;
     while (i < n) {
         let diff = v[i] - m;
-        sumSqDiff = sumSqDiff + (diff * diff);
+        sumSqDiff = sumSqDiff + diff * diff;
         i = i + 1;
     }
-
     return sumSqDiff / (n * 1.0);
 };
-
-// Standard Deviation
 let stdDev = fn(v) {
     return sqrt(variance(v));
 };
-
-// Sort array in ascending order (Insertion Sort)
 let sortAsc = fn(v) {
     let arr = [];
     let i = 0;
@@ -87,7 +71,6 @@ let sortAsc = fn(v) {
         arr = push(arr, v[i]);
         i = i + 1;
     }
-
     let a = 1;
     while (a < len(arr)) {
         let key = arr[a];
@@ -101,14 +84,13 @@ let sortAsc = fn(v) {
     }
     return arr;
 };
-
-// Median
 let median = fn(v) {
     let n = len(v);
-    if (n == 0) { return 0.0; }
+    if (n == 0) {
+        return 0.0;
+    }
     let sorted = sortAsc(v);
     let mid = n / 2;
-
     if (n % 2 != 0) {
         return sorted[mid] * 1.0;
     }

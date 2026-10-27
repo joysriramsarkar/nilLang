@@ -1,4 +1,4 @@
-﻿fn validateUsername(name) {
+fn validateUsername(name) {
     if (len(name) < 3) {
         return Err("ব্যবহারকারীর নাম কমপক্ষে ৩ অক্ষরের হতে হবে");
     }
@@ -7,6 +7,7 @@
     }
     return Ok(name);
 }
+
 let v1 = validateUsername("joy");
 puts("v1 বৈধ? \(isOk(v1))");
 let v2 = validateUsername("ab");

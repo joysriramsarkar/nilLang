@@ -102,6 +102,82 @@ func TestFormatterEntityComponent(t *testing.T) {
 	}
 }
 
+// TestFormatterForLoop pins that a for loop keeps its block structure: every
+// body statement on its own line with its semicolon. The String() fallback
+// used to join them into `puts(x)break;`, which does not parse.
+func TestFormatterForLoop(t *testing.T) {
+	src := "for i in 1..=10 {\nif (i == 4) {\nputs(i);\nbreak;\n}\nputs(i);\n}\n"
+	want := "for i in 1..=10 {\n    if (i == 4) {\n        puts(i);\n        break;\n    }\n    puts(i);\n}\n"
+	got, err := Format(src)
+	if err != nil {
+		t.Fatalf("format failed: %v", err)
+	}
+	if got != want {
+		t.Errorf("for loop mismatch:\n got: %q\nwant: %q", got, want)
+	}
+	again, err := Format(got)
+	if err != nil || again != got {
+		t.Errorf("for loop output does not re-parse identically:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
+// TestFormatterTraitImpl pins that trait and impl blocks keep method bodies in
+// braces. The String() fallback dropped them (`-> String return ...;`), which
+// does not parse.
+func TestFormatterTraitImpl(t *testing.T) {
+	src := "trait SoundMaker {\nfn makeSound(self) -> String\n}\nimpl SoundMaker for Cat {\nfn makeSound(self) -> String {\nreturn self.name;\n}\n}\n"
+	got, err := Format(src)
+	if err != nil {
+		t.Fatalf("format failed: %v", err)
+	}
+	for _, want := range []string{
+		"trait SoundMaker {",
+		"    fn makeSound(self) -> String",
+		"impl SoundMaker for Cat {",
+		"    fn makeSound(self) -> String {",
+		"        return self.name;",
+		"    }",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("trait/impl output missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "-> String return") {
+		t.Errorf("impl method lost its braces:\n%s", got)
+	}
+	again, err := Format(got)
+	if err != nil || again != got {
+		t.Errorf("trait/impl output does not re-parse identically:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
+// TestFormatterMatchMultiline pins that a match keeps one arm per line with
+// braces intact when an arm body needs them. A ternary arm desugars to an
+// if-expression, and the String() fallback printed it without braces
+// (`=> if (b != 0) (a / b) else 0`), which does not parse.
+func TestFormatterMatchMultiline(t *testing.T) {
+	src := "fn evaluate(op, a, b) {\nreturn match op {\n\"+\" => a + b,\n\"/\" => b != 0 ? a / b : 0,\n_ => 0\n};\n}\n"
+	got, err := Format(src)
+	if err != nil {
+		t.Fatalf("format failed: %v", err)
+	}
+	for _, want := range []string{
+		"return match op {",
+		"\"+\" => a + b,",
+		"_ => 0,",
+		"if (b != 0) {",
+		"} else {",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("match output missing %q:\n%s", want, got)
+		}
+	}
+	again, err := Format(got)
+	if err != nil || again != got {
+		t.Errorf("match output does not re-parse identically:\nfirst:\n%s\nsecond:\n%s", got, again)
+	}
+}
+
 func TestFormatterEndsWithSingleNewline(t *testing.T) {
 	got, err := Format("let x = 1;")
 	if err != nil {

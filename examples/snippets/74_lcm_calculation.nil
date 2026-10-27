@@ -1,4 +1,4 @@
-﻿fn gcd(a, b) {
+fn gcd(a, b) {
     while (b != 0) {
         let temp = b;
         b = a % b;
@@ -6,8 +6,10 @@
     }
     return a;
 }
+
 fn lcm(a, b) {
-    return (a * b) / gcd(a, b);
+    return a * b / gcd(a, b);
 }
+
 puts("lcm(12, 15) = \(lcm(12, 15))");
 puts("lcm(8, 20) = \(lcm(8, 20))");

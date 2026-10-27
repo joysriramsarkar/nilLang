@@ -1,5 +1,6 @@
-﻿fn greet(name) {
+fn greet(name) {
     return "নমস্কার, " + name + "!";
 }
+
 puts(greet("জয়"));
 puts(greet("নীলাং"));

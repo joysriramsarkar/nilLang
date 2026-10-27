@@ -1,4 +1,4 @@
-﻿let text = "বাংলা ভাষা";
+let text = "বাংলা ভাষা";
 puts("মূল বাক্য: " + text);
 puts("মোট ক্যারেক্টার: \(len(text))");
 for ch in text {

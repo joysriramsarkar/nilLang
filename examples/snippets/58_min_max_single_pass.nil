@@ -1,12 +1,17 @@
-﻿fn findMinMax(arr) {
+fn findMinMax(arr) {
     let min = arr[0];
     let max = arr[0];
     for x in arr {
-        if (x < min) { min = x; }
-        if (x > max) { max = x; }
+        if (x < min) {
+            min = x;
+        }
+        if (x > max) {
+            max = x;
+        }
     }
-    return { "min": min, "max": max };
+    return {"min": min, "max": max};
 }
+
 let scores = [45, 88, 12, 99, 63, 7];
 let res = findMinMax(scores);
 puts("সর্বনিম্ন: \(res.min)");

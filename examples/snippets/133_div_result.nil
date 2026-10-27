@@ -1,9 +1,10 @@
-﻿fn safeDivision(a, b) {
+fn safeDivision(a, b) {
     if (b == 0) {
         return Err("Division by zero");
     }
     return Ok(a / b);
 }
+
 let res = safeDivision(50, 5);
 puts("50 / 5 = \(unwrapOr(res, 0))");
 let errRes = safeDivision(50, 0);

@@ -1,6 +1,8 @@
-﻿fn stripPrefix(str, prefix) {
+fn stripPrefix(str, prefix) {
     let pLen = len(prefix);
-    if (len(str) < pLen) { return str; }
+    if (len(str) < pLen) {
+        return str;
+    }
     let i = 0;
     while (i < pLen) {
         if (str[i] != prefix[i]) {
@@ -15,4 +17,5 @@
     }
     return res;
 }
+
 puts("প্রিফিক্স কাটার পর: " + stripPrefix("https://onuron.org", "https://"));

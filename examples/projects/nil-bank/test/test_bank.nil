@@ -1,17 +1,10 @@
-// ============================================================================
-// NilBank - Integration Test Suite
-// ============================================================================
-
 import "../src/types.nil" as Types;
 import "../src/account.nil" as Account;
 import "../src/ledger.nil" as Ledger;
 import "../src/interest.nil" as Interest;
-
 puts("🧪 NilBank ইন্টিগ্রেশন টেস্ট স্যুট চালু হচ্ছে...\n");
-
 let passed = 0;
 let total = 0;
-
 let assertTest = fn(name, condition) {
     total = total + 1;
     if (condition) {
@@ -21,41 +14,27 @@ let assertTest = fn(name, condition) {
         puts("  ❌ [FAIL] " + name);
     }
 };
-
-// Test 1: অ্যাকাউন্ট তৈরি
 let res1 = Account.createAccount("TEST-01", "টেস্ট ইউজার", Types.ACC_SAVINGS, 10000, Types.CURR_BDT);
 assertTest("অ্যাকাউন্ট তৈরি সফল হয়েছে", isOk(res1));
-
 let opt1 = Account.findAccount("TEST-01");
 let acc = unwrapOr(opt1, null);
 assertTest("সঠিক প্রাথমিক ব্যালেন্স রেকর্ড হয়েছে", acc.balance == 10000);
-
-// Test 2: ডিপোজিট অপারেশন
 let depRes = Ledger.deposit("TEST-01", 5000, "টেস্ট জমা");
 assertTest("ডিপোজিট সফল হয়েছে", isOk(depRes));
 let opt2 = Account.findAccount("TEST-01");
 let accUpdated = unwrapOr(opt2, null);
 assertTest("ডিপোজিটের পর ব্যালেন্স ১৫,০০০ হয়েছে", accUpdated.balance == 15000);
-
-// Test 3: উইথড্র অপারেশন
 let withRes = Ledger.withdraw("TEST-01", 3000, "টেস্ট উত্তোলন");
 assertTest("উইথড্র সফল হয়েছে", isOk(withRes));
 let opt3 = Account.findAccount("TEST-01");
 let accAfterWith = unwrapOr(opt3, null);
 assertTest("উত্তোলনের পর ব্যালেন্স ১২,০০০ হয়েছে", accAfterWith.balance == 12000);
-
-// Test 4: অতিরিক্ত উত্তোলনে এরর
 let failRes = Ledger.withdraw("TEST-01", 999999, "অতিরিক্ত উত্তোলন");
 assertTest("অপর্যাপ্ত ব্যালেন্সে উইথড্র প্রত্যাখ্যাত হয়েছে", isErr(failRes));
-
-// Test 5: মুদ্রা রূপান্তর হিসাব
 let bdtVal = Types.convertToBDT(10, Types.CURR_USD);
 assertTest("১০ USD রূপান্তরে ১১৮৫ BDT হয়েছে", bdtVal == 1185.0);
-
-// Test 6: লোন কিস্তি হিসাব
 let loan = Interest.calculateSimpleLoanEstimate(12000, 10.0, 12);
 assertTest("১২,০০০ টাকার ঋণে মাসিক কিস্তি ১১০০ টাকা", loan.monthlyEmi == 1100.0);
-
 puts("\n📊 টেস্ট ফলাফল: " + str(passed) + "/" + str(total) + " টি টেস্ট পাস করেছে।");
 if (passed == total) {
     puts("🎉 সকল টেস্ট সফলভাবে সম্পন্ন হয়েছে!");

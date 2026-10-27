@@ -1,8 +1,4 @@
-﻿struct Box {
-    width: Int,
-    height: Int,
-    depth: Int
-}
+struct Box { width: Int, height: Int, depth: Int }
 let b = Box { width: 4, height: 5, depth: 6 };
 let volume = b.width * b.height * b.depth;
 puts("বাক্সের আয়তন: \(volume)");

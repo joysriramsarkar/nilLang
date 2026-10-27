@@ -1,8 +1,9 @@
-﻿fn isLeapYear(year) {
-    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+fn isLeapYear(year) {
+    if (year % 4 == 0 && year % 100 != 0 || year % 400 == 0) {
         return true;
     }
     return false;
 }
+
 puts("2024 লিপ ইয়ার? \(isLeapYear(2024))");
 puts("2026 লিপ ইয়ার? \(isLeapYear(2026))");

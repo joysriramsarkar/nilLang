@@ -1,10 +1,4 @@
-// ============================================================================
-// NilDB - Query Builder & Aggregator Engine
-// ============================================================================
-
 import "./types.nil" as Types;
-
-// Filter rows by condition (WHERE column OP value)
 let where = fn(rows, columnName, op, targetValue) {
     let filtered = [];
     let i = 0;
@@ -18,8 +12,6 @@ let where = fn(rows, columnName, op, targetValue) {
     }
     return filtered;
 };
-
-// Limit result set
 let limit = fn(rows, maxCount) {
     let limited = [];
     let i = 0;
@@ -29,29 +21,23 @@ let limit = fn(rows, maxCount) {
     }
     return limited;
 };
-
-// Project only specific columns (SELECT col1, col2)
 let selectColumns = fn(rows, columnNames) {
     let projected = [];
     let i = 0;
     while (i < len(rows)) {
         let srcRow = rows[i];
         let newRow = {};
-
         let c = 0;
         while (c < len(columnNames)) {
             let col = columnNames[c];
             newRow[col] = srcRow[col];
             c = c + 1;
         }
-
         projected = push(projected, newRow);
         i = i + 1;
     }
     return projected;
 };
-
-// Aggregate: SUM of a numeric column
 let sumColumn = fn(rows, columnName) {
     let total = 0.0;
     let i = 0;
@@ -64,8 +50,6 @@ let sumColumn = fn(rows, columnName) {
     }
     return total;
 };
-
-// Aggregate: AVERAGE of a numeric column
 let avgColumn = fn(rows, columnName) {
     let count = len(rows);
     if (count == 0) {

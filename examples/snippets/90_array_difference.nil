@@ -1,9 +1,12 @@
-﻿fn difference(a, b) {
+fn difference(a, b) {
     let res = [];
     for x in a {
         let found = false;
         for y in b {
-            if (x == y) { found = true; break; }
+            if (x == y) {
+                found = true;
+                break;
+            }
         }
         if (!found) {
             res = push(res, x);
@@ -11,6 +14,7 @@
     }
     return res;
 }
+
 let a = [1, 2, 3, 4, 5];
 let b = [3, 4];
 puts("বিয়োগফল (Difference A - B): \(difference(a, b))");

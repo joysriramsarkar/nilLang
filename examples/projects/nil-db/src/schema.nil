@@ -1,20 +1,7 @@
-// ============================================================================
-// NilDB - Schema Definition & Row Validator
-// ============================================================================
-
 import "./types.nil" as Types;
-
-// Define a column spec
 let createColumn = fn(colName, colType, isPrimary, isRequired) {
-    return {
-        "name": colName,
-        "colType": colType,
-        "isPrimary": isPrimary,
-        "isRequired": isRequired
-    };
+    return {"name": colName, "colType": colType, "isPrimary": isPrimary, "isRequired": isRequired};
 };
-
-// Create a table schema
 let createSchema = fn(tableName, columns) {
     let primaryCol = "id";
     let i = 0;
@@ -25,26 +12,17 @@ let createSchema = fn(tableName, columns) {
         }
         i = i + 1;
     }
-
-    return {
-        "tableName": tableName,
-        "columns": columns,
-        "primaryKey": primaryCol
-    };
+    return {"tableName": tableName, "columns": columns, "primaryKey": primaryCol};
 };
-
-// Validate a row data against schema
 let validateRow = fn(schema, rowData) {
     let cols = schema.columns;
     let i = 0;
     while (i < len(cols)) {
         let col = cols[i];
         let val = rowData[col.name];
-
         if (col.isRequired && val == null) {
             return Err("বাধ্যতামূলক কলাম অনুপস্থিত: " + col.name);
         }
-
         i = i + 1;
     }
     return Ok(true);

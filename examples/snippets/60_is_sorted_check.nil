@@ -1,4 +1,4 @@
-﻿fn isSorted(arr) {
+fn isSorted(arr) {
     let i = 0;
     while (i < len(arr) - 1) {
         if (arr[i] > arr[i + 1]) {
@@ -8,5 +8,6 @@
     }
     return true;
 }
+
 puts("সর্টেড [1, 2, 3, 8]? \(isSorted([1, 2, 3, 8]))");
 puts("সর্টেড [1, 5, 2, 8]? \(isSorted([1, 5, 2, 8]))");

@@ -1,4 +1,4 @@
-﻿fn padStart(str, targetLen, padChar) {
+fn padStart(str, targetLen, padChar) {
     let currentLen = len(str);
     if (currentLen >= targetLen) {
         return str;
@@ -11,5 +11,6 @@
     }
     return padding + str;
 }
+
 puts("রোল নম্বর: " + padStart("42", 5, "0"));
 puts("রোল নম্বর: " + padStart("7", 5, "0"));

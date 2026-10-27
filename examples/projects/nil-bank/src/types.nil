@@ -1,71 +1,46 @@
-// ============================================================================
-// NilBank - Core Types, Constants & Validation
-// ============================================================================
-
-// Account Types
 let ACC_SAVINGS = "SAVINGS";
 let ACC_CHECKING = "CHECKING";
 let ACC_LOAN = "LOAN";
 let ACC_INVESTMENT = "INVESTMENT";
-
-// Account Status
 let STATUS_ACTIVE = "ACTIVE";
 let STATUS_FROZEN = "FROZEN";
 let STATUS_CLOSED = "CLOSED";
-
-// Transaction Types
 let TX_DEPOSIT = "DEPOSIT";
 let TX_WITHDRAW = "WITHDRAW";
 let TX_TRANSFER = "TRANSFER";
 let TX_INTEREST = "INTEREST";
 let TX_FEE = "FEE";
-
-// Transaction Status
 let TX_STATUS_SUCCESS = "SUCCESS";
 let TX_STATUS_FAILED = "FAILED";
 let TX_STATUS_FLAGGED = "FLAGGED";
-
-// Currencies
 let CURR_BDT = "BDT";
 let CURR_USD = "USD";
 let CURR_EUR = "EUR";
-
-// Exchange Rates relative to BDT
-let EXCHANGE_RATES = {
-    "BDT": 1.0,
-    "USD": 118.50,
-    "EUR": 128.20
-};
-
-// Convert currency to BDT
+let EXCHANGE_RATES = {"BDT": 1.0, "USD": 118.5, "EUR": 128.2};
 let convertToBDT = fn(amount, currency) {
     if (currency == CURR_BDT) {
         return amount * 1.0;
     }
     if (currency == CURR_USD) {
-        return amount * 118.50;
+        return amount * 118.5;
     }
     if (currency == CURR_EUR) {
-        return amount * 128.20;
+        return amount * 128.2;
     }
     return amount * 1.0;
 };
-
-// Convert BDT to Target Currency
 let convertFromBDT = fn(amountBDT, targetCurrency) {
     if (targetCurrency == CURR_BDT) {
         return amountBDT;
     }
     if (targetCurrency == CURR_USD) {
-        return amountBDT / 118.50;
+        return amountBDT / 118.5;
     }
     if (targetCurrency == CURR_EUR) {
-        return amountBDT / 128.20;
+        return amountBDT / 128.2;
     }
     return amountBDT;
 };
-
-// Validation Helper
 let isValidAmount = fn(amount) {
     return amount > 0;
 };

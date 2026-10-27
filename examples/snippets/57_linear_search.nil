@@ -1,4 +1,4 @@
-﻿fn linearSearch(arr, target) {
+fn linearSearch(arr, target) {
     let i = 0;
     while (i < len(arr)) {
         if (arr[i] == target) {
@@ -8,6 +8,7 @@
     }
     return -1;
 }
+
 let fruits = ["আম", "জাম", "কাঁঠাল", "লিচু"];
 let idxKathal = linearSearch(fruits, "কাঁঠাল");
 let idxKola = linearSearch(fruits, "কলা");

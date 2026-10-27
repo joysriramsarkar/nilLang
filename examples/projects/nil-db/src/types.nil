@@ -1,26 +1,15 @@
-// ============================================================================
-// NilDB - Data Types, Operators & Constants
-// ============================================================================
-
-// Supported Column Types
 let COL_INT = "INT";
 let COL_STRING = "STRING";
 let COL_FLOAT = "FLOAT";
 let COL_BOOL = "BOOL";
-
-// Query Filter Operators
 let OP_EQ = "EQ";
 let OP_NEQ = "NEQ";
 let OP_GT = "GT";
 let OP_GTE = "GTE";
 let OP_LT = "LT";
 let OP_LTE = "LTE";
-
-// Sort Order
 let SORT_ASC = "ASC";
 let SORT_DESC = "DESC";
-
-// Evaluate a single condition
 let evaluateCondition = fn(cellValue, op, targetValue) {
     if (op == OP_EQ) {
         return cellValue == targetValue;

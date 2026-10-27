@@ -1,4 +1,4 @@
-﻿let radius = 7.0;
+let radius = 7.0;
 let pi = 3.14159;
 let circumference = 2.0 * pi * radius;
 let area = pi * radius * radius;

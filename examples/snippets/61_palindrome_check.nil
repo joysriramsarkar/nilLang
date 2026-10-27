@@ -1,4 +1,4 @@
-﻿fn isPalindrome(str) {
+fn isPalindrome(str) {
     let n = len(str);
     let i = 0;
     while (i < n / 2) {
@@ -9,6 +9,7 @@
     }
     return true;
 }
+
 let rMadam = isPalindrome("madam");
 let rNilang = isPalindrome("nilang");
 puts("madam কি প্যালিনড্রোম? \(rMadam)");

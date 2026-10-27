@@ -1,54 +1,27 @@
-// ============================================================================
-// NilQuest - Hero Progression & Quest System
-// ============================================================================
-
 import "./types.nil" as Types;
-
-// Create Hero Factory
 let createHero = fn(name, charClass) {
     let hp = 120;
     let mp = 40;
     let atk = 22;
     let def = 10;
-
     if (charClass == Types.CLASS_MAGE) {
         hp = 90;
         mp = 100;
         atk = 16;
         def = 6;
-    } else if (charClass == Types.CLASS_ROGUE) {
-        hp = 105;
-        mp = 50;
-        atk = 26;
-        def = 8;
+    } else {
+        if (charClass == Types.CLASS_ROGUE) {
+            hp = 105;
+            mp = 50;
+            atk = 26;
+            def = 8;
+        }
     }
-
-    return {
-        "name": name,
-        "charClass": charClass,
-        "level": 1,
-        "xp": 0,
-        "gold": 50,
-        "hp": hp,
-        "maxHp": hp,
-        "mp": mp,
-        "maxMp": mp,
-        "baseAttack": atk,
-        "attack": atk,
-        "baseDefense": def,
-        "defense": def,
-        "status": Types.STATUS_ALIVE,
-        "equippedWeapon": null,
-        "equippedArmor": null,
-        "inventory": []
-    };
+    return {"name": name, "charClass": charClass, "level": 1, "xp": 0, "gold": 50, "hp": hp, "maxHp": hp, "mp": mp, "maxMp": mp, "baseAttack": atk, "attack": atk, "baseDefense": def, "defense": def, "status": Types.STATUS_ALIVE, "equippedWeapon": null, "equippedArmor": null, "inventory": []};
 };
-
-// Award XP and check Level Up
 let awardXP = fn(hero, amount) {
     hero["xp"] = hero.xp + amount;
     let needed = Types.xpRequiredForLevel(hero.level);
-
     if (hero.xp >= needed) {
         hero["level"] = hero.level + 1;
         hero["xp"] = hero.xp - needed;
@@ -60,27 +33,10 @@ let awardXP = fn(hero, amount) {
         hero["attack"] = hero.attack + 6;
         hero["baseDefense"] = hero.baseDefense + 4;
         hero["defense"] = hero.defense + 4;
-
-        return {
-            "leveledUp": true,
-            "newLevel": hero.level
-        };
+        return {"leveledUp": true, "newLevel": hero.level};
     }
-
-    return {
-        "leveledUp": false,
-        "newLevel": hero.level
-    };
+    return {"leveledUp": false, "newLevel": hero.level};
 };
-
-// Quest Definition
 let createQuest = fn(id, title, targetMonsterKind, rewardGold, rewardXP) {
-    return {
-        "id": id,
-        "title": title,
-        "targetKind": targetMonsterKind,
-        "rewardGold": rewardGold,
-        "rewardXP": rewardXP,
-        "completed": false
-    };
+    return {"id": id, "title": title, "targetKind": targetMonsterKind, "rewardGold": rewardGold, "rewardXP": rewardXP, "completed": false};
 };

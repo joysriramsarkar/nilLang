@@ -1,4 +1,4 @@
-﻿fn wordCount(str) {
+fn wordCount(str) {
     let parts = split(trim(str), " ");
     let count = 0;
     for p in parts {
@@ -8,5 +8,6 @@
     }
     return count;
 }
+
 let sentence = "অনুরণ অপারেটিং সিস্টেম একটি সম্পূর্ণ স্বাধীন প্রযুক্তি";
 puts("বাক্যে মোট শব্দ: \(wordCount(sentence))");

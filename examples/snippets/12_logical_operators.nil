@@ -1,4 +1,4 @@
-﻿let isStudent = true;
+let isStudent = true;
 let hasID = true;
 if (isStudent && hasID) {
     puts("লাইব্রেরিতে প্রবেশ করতে পারেন।");

@@ -1,10 +1,11 @@
-﻿fn makeCounter() {
+fn makeCounter() {
     let count = 0;
     return fn() {
         count = count + 1;
         return count;
     };
 }
+
 let c = makeCounter();
 puts("গণনা ১: \(c())");
 puts("গণনা ২: \(c())");

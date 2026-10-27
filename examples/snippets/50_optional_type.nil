@@ -1,10 +1,11 @@
-﻿fn findScore(name) {
+fn findScore(name) {
     if (name == "Joy") {
         return Some(98);
     }
     return None();
 }
+
 let s1 = findScore("Joy");
 let s2 = findScore("Unknown");
 puts("Joy এর স্কোর: \(unwrapOr(s1, 0))");
-puts("অজ্ঞাত স্কোর: \(unwrapOr(s2, -1))");
+puts("অজ্ঞাত স্কোর: \(unwrapOr(s2, (-1)))");

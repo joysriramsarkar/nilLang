@@ -1,4 +1,4 @@
-﻿let first = "জয়";
+let first = "জয়";
 let last = "শ্রীরাম";
 let full = first + last;
 puts("পুরো নাম: " + full);

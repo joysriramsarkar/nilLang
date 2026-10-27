@@ -1,4 +1,4 @@
-﻿let count = 5;
+let count = 5;
 while (count > 0) {
     puts("কাউন্ট: \(count)");
     count = count - 1;

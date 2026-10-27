@@ -1,7 +1,10 @@
-﻿fn getExt(filename) {
+fn getExt(filename) {
     let parts = split(filename, ".");
-    if (len(parts) <= 1) { return ""; }
+    if (len(parts) <= 1) {
+        return "";
+    }
     return last(parts);
 }
+
 puts("ফাইলের এক্সটেনশন: " + getExt("main.nil"));
 puts("ফাইলের এক্সটেনশন: " + getExt("archive.tar.gz"));

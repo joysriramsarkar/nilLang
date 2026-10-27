@@ -1,8 +1,9 @@
-﻿fn partialAdd(a) {
+fn partialAdd(a) {
     return fn(b, c) {
         return a + b + c;
     };
 }
+
 let addTen = partialAdd(10);
 puts("10 + 5 + 2 = \(addTen(5, 2))");
 puts("10 + 20 + 30 = \(addTen(20, 30))");

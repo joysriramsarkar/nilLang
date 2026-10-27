@@ -1,4 +1,4 @@
-﻿fn repeatStr(s, times) {
+fn repeatStr(s, times) {
     let res = "";
     let i = 0;
     while (i < times) {
@@ -7,5 +7,6 @@
     }
     return res;
 }
+
 puts("তারা: " + repeatStr("★ ", 5));
 puts("লাইন: " + repeatStr("=", 20));

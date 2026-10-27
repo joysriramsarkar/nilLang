@@ -1,4 +1,4 @@
-﻿let prefix = "[লগ] ";
+let prefix = "[লগ] ";
 let logger = fn(msg) {
     return prefix + msg;
 };

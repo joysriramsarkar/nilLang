@@ -1,4 +1,4 @@
-﻿fn bubbleSort(arr) {
+fn bubbleSort(arr) {
     let n = len(arr);
     let i = 0;
     while (i < n) {
@@ -15,6 +15,7 @@
     }
     return arr;
 }
+
 let nums = [64, 34, 25, 12, 22, 11, 90];
 puts("মূল তালিকা: \(nums)");
 let sorted = bubbleSort(nums);

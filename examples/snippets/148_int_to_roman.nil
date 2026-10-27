@@ -1,4 +1,4 @@
-﻿fn toRomanSimple(num) {
+fn toRomanSimple(num) {
     let vals = [100, 90, 50, 40, 10, 9, 5, 4, 1];
     let syms = ["C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"];
     let res = "";
@@ -13,6 +13,7 @@
     }
     return res;
 }
+
 puts("14 রোমানে: " + toRomanSimple(14));
 puts("42 রোমানে: " + toRomanSimple(42));
 puts("99 রোমানে: " + toRomanSimple(99));

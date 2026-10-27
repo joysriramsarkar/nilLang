@@ -1,4 +1,4 @@
-﻿fn flatten(arr2d) {
+fn flatten(arr2d) {
     let flat = [];
     for row in arr2d {
         for item in row {
@@ -7,5 +7,6 @@
     }
     return flat;
 }
+
 let nested = [[1, 2], [3, 4, 5], [6]];
 puts("ফ্ল্যাটেন অ্যারে: \(flatten(nested))");

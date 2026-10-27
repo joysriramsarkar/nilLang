@@ -1,10 +1,7 @@
-﻿struct Book {
-    title: String,
-    totalPages: Int,
-    readPages: Int
-}
+struct Book { title: String, totalPages: Int, readPages: Int }
 fn progressPct(b) {
-    return (b.readPages * 100) / b.totalPages;
+    return b.readPages * 100 / b.totalPages;
 }
+
 let b = Book { title: "Onuron OS আর্কিটেকচার", totalPages: 400, readPages: 250 };
 puts(b.title + " পড়ার অগ্রগতি: \(progressPct(b))%");

@@ -1,8 +1,16 @@
-﻿fn simpleDist(s1, s2) {
+fn simpleDist(s1, s2) {
     let l1 = len(s1);
     let l2 = len(s2);
-    let diff = l1 > l2 ? l1 - l2 : l2 - l1;
-    let commonLen = l1 < l2 ? l1 : l2;
+    let diff = if (l1 > l2) {
+        l1 - l2;
+    } else {
+        l2 - l1;
+    };
+    let commonLen = if (l1 < l2) {
+        l1;
+    } else {
+        l2;
+    };
     let i = 0;
     let mismatches = 0;
     while (i < commonLen) {
@@ -13,6 +21,7 @@
     }
     return diff + mismatches;
 }
+
 let d1 = simpleDist("onuron", "onuronOS");
 let d2 = simpleDist("nilang", "nil");
 puts("onuron ও onuronOS দূরত্ব: \(d1)");

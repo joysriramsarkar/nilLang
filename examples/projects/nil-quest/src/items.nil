@@ -1,37 +1,13 @@
-// ============================================================================
-// NilQuest - Item & Inventory System
-// ============================================================================
-
 import "./types.nil" as Types;
-
-// Item Catalog Factories
 let createWeapon = fn(name, attackBonus, element) {
-    return {
-        "name": name,
-        "itemKind": Types.ITEM_WEAPON,
-        "attackBonus": attackBonus,
-        "element": element
-    };
+    return {"name": name, "itemKind": Types.ITEM_WEAPON, "attackBonus": attackBonus, "element": element};
 };
-
 let createArmor = fn(name, defenseBonus) {
-    return {
-        "name": name,
-        "itemKind": Types.ITEM_ARMOR,
-        "defenseBonus": defenseBonus
-    };
+    return {"name": name, "itemKind": Types.ITEM_ARMOR, "defenseBonus": defenseBonus};
 };
-
 let createPotion = fn(name, healAmount, manaAmount) {
-    return {
-        "name": name,
-        "itemKind": Types.ITEM_POTION,
-        "healAmount": healAmount,
-        "manaAmount": manaAmount
-    };
+    return {"name": name, "itemKind": Types.ITEM_POTION, "healAmount": healAmount, "manaAmount": manaAmount};
 };
-
-// Equip an item to a hero
 let equipItem = fn(hero, item) {
     if (item.itemKind == Types.ITEM_WEAPON) {
         hero["equippedWeapon"] = item;
@@ -45,26 +21,21 @@ let equipItem = fn(hero, item) {
     }
     return Err("এই উপাদানটি পরিধানযোগ্য নয়");
 };
-
-// Use a potion from inventory
 let usePotion = fn(hero, potion) {
     if (potion.itemKind != Types.ITEM_POTION) {
         return Err("এটি কোনো পানীয় (Potion) নয়");
     }
-
     let heal = potion.healAmount;
     let newHp = hero.hp + heal;
     if (newHp > hero.maxHp) {
         newHp = hero.maxHp;
     }
     hero["hp"] = newHp;
-
     let mana = potion.manaAmount;
     let newMp = hero.mp + mana;
     if (newMp > hero.maxMp) {
         newMp = hero.maxMp;
     }
     hero["mp"] = newMp;
-
     return Ok("পোশন ব্যবহার সফল: +" + str(heal) + " HP, +" + str(mana) + " MP");
 };

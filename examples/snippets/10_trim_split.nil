@@ -1,4 +1,4 @@
-﻿let sentence = "   সুন্দর একটি সকাল   ";
+let sentence = "   সুন্দর একটি সকাল   ";
 let trimmed = trim(sentence);
 puts("ট্রিমিং: [" + trimmed + "]");
 let words = split("আপেল,কমলা,আঙ্গুর", ",");

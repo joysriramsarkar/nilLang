@@ -1,10 +1,11 @@
-﻿fn calcNetSalary(basic, bonus) {
+fn calcNetSalary(basic, bonus) {
     let gross = basic + bonus;
     let tax = 0;
     if (gross > 50000) {
-        tax = ((gross - 50000) * 10) / 100;
+        tax = (gross - 50000) * 10 / 100;
     }
     return gross - tax;
 }
+
 puts("৬০,০০০ টাকার নিট বেতন: ৳\(calcNetSalary(50000, 10000))");
 puts("৪০,০০০ টাকার নিট বেতন: ৳\(calcNetSalary(35000, 5000))");

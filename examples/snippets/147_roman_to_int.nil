@@ -1,11 +1,22 @@
-﻿fn romanVal(ch) {
-    if (ch == "I") { return 1; }
-    if (ch == "V") { return 5; }
-    if (ch == "X") { return 10; }
-    if (ch == "L") { return 50; }
-    if (ch == "C") { return 100; }
+fn romanVal(ch) {
+    if (ch == "I") {
+        return 1;
+    }
+    if (ch == "V") {
+        return 5;
+    }
+    if (ch == "X") {
+        return 10;
+    }
+    if (ch == "L") {
+        return 50;
+    }
+    if (ch == "C") {
+        return 100;
+    }
     return 0;
 }
+
 fn romanToInt(s) {
     let total = 0;
     let n = len(s);
@@ -28,6 +39,7 @@ fn romanToInt(s) {
     }
     return total;
 }
+
 let vXIV = romanToInt("XIV");
 let vXLII = romanToInt("XLII");
 puts("XIV = \(vXIV)");

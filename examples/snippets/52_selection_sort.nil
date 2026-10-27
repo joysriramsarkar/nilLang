@@ -1,4 +1,4 @@
-﻿fn selectionSort(arr) {
+fn selectionSort(arr) {
     let n = len(arr);
     let i = 0;
     while (i < n - 1) {
@@ -17,5 +17,6 @@
     }
     return arr;
 }
+
 let list = [29, 10, 14, 37, 13];
 puts("সিলেকশন সর্ট: \(selectionSort(list))");

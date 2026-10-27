@@ -1,4 +1,4 @@
-﻿let counter = 10;
+let counter = 10;
 puts("শুরুর মান: \(counter)");
 counter = counter + 5;
 puts("যোগ করার পর: \(counter)");

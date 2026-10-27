@@ -1,8 +1,4 @@
-﻿enum Status {
-    Pending,
-    Approved,
-    Rejected
-}
+enum Status { Pending, Approved, Rejected }
 let current = Approved;
 puts("স্ট্যাটাস:");
 puts(current);

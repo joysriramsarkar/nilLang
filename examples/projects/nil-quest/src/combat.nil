@@ -1,24 +1,15 @@
-// ============================================================================
-// NilQuest - Turn-Based Combat Engine
-// ============================================================================
-
 import "./types.nil" as Types;
 import "./monster.nil" as Monster;
-
-// Execute physical attack by Hero on Monster
 let heroAttack = fn(hero, monster) {
     let rawDamage = hero.attack - monster.defense;
     if (rawDamage <= 0) {
         rawDamage = 1;
     }
-
     let isCrit = false;
-    // Critical strike for Rogues or high level
     if (hero.charClass == Types.CLASS_ROGUE || hero.level >= 3) {
         rawDamage = rawDamage * 1.5;
         isCrit = true;
     }
-
     let actualDamage = int(rawDamage);
     let newMonsterHp = monster.hp - actualDamage;
     if (newMonsterHp <= 0) {
@@ -26,15 +17,8 @@ let heroAttack = fn(hero, monster) {
         monster["status"] = Types.STATUS_DEFEATED;
     }
     monster["hp"] = newMonsterHp;
-
-    return {
-        "damage": actualDamage,
-        "isCrit": isCrit,
-        "monsterDefeated": monster.status == Types.STATUS_DEFEATED
-    };
+    return {"damage": actualDamage, "isCrit": isCrit, "monsterDefeated": monster.status == Types.STATUS_DEFEATED};
 };
-
-// Execute Spell Cast by Hero
 let heroCastSpell = fn(hero, spellName, monster) {
     if (spellName == "অগ্নিবাণ (Fireball)") {
         if (hero.mp < 25) {
@@ -48,13 +32,8 @@ let heroCastSpell = fn(hero, spellName, monster) {
             monster["status"] = Types.STATUS_DEFEATED;
         }
         monster["hp"] = newMonsterHp;
-        return Ok({
-            "spell": spellName,
-            "damage": spellDmg,
-            "monsterDefeated": monster.status == Types.STATUS_DEFEATED
-        });
+        return Ok({"spell": spellName, "damage": spellDmg, "monsterDefeated": monster.status == Types.STATUS_DEFEATED});
     }
-
     if (spellName == "আরোগ্য (Heal)") {
         if (hero.mp < 20) {
             return Err("পর্যাপ্ত মানা (MP) নেই! প্রয়োজন: ২০");
@@ -66,28 +45,19 @@ let heroCastSpell = fn(hero, spellName, monster) {
             newHp = hero.maxHp;
         }
         hero["hp"] = newHp;
-        return Ok({
-            "spell": spellName,
-            "heal": healAmt,
-            "monsterDefeated": false
-        });
+        return Ok({"spell": spellName, "heal": healAmt, "monsterDefeated": false});
     }
-
     return Err("অজানা মন্ত্র (Unknown Spell)");
 };
-
-// Execute Monster turn against Hero
 let monsterTurn = fn(monster, hero) {
     if (monster.status == Types.STATUS_DEFEATED) {
         return null;
     }
-
     let aiDecision = Monster.decideMonsterAction(monster);
-    let rawDamage = (monster.attack * aiDecision.damageMultiplier) - hero.defense;
+    let rawDamage = monster.attack * aiDecision.damageMultiplier - hero.defense;
     if (rawDamage <= 0) {
         rawDamage = 2;
     }
-
     let actualDamage = int(rawDamage);
     let newHeroHp = hero.hp - actualDamage;
     if (newHeroHp <= 0) {
@@ -95,10 +65,5 @@ let monsterTurn = fn(monster, hero) {
         hero["status"] = Types.STATUS_DEFEATED;
     }
     hero["hp"] = newHeroHp;
-
-    return {
-        "damage": actualDamage,
-        "message": aiDecision.message,
-        "heroDefeated": hero.status == Types.STATUS_DEFEATED
-    };
+    return {"damage": actualDamage, "message": aiDecision.message, "heroDefeated": hero.status == Types.STATUS_DEFEATED};
 };

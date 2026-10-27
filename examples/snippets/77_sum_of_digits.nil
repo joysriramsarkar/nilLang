@@ -1,11 +1,12 @@
-﻿fn sumDigits(n) {
+fn sumDigits(n) {
     let sum = 0;
     let num = n;
     while (num > 0) {
-        sum = sum + (num % 10);
+        sum = sum + num % 10;
         num = num / 10;
     }
     return sum;
 }
+
 puts("9876 এর অঙ্কের যোগফল: \(sumDigits(9876))");
 puts("12345 এর অঙ্কের যোগফল: \(sumDigits(12345))");

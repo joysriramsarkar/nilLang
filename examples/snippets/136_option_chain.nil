@@ -1,10 +1,13 @@
-﻿fn findUser(id) {
-    if (id == 1) { return Some({ "name": "সৌরভ", "deptId": 10 }); }
+fn findUser(id) {
+    if (id == 1) {
+        return Some({"name": "সৌরভ", "deptId": 10});
+    }
     return None();
 }
+
 let uOpt = findUser(1);
-let u = unwrapOr(uOpt, { "name": "অজ্ঞাত" });
+let u = unwrapOr(uOpt, {"name": "অজ্ঞাত"});
 puts("ব্যবহারকারী পাওয়া গেছে: " + u.name);
 let uOpt2 = findUser(99);
-let u2 = unwrapOr(uOpt2, { "name": "অজ্ঞাত" });
+let u2 = unwrapOr(uOpt2, {"name": "অজ্ঞাত"});
 puts("ব্যবহারকারী পাওয়া গেছে: " + u2.name);

@@ -1,17 +1,10 @@
-// ============================================================================
-// NilDB - Unit & Integration Test Suite
-// ============================================================================
-
 import "../src/types.nil" as Types;
 import "../src/schema.nil" as Schema;
 import "../src/table.nil" as Table;
 import "../src/query.nil" as Query;
-
 puts("🧪 NilDB ডেটাবেস ইঞ্জিন টেস্ট স্যুট চালু হচ্ছে...\n");
-
 let passed = 0;
 let total = 0;
-
 let assertTest = fn(name, condition) {
     total = total + 1;
     if (condition) {
@@ -21,51 +14,31 @@ let assertTest = fn(name, condition) {
         puts("  ❌ [FAIL] " + name);
     }
 };
-
-// 1. টেবিল ও স্কিমা তৈরি
-let cols = [
-    Schema.createColumn("id", Types.COL_INT, true, true),
-    Schema.createColumn("title", Types.COL_STRING, false, true),
-    Schema.createColumn("price", Types.COL_INT, false, true)
-];
+let cols = [Schema.createColumn("id", Types.COL_INT, true, true), Schema.createColumn("title", Types.COL_STRING, false, true), Schema.createColumn("price", Types.COL_INT, false, true)];
 let tbl = Table.createTable(Schema.createSchema("books", cols));
 assertTest("টেবিল সফলভাবে তৈরি হয়েছে", tbl != null);
-
-// 2. ইনসার্ট ও অটো-ইনক্রিমেন্ট আইডি টেস্ট
-Table.insert(tbl, { "title": "Onuron OS আর্কিটেকচার", "price": 400 });
-Table.insert(tbl, { "title": "নীলাং প্রোগ্রামিং গাইড", "price": 250 });
-Table.insert(tbl, { "title": "আল্যাপ ইউআই হ্যান্ডবুক", "price": 600 });
+Table.insert(tbl, {"title": "Onuron OS আর্কিটেকচার", "price": 400});
+Table.insert(tbl, {"title": "নীলাং প্রোগ্রামিং গাইড", "price": 250});
+Table.insert(tbl, {"title": "আল্যাপ ইউআই হ্যান্ডবুক", "price": 600});
 assertTest("৩টি রেকর্ড ইনসার্ট হয়েছে", Table.countRows(tbl) == 3);
-
-// 3. আইডি দিয়ে অনুসন্ধান টেস্ট
 let opt = Table.findById(tbl, 2);
 assertTest("আইডি ২ খুঁজে পাওয়া গেছে", isSome(opt));
 let book2 = unwrapOr(opt, null);
 assertTest("বইয়ের নাম সঠিক: নীলাং প্রোগ্রামিং গাইড", book2.title == "নীলাং প্রোগ্রামিং গাইড");
-
-// 4. আপডেট টেস্ট
-Table.update(tbl, 2, { "price": 300 }, ["price"]);
+Table.update(tbl, 2, {"price": 300}, ["price"]);
 let optUpdated = Table.findById(tbl, 2);
 let bookUpdated = unwrapOr(optUpdated, null);
 assertTest("বইয়ের মূল্য আপডেট হয়ে ৩০০ হয়েছে", bookUpdated.price == 300);
-
-// 5. কুয়েরি ফিল্টার (WHERE price >= 400)
 let expensiveBooks = Query.where(Table.getAllRows(tbl), "price", Types.OP_GTE, 400);
 assertTest("৪০০ বা ততোধিক মূল্যের বই ২টি পাওয়া গেছে", len(expensiveBooks) == 2);
-
-// 6. এগ্রিগেশন (SUM ও AVG)
 let totalSum = Query.sumColumn(Table.getAllRows(tbl), "price");
 assertTest("মোট মূল্য ১৩০০ হয়েছে (৪০০ + ৩০০ + ৬০০)", totalSum == 1300.0);
-
 let avgPrice = Query.avgColumn(Table.getAllRows(tbl), "price");
 assertTest("গড় মূল্য সঠিকভাবে হিসাব হয়েছে", avgPrice > 430.0 && avgPrice < 435.0);
-
-// 7. ডিলিট টেস্ট
 Table.deleteById(tbl, 1);
 assertTest("১টি বই ডিলিটের পর মোট বই ২টি অবশিষ্ট", Table.countRows(tbl) == 2);
 let optDeleted = Table.findById(tbl, 1);
 assertTest("ডিলিট হওয়া আইডি ১ আর খুঁজে পাওয়া যাবে না", isNone(optDeleted));
-
 puts("\n📊 টেস্ট ফলাফল: " + str(passed) + "/" + str(total) + " টি টেস্ট পাস করেছে।");
 if (passed == total) {
     puts("🎉 NilDB-এর সকল টেস্ট সফলভাবে পাস করেছে!");

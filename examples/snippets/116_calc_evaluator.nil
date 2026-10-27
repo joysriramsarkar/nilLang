@@ -1,13 +1,22 @@
-﻿fn evaluate(op, a, b) {
+fn evaluate(op, a, b) {
     return match op {
         "+" => a + b,
         "-" => a - b,
         "*" => a * b,
-        "/" => b != 0 ? a / b : 0,
-        "%" => b != 0 ? a % b : 0,
-        _ => 0
+        "/" => if (b != 0) {
+            a / b;
+        } else {
+            0;
+        },
+        "%" => if (b != 0) {
+            a % b;
+        } else {
+            0;
+        },
+        _ => 0,
     };
 }
+
 let vAdd = evaluate("+", 10, 20);
 let vMul = evaluate("*", 15, 4);
 let vDiv = evaluate("/", 50, 5);

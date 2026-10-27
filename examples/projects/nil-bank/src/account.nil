@@ -1,41 +1,20 @@
-// ============================================================================
-// NilBank - Account Management Module
-// ============================================================================
-
 import "./types.nil" as Types;
-
-// In-memory accounts store
 let accounts = [];
-
-// Create a new account
 let createAccount = fn(accNumber, holderName, accType, initialDeposit, currency) {
     if (!Types.isValidAmount(initialDeposit)) {
         return Err("প্রাথমিক জমার পরিমাণ অবশ্যই ০-এর বেশি হতে হবে");
     }
-
-    let acc = {
-        "accNumber": accNumber,
-        "holderName": holderName,
-        "accType": accType,
-        "balance": initialDeposit,
-        "currency": currency,
-        "status": Types.STATUS_ACTIVE,
-        "dailyWithdrawn": 0,
-        "tier": "STANDARD",
-        "createdAt": time()
-    };
-
+    let acc = {"accNumber": accNumber, "holderName": holderName, "accType": accType, "balance": initialDeposit, "currency": currency, "status": Types.STATUS_ACTIVE, "dailyWithdrawn": 0, "tier": "STANDARD", "createdAt": time()};
     if (initialDeposit >= 500000) {
         acc["tier"] = "PLATINUM";
-    } else if (initialDeposit >= 100000) {
-        acc["tier"] = "GOLD";
+    } else {
+        if (initialDeposit >= 100000) {
+            acc["tier"] = "GOLD";
+        }
     }
-
     accounts = push(accounts, acc);
     return Ok(acc);
 };
-
-// Find account by account number
 let findAccount = fn(accNumber) {
     let i = 0;
     while (i < len(accounts)) {
@@ -47,21 +26,20 @@ let findAccount = fn(accNumber) {
     }
     return None();
 };
-
-// Update account balance
 let updateBalance = fn(accNumber, newBalance) {
     let i = 0;
     while (i < len(accounts)) {
         let acc = accounts[i];
         if (acc.accNumber == accNumber) {
             acc["balance"] = newBalance;
-            // Tier upgrade check
             if (newBalance >= 500000) {
                 acc["tier"] = "PLATINUM";
-            } else if (newBalance >= 100000) {
-                acc["tier"] = "GOLD";
             } else {
-                acc["tier"] = "STANDARD";
+                if (newBalance >= 100000) {
+                    acc["tier"] = "GOLD";
+                } else {
+                    acc["tier"] = "STANDARD";
+                }
             }
             return true;
         }
@@ -69,8 +47,6 @@ let updateBalance = fn(accNumber, newBalance) {
     }
     return false;
 };
-
-// Change account status
 let setAccountStatus = fn(accNumber, newStatus) {
     let opt = findAccount(accNumber);
     if (isNone(opt)) {
@@ -80,13 +56,9 @@ let setAccountStatus = fn(accNumber, newStatus) {
     acc["status"] = newStatus;
     return Ok(acc);
 };
-
-// Get all accounts
 let getAllAccounts = fn() {
     return accounts;
 };
-
-// Calculate total bank deposits in BDT
 let calculateTotalDepositsBDT = fn() {
     let total = 0.0;
     let i = 0;

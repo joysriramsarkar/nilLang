@@ -1,4 +1,4 @@
-﻿fn getPrimes(limit) {
+fn getPrimes(limit) {
     let primes = [];
     let num = 2;
     while (num <= limit) {
@@ -18,4 +18,5 @@
     }
     return primes;
 }
+
 puts("৩০ পর্যন্ত মৌলিক সংখ্যা: \(getPrimes(30))");

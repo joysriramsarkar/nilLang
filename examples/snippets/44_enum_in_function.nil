@@ -1,12 +1,10 @@
-﻿enum Theme {
-    Light,
-    Dark
-}
+enum Theme { Light, Dark }
 fn getBgColor(t) {
     if (t == Dark) {
         return "#000000";
     }
     return "#FFFFFF";
 }
+
 puts("ডার্ক মোড রঙ: " + getBgColor(Dark));
 puts("লাইট মোড রঙ: " + getBgColor(Light));

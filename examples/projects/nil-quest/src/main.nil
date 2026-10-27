@@ -1,48 +1,30 @@
-// ============================================================================
-// NilQuest - Epic Adventure RPG Simulation
-// ============================================================================
-
 import "./types.nil" as Types;
 import "./items.nil" as Items;
 import "./monster.nil" as Monster;
 import "./combat.nil" as Combat;
 import "./quest.nil" as Quest;
-
 puts("╔══════════════════════════════════════════════════════════════════════════╗");
 puts("║               ⚔️ NILQUEST: TURN-BASED RPG & COMBAT ENGINE 🛡️             ║");
 puts("║                    Powered by Nilang • Onuron OS Ecosystem               ║");
 puts("╚══════════════════════════════════════════════════════════════════════════╝\n");
-
-// ----------------------------------------------------------------------------
-// ধাপ ১: নায়ক (Hero) তৈরি ও অস্ত্রশস্ত্র সজ্জিতকরণ
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ১: যোদ্ধা অর্জুনের সূচনা ও সরঞ্জাম পরিধান...");
 let hero = Quest.createHero("অর্জুন", Types.CLASS_WARRIOR);
-
 let sword = Items.createWeapon("অগ্নিখড়্গ (Flametongue)", 18, Types.ELEM_FIRE);
 let armor = Items.createArmor("লৌহবর্ম (Iron Plate)", 10);
 let potion = Items.createPotion("স্বাস্থ্য সুধা (Healing Elixir)", 50, 20);
-
 Items.equipItem(hero, sword);
 Items.equipItem(hero, armor);
-
 puts("  নায়ক: " + hero.name + " (" + hero.charClass + ")");
 puts("  লেভেল: " + str(hero.level) + " | HP: " + str(hero.hp) + "/" + str(hero.maxHp) + " | MP: " + str(hero.mp) + "/" + str(hero.maxMp));
 puts("  মোট আক্রমণ শক্তি: " + str(hero.attack) + " | মোট প্রতিরক্ষা: " + str(hero.defense) + "\n");
-
-// ----------------------------------------------------------------------------
-// ধাপ ২: এনকাউন্টার ১ - বনচর গোবলিনের সাথে যুদ্ধ
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ২: কুয়েস্ট ১ - বনভূমিতে গোবলিন শিকার...");
 let goblin = Monster.createGoblin();
 puts("  ⚠️ একটি " + goblin.name + " আবির্ভূত হয়েছে! (HP: " + str(goblin.hp) + ")");
-
 let round = 1;
 while (goblin.status == Types.STATUS_ALIVE && hero.status == Types.STATUS_ALIVE) {
     puts("  --- রাউন্ড " + str(round) + " ---");
     let hAtk = Combat.heroAttack(hero, goblin);
     puts("  ⚔️ অর্জুন আক্রমণ করেছে: " + str(hAtk.damage) + " ক্ষতি! গোবলিনের বাকি HP: " + str(goblin.hp));
-
     if (hAtk.monsterDefeated) {
         puts("  🎉 " + goblin.name + " পরাজিত হয়েছে!");
         let xpGained = Quest.awardXP(hero, goblin.xpReward);
@@ -52,38 +34,24 @@ while (goblin.status == Types.STATUS_ALIVE && hero.status == Types.STATUS_ALIVE)
         }
         break;
     }
-
     let mAtk = Combat.monsterTurn(goblin, hero);
     puts("  💥 গোবলিন আঘাত হেনেছে: " + str(mAtk.damage) + " ক্ষতি। অর্জুনের বাকি HP: " + str(hero.hp));
     round = round + 1;
 }
-
 puts("");
-
-// ----------------------------------------------------------------------------
-// ধাপ ৩: স্বাস্থ্য পুনরুদ্ধার ও পোশন ব্যবহার
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ৩: ইনভেন্টরি থেকে পোশন পান...");
 puts("  ব্যবহারের আগে HP: " + str(hero.hp) + "/" + str(hero.maxHp));
 Items.usePotion(hero, potion);
 puts("  ব্যবহারের পরে HP: " + str(hero.hp) + "/" + str(hero.maxHp) + "\n");
-
-// ----------------------------------------------------------------------------
-// ধাপ ৪: এনকাউন্টার ২ - প্রাচীন সমাধিতে কঙ্কাল যোদ্ধার বিরুদ্ধে লড়াই
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ৪: কুয়েস্ট ২ - কঙ্কাল যোদ্ধা দমন ও জাদু প্রয়োগ...");
 let skeleton = Monster.createSkeleton();
 puts("  💀 অন্ধকার সমাধি থেকে একটি " + skeleton.name + " জেগে উঠেছে! (HP: " + str(skeleton.hp) + ")");
-
-// জাদু প্রয়োগ
 puts("  🔮 অর্জুন মন্ত্র উচ্চারণ করছে: অগ্নিবাণ (Fireball)...");
 let spellResult = Combat.heroCastSpell(hero, "অগ্নিবাণ (Fireball)", skeleton);
 if (isOk(spellResult)) {
     let sp = unwrapOr(spellResult, null);
     puts("  🔥 অগ্নিবাণে বিস্ফোরণ! " + str(sp.damage) + " মারাত্মক ক্ষতি! কঙ্কালের বাকি HP: " + str(skeleton.hp));
 }
-
-// ফিনিশিং স্ট্রাইক
 let finish = Combat.heroAttack(hero, skeleton);
 puts("  ⚔️ অর্জুন খড়্গ দিয়ে দ্বিতীয় আঘাত হেনেছে: " + str(finish.damage) + " ক্ষতি!");
 if (finish.monsterDefeated) {
@@ -91,30 +59,22 @@ if (finish.monsterDefeated) {
     Quest.awardXP(hero, skeleton.xpReward);
     puts("  + " + str(skeleton.xpReward) + " XP অর্জিত হয়েছে।\n");
 }
-
-// ----------------------------------------------------------------------------
-// ধাপ ৫: ফাইনাল বস এনকাউন্টার - রক্ত ড্রাগন
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ৫: ফাইনাল বস - রক্ত ড্রাগনের গুহায় মহাযুদ্ধ...");
 let boss = Monster.createDragonBoss();
 puts("  🐉 পর্বতের চূড়া থেকে নেমে এল " + boss.name + "! (HP: " + str(boss.hp) + ", Attack: " + str(boss.attack) + ")");
-
 let bossRound = 1;
 while (boss.status == Types.STATUS_ALIVE && hero.status == Types.STATUS_ALIVE && bossRound <= 5) {
     puts("  [বস রাউন্ড " + str(bossRound) + "]");
     let batk = Combat.heroAttack(hero, boss);
     puts("  ⚔️ অর্জুনের আঘাত: " + str(batk.damage) + " ক্ষতি। ড্রাগনের বাকি HP: " + str(boss.hp));
-
     if (batk.monsterDefeated) {
         puts("  🏆 ড্রাগন পরাজিত হয়েছে! আলো আবার পৃথিবীতে ফিরে এসেছে!");
         break;
     }
-
     let bTurn = Combat.monsterTurn(boss, hero);
     puts("  🔥 " + bTurn.message + " অর্জুনের ক্ষতি: " + str(bTurn.damage) + "। বাকি HP: " + str(hero.hp));
     bossRound = bossRound + 1;
 }
-
 puts("\n╔══════════════════════════════════════════════════════════════════════════╗");
 puts("║                     নায়কের চূড়ান্ত ফলাফল ও পরিসংখ্যান                     ║");
 puts("╠══════════════════════════════════════════════════════════════════════════╣");
@@ -123,5 +83,4 @@ puts("  বর্তমান লেভেল: " + str(hero.level) + " | অর�
 puts("  অবশিষ্ট HP: " + str(hero.hp) + "/" + str(hero.maxHp) + " | MP: " + str(hero.mp) + "/" + str(hero.maxMp));
 puts("  অভিযান স্থিতি: সফল ও বিজয়ী (VICTORIOUS)");
 puts("╚══════════════════════════════════════════════════════════════════════════╝\n");
-
 puts("🎮 NilQuest আরপিজি গেম ইঞ্জিন সিমুলেশন সফলভাবে সম্পন্ন হয়েছে!");

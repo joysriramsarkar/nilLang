@@ -1,48 +1,26 @@
-// ============================================================================
-// NilAnalytics - Live Matrix & Data Science Predictive Analytics Demo
-// ============================================================================
-
 import "./vector.nil" as Vector;
 import "./matrix.nil" as Matrix;
 import "./stats.nil" as Stats;
 import "./regression.nil" as ML;
-
 puts("╔══════════════════════════════════════════════════════════════════════════╗");
 puts("║               📈 NILANALYTICS: MATRIX & DATA SCIENCE SUITE 🚀            ║");
 puts("║                    Powered by Nilang • Onuron OS Ecosystem               ║");
 puts("╚══════════════════════════════════════════════════════════════════════════╝\n");
-
-// ----------------------------------------------------------------------------
-// ধাপ ১: ভেক্টর ও ম্যাট্রিক্স বীজগণিত
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ১: ভেক্টর ও ম্যাট্রিক্স বীজগণিত গণনা...");
-
 let v1 = [3.0, 4.0, 5.0];
 let v2 = [1.0, 2.0, 3.0];
 puts("  ভেক্টর ১: " + str(v1));
 puts("  ভেক্টর ২: " + str(v2));
 puts("  ডট প্রোডাক্ট (Dot Product) v1 . v2 : " + str(Vector.dot(v1, v2)));
 puts("  ভেক্টর যোগফল v1 + v2             : " + str(Vector.add(v1, v2)));
-
-let matA = [
-    [1.0, 2.0],
-    [3.0, 4.0]
-];
-let matB = [
-    [5.0, 6.0],
-    [7.0, 8.0]
-];
+let matA = [[1.0, 2.0], [3.0, 4.0]];
+let matB = [[5.0, 6.0], [7.0, 8.0]];
 let prodMat = Matrix.matMul(matA, matB);
 puts("\n  ম্যাট্রিক্স A (2x2) x ম্যাট্রিক্স B (2x2) গুণফল:");
 puts("  সারি ১: " + str(prodMat[0]));
 puts("  সারি ২: " + str(prodMat[1]) + "\n");
-
-// ----------------------------------------------------------------------------
-// ধাপ ২: বর্ণনামূলক পরিসংখ্যান (Descriptive Statistics)
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ২: শিক্ষার্থীদের পরীক্ষার স্কোরের পরিসংখ্যান বিশ্লেষণ...");
 let scores = [65.0, 78.0, 85.0, 90.0, 92.0, 74.0, 88.0, 96.0, 70.0, 82.0];
-
 puts("  নমুনা স্কোর তালিকা : " + str(scores));
 puts("  সর্বনিম্ন নম্বর (Min)    : " + str(Stats.minVal(scores)));
 puts("  সর্বোচ্চ নম্বর (Max)    : " + str(Stats.maxVal(scores)));
@@ -50,30 +28,18 @@ puts("  গড় নম্বর (Mean)        : " + str(Stats.mean(scores)));
 puts("  মধ্যমা (Median)        : " + str(Stats.median(scores)));
 puts("  ভেদাঙ্ক (Variance)      : " + str(Stats.variance(scores)));
 puts("  পরিমিত ব্যবধান (StdDev) : " + str(Stats.stdDev(scores)) + "\n");
-
-// ----------------------------------------------------------------------------
-// ধাপ ৩: মেশিন লার্নিং - বাসা ভাড়ার লিনিয়ার রিগ্রেশন প্রেডিকশন মডেল
-// ----------------------------------------------------------------------------
 puts("🔹 ধাপ ৩: বাসা বিক্রয়মূল্য পূর্বাভাস মডেল (Linear Regression Training)...");
-
-// সাইজ (বর্গফুট) এবং দাম (লক্ষ টাকা)
 let sqft = [600.0, 800.0, 1000.0, 1200.0, 1500.0, 1800.0, 2000.0];
 let priceLakh = [35.0, 46.0, 56.0, 68.0, 83.0, 98.0, 110.0];
-
 let model = ML.trainLinearModel(sqft, priceLakh);
 let r2Score = ML.calculateR2(model, sqft, priceLakh);
-
 puts("  মডেল সমীকরণ: দাম = " + str(model.slope) + " * বর্গফুট + " + str(model.intercept));
 puts("  মডেলের নির্ভুলতা (R² Score): " + str(r2Score * 100.0) + " %\n");
-
 puts("🔹 ধাপ ৪: নতুন অ্যাপার্টমেন্টের দাম পূর্বাভাস (Inference):");
-
 let flatSize1 = 1400.0;
 let pred1 = ML.predict(model, flatSize1);
 puts("  ১,৪০০ বর্গফুটের ফ্ল্যাটের আনুমানিক মূল্য: ৳ " + str(pred1) + " লক্ষ");
-
 let flatSize2 = 2500.0;
 let pred2 = ML.predict(model, flatSize2);
 puts("  ২,৫০০ বর্গফুটের ডুপ্লেক্সের আনুমানিক মূল্য: ৳ " + str(pred2) + " লক্ষ\n");
-
 puts("🎉 NilAnalytics ডেটা সায়েন্স ও প্রেডিক্টিভ ইঞ্জিন সফলভাবে সম্পন্ন হয়েছে!");

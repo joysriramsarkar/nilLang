@@ -1,11 +1,7 @@
-﻿struct Student {
-    name: String,
-    roll: Int,
-    score1: Int,
-    score2: Int
-}
+struct Student { name: String, roll: Int, score1: Int, score2: Int }
 fn getAvg(s) {
     return (s.score1 + s.score2) / 2;
 }
+
 let s = Student { name: "জয়শ্রীরাম", roll: 101, score1: 90, score2: 96 };
 puts("শিক্ষার্থী: " + s.name + " | গড় নম্বর: \(getAvg(s))");

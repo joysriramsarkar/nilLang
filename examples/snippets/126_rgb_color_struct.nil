@@ -1,11 +1,8 @@
-﻿struct ColorRGB {
-    r: Int,
-    g: Int,
-    b: Int
-}
+struct ColorRGB { r: Int, g: Int, b: Int }
 fn isDark(c) {
     let lum = (c.r * 299 + c.g * 587 + c.b * 114) / 1000;
     return lum < 128;
 }
+
 let c = ColorRGB { r: 30, g: 30, b: 30 };
 puts("রঙটি কি ডার্ক মোডের উপযুক্ত? \(isDark(c))");
