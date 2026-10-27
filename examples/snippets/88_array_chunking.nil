@@ -1,0 +1,21 @@
+fn chunk(arr, size) {
+    let chunks = [];
+    let current = [];
+    let count = 0;
+    for item in arr {
+        current = push(current, item);
+        count = count + 1;
+        if (count == size) {
+            chunks = push(chunks, current);
+            current = [];
+            count = 0;
+        }
+    }
+    if (count > 0) {
+        chunks = push(chunks, current);
+    }
+    return chunks;
+}
+
+let data = [1, 2, 3, 4, 5, 6, 7];
+puts("চঙ্কিং সাইজ ৩: \(chunk(data, 3))");

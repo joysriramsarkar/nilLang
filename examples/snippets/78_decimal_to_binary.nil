@@ -1,0 +1,16 @@
+fn toBinary(n) {
+    if (n == 0) {
+        return "0";
+    }
+    let res = "";
+    let num = n;
+    while (num > 0) {
+        let rem = num % 2;
+        res = "\(rem)" + res;
+        num = num / 2;
+    }
+    return res;
+}
+
+puts("13 এর বাইনারি: " + toBinary(13));
+puts("255 এর বাইনারি: " + toBinary(255));

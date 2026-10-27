@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/joysriramsarkar/nilLang/pkg/contract"
 )
 
 // Reader reads .nilax bundles
@@ -29,19 +31,38 @@ func OpenBundle(path string) (*Reader, error) {
 		files:     make(map[string][]byte),
 	}
 
-	// Read all files into memory
+	// Read all files into memory, bounded by the contract's archive limits so
+	// a small highly-compressed bundle cannot expand into gigabytes of RAM.
+	if len(zipReader.File) > contract.MaxArchiveEntries {
+		zipReader.Close()
+		return nil, fmt.Errorf("bundle has %d entries, exceeding the limit of %d", len(zipReader.File), contract.MaxArchiveEntries)
+	}
+	var total int64
 	for _, file := range zipReader.File {
+		if file.UncompressedSize64 > contract.MaxEntryBytes {
+			zipReader.Close()
+			return nil, fmt.Errorf("bundle entry %s exceeds the %d byte limit", file.Name, contract.MaxEntryBytes)
+		}
 		rc, err := file.Open()
 		if err != nil {
 			zipReader.Close()
 			return nil, fmt.Errorf("failed to open %s in bundle: %w", file.Name, err)
 		}
 
-		data, err := io.ReadAll(rc)
+		data, err := io.ReadAll(io.LimitReader(rc, contract.MaxEntryBytes+1))
 		rc.Close()
 		if err != nil {
 			zipReader.Close()
 			return nil, fmt.Errorf("failed to read %s in bundle: %w", file.Name, err)
+		}
+		if int64(len(data)) > contract.MaxEntryBytes {
+			zipReader.Close()
+			return nil, fmt.Errorf("bundle entry %s exceeds the %d byte limit", file.Name, contract.MaxEntryBytes)
+		}
+		total += int64(len(data))
+		if total > contract.MaxArchiveBytes {
+			zipReader.Close()
+			return nil, fmt.Errorf("bundle exceeds the %d byte total limit", contract.MaxArchiveBytes)
 		}
 
 		cleanName := filepath.ToSlash(file.Name)
@@ -79,16 +100,30 @@ func OpenBundleBytes(data []byte) (*Reader, error) {
 		files:     make(map[string][]byte),
 	}
 
+	if len(zipReader.File) > contract.MaxArchiveEntries {
+		return nil, fmt.Errorf("bundle has %d entries, exceeding the limit of %d", len(zipReader.File), contract.MaxArchiveEntries)
+	}
+	var total int64
 	for _, file := range zipReader.File {
+		if file.UncompressedSize64 > contract.MaxEntryBytes {
+			return nil, fmt.Errorf("bundle entry %s exceeds the %d byte limit", file.Name, contract.MaxEntryBytes)
+		}
 		rc, err := file.Open()
 		if err != nil {
 			return nil, fmt.Errorf("failed to open %s in bundle: %w", file.Name, err)
 		}
 
-		content, err := io.ReadAll(rc)
+		content, err := io.ReadAll(io.LimitReader(rc, contract.MaxEntryBytes+1))
 		rc.Close()
 		if err != nil {
 			return nil, fmt.Errorf("failed to read %s in bundle: %w", file.Name, err)
+		}
+		if int64(len(content)) > contract.MaxEntryBytes {
+			return nil, fmt.Errorf("bundle entry %s exceeds the %d byte limit", file.Name, contract.MaxEntryBytes)
+		}
+		total += int64(len(content))
+		if total > contract.MaxArchiveBytes {
+			return nil, fmt.Errorf("bundle exceeds the %d byte total limit", contract.MaxArchiveBytes)
 		}
 
 		cleanName := filepath.ToSlash(file.Name)

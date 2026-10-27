@@ -450,8 +450,12 @@ void *nil_object_new(uint8_t kind, size_t bytes) {
   object->kind = kind;
   object->marked = 0;
   object->next = NULL;
-  track(object);
+  /* Collect before linking: the new object is not yet in the chain, so the
+   * sweep cannot see it. Linking first and collecting second frees the very
+   * object just allocated whenever the threshold is reached, and the caller
+   * then writes into freed memory. */
   maybe_collect();
+  track(object);
   return object;
 }
 

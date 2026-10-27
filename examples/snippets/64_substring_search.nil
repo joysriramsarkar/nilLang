@@ -1,0 +1,29 @@
+fn containsSub(str, sub) {
+    let n = len(str);
+    let m = len(sub);
+    if (m > n) {
+        return false;
+    }
+    let i = 0;
+    while (i <= n - m) {
+        let matchFound = true;
+        let j = 0;
+        while (j < m) {
+            if (str[i + j] != sub[j]) {
+                matchFound = false;
+                break;
+            }
+            j = j + 1;
+        }
+        if (matchFound) {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+let hasWorld = containsSub("Hello World", "World");
+let hasJoy = containsSub("Hello World", "Joy");
+puts("Hello World-এ World আছে? \(hasWorld)");
+puts("Hello World-এ Joy আছে? \(hasJoy)");

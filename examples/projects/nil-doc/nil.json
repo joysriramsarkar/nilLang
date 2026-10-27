@@ -1,0 +1,8 @@
+{
+  "name": "nil-doc",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "Markdown & Document AST Parser and ANSI Terminal Renderer in Nilang",
+  "entry": "src/main.nil",
+  "capabilities": ["stdout", "clock", "random", "filesystem"]
+}

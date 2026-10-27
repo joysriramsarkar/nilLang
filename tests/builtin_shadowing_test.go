@@ -12,23 +12,23 @@ import (
 // with a type error about BUILTIN and INTEGER, which points nowhere near the
 // real cause.
 
-// TestInterpolationCannotNestStringLiterals records a real limitation.
-//
-// The lexer terminates a string at the first unescaped quote, so a string
-// literal inside an interpolation closes the outer literal:
-//
-//	"\(join(["a", "b"], "-"))"     ← rejected
-//	let parts = ["a", "b"];
-//	"\(join(parts, "-"))"           ← accepted
-//
-// This is written as a test that *expects* rejection so that the day the
-// limitation is lifted, the change forces a decision: either update this test or
-// document the new behaviour deliberately, rather than having it change silently.
-func TestInterpolationCannotNestStringLiterals(t *testing.T) {
+// TestInterpolationSupportsNestedStringLiterals pins that a string literal
+// inside an interpolation is accepted. The lexer is interpolation-aware, so
+// the inner quotes no longer close the outer literal. This used to be a
+// limitation (the test that recorded it expected rejection); it is now
+// supported in both engines. See LANGUAGE_SPEC.md §2.4.
+func TestInterpolationSupportsNestedStringLiterals(t *testing.T) {
 	res := evalSource(t, `let result = "\(join(["a", "b"], "-"))";`)
-	if res.OK {
-		t.Error("a nested string literal inside an interpolation was accepted; " +
-			"if that is now supported, update this test and LANGUAGE_SPEC.md §2.4")
+	if !res.OK {
+		t.Fatalf("a nested string literal inside an interpolation was rejected: %s", res.ErrSummary())
+	}
+	for label, out := range map[string]string{
+		"evaluator": mustEvaluatorEval(t, res.Program, "result"),
+		"VM":        mustVMEval(t, res.Program, "result"),
+	} {
+		if out != "a-b" {
+			t.Errorf("%s produced %q for nested string literals, want %q", label, out, "a-b")
+		}
 	}
 }
 
@@ -156,9 +156,9 @@ func TestBuiltinStillReachableWhenNotShadowed(t *testing.T) {
 	}{
 		{`let xs = [3, 1, 2]; let result = len(xs);`, "3"},
 		{`let result = upper("abc");`, "ABC"},
-		// A nested string literal inside an interpolation is not supported by
-		// the lexer yet, so the arguments come from variables here. See
-		// TestInterpolationCannotNestStringLiterals for that limitation.
+		// Nested string literals inside interpolations are covered by
+		// TestInterpolationSupportsNestedStringLiterals; the arguments come
+		// from variables here to keep this control independent of that.
 		{`let parts = ["a", "b"]; let sep = "-"; let result = join(parts, sep);`, "a-b"},
 		{`let xs = [9, 8]; let result = first(xs);`, "9"},
 	}

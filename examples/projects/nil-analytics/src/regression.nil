@@ -1,0 +1,49 @@
+import "./vector.nil" as Vector;
+import "./stats.nil" as Stats;
+let trainLinearModel = fn(xArr, yArr) {
+    let n = len(xArr);
+    if (n != len(yArr) || n == 0) {
+        return null;
+    }
+    let meanX = Stats.mean(xArr);
+    let meanY = Stats.mean(yArr);
+    let numerator = 0.0;
+    let denominator = 0.0;
+    let i = 0;
+    while (i < n) {
+        let diffX = xArr[i] - meanX;
+        let diffY = yArr[i] - meanY;
+        numerator = numerator + diffX * diffY;
+        denominator = denominator + diffX * diffX;
+        i = i + 1;
+    }
+    if (denominator == 0.0) {
+        return null;
+    }
+    let slope = numerator / denominator;
+    let intercept = meanY - slope * meanX;
+    return {"slope": slope, "intercept": intercept, "sampleSize": n};
+};
+let predict = fn(model, x) {
+    return model.slope * x + model.intercept;
+};
+let calculateR2 = fn(model, xArr, yArr) {
+    let n = len(xArr);
+    let meanY = Stats.mean(yArr);
+    let ssTot = 0.0;
+    let ssRes = 0.0;
+    let i = 0;
+    while (i < n) {
+        let actual = yArr[i];
+        let predicted = predict(model, xArr[i]);
+        let diffTot = actual - meanY;
+        let diffRes = actual - predicted;
+        ssTot = ssTot + diffTot * diffTot;
+        ssRes = ssRes + diffRes * diffRes;
+        i = i + 1;
+    }
+    if (ssTot == 0.0) {
+        return 1.0;
+    }
+    return 1.0 - ssRes / ssTot;
+};

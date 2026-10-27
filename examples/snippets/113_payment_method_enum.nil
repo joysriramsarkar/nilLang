@@ -1,0 +1,13 @@
+enum PaymentMethod { Cash, Card, bKash, Nagad }
+fn getFee(m) {
+    if (m == Card) {
+        return 2.0;
+    }
+    if (m == bKash) {
+        return 1.5;
+    }
+    return 0.0;
+}
+
+puts("Card ফি: \(getFee(Card))%");
+puts("Cash ফি: \(getFee(Cash))%");

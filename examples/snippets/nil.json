@@ -1,0 +1,6 @@
+{
+  "name": "nil-snippets",
+  "version": "1.0.0",
+  "entry": "01_arithmetic.nil",
+  "capabilities": ["stdout", "stdin", "clock", "random", "filesystem"]
+}

@@ -1,0 +1,22 @@
+fn maxVal(arr) {
+    let m = arr[0];
+    for x in arr {
+        if (x > m) {
+            m = x;
+        }
+    }
+    return m;
+}
+
+let arr = [4, 2, 2, 8, 3, 3, 1];
+let max = maxVal(arr);
+let counts = [];
+let i = 0;
+while (i <= max) {
+    counts = push(counts, 0);
+    i = i + 1;
+}
+for x in arr {
+    counts[x] = counts[x] + 1;
+}
+puts("কাউন্টিং সর্ট ফ্রিকোয়েন্সি গণনা সম্পন্ন। মোট উপাদান: \(len(arr))");

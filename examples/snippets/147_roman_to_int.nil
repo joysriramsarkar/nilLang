@@ -1,0 +1,46 @@
+fn romanVal(ch) {
+    if (ch == "I") {
+        return 1;
+    }
+    if (ch == "V") {
+        return 5;
+    }
+    if (ch == "X") {
+        return 10;
+    }
+    if (ch == "L") {
+        return 50;
+    }
+    if (ch == "C") {
+        return 100;
+    }
+    return 0;
+}
+
+fn romanToInt(s) {
+    let total = 0;
+    let n = len(s);
+    let i = 0;
+    while (i < n) {
+        let v1 = romanVal(s[i]);
+        if (i + 1 < n) {
+            let v2 = romanVal(s[i + 1]);
+            if (v1 >= v2) {
+                total = total + v1;
+                i = i + 1;
+            } else {
+                total = total + (v2 - v1);
+                i = i + 2;
+            }
+        } else {
+            total = total + v1;
+            i = i + 1;
+        }
+    }
+    return total;
+}
+
+let vXIV = romanToInt("XIV");
+let vXLII = romanToInt("XLII");
+puts("XIV = \(vXIV)");
+puts("XLII = \(vXLII)");

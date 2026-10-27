@@ -1,0 +1,12 @@
+fn max3(a, b, c) {
+    let max = a;
+    if (b > max) {
+        max = b;
+    }
+    if (c > max) {
+        max = c;
+    }
+    return max;
+}
+
+puts("সর্বোচ্চ মান: \(max3(45, 89, 23))");

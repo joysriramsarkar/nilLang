@@ -1,0 +1,5 @@
+fn formatBoldNotice(title, text) {
+    return "**" + title + "**: " + text;
+}
+
+puts(formatBoldNotice("সতর্কতা", "অনুরুণ ওএস স্যান্ডবক্স সক্রিয়"));

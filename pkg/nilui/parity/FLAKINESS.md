@@ -3,7 +3,9 @@
 Golden and UI tests must be deterministic. Rules:
 
 1. **No wall-clock asserts.** Timing is measured, never asserted, except the
-   perf-budget CI test which uses p95 with 30 samples on a fixed workload.
+   perf-budget CI test which uses p95 with 30 samples on a fixed workload —
+   and only on non-race runs. Under `-race` the perf test measures and logs
+   without asserting: instrumented timing cannot assert native frame times.
 2. **Fixed seeds.** Any randomness uses a fixed seed recorded in the test.
 3. **Font-independent goldens.** Raster goldens assert pixel shapes from the
    5×7 bitmap font + geometry, never system font rendering.

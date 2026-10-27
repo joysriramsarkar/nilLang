@@ -1,0 +1,12 @@
+fn calculateCart(items) {
+    let subtotal = 0;
+    for item in items {
+        subtotal = subtotal + item.price * item.qty;
+    }
+    let tax = subtotal * 5 / 100;
+    return {"subtotal": subtotal, "tax": tax, "total": subtotal + tax};
+}
+
+let cart = [{"price": 500, "qty": 2}, {"price": 1200, "qty": 1}];
+let res = calculateCart(cart);
+puts("সাবটোটাল: ৳\(res.subtotal) | ভ্যাট: ৳\(res.tax) | সর্বমোট: ৳\(res.total)");

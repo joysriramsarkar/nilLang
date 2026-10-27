@@ -54,6 +54,37 @@ func (c *dapClient) send(t *testing.T, seq int, command string, args map[string]
 	fmt.Fprintf(c.conn, "Content-Length: %d\r\n\r\n%s", len(data), data)
 }
 
+func TestDAPRefusesOversizeMessage(t *testing.T) {
+	srvR, cliW := io.Pipe()
+	cliR, srvW := io.Pipe()
+	s := NewServerWithIO("main.nil", `let x = 1;`, srvR, srvW)
+	done := make(chan error, 1)
+	go func() { done <- s.Serve() }()
+	fmt.Fprintf(cliW, "Content-Length: %d\r\n\r\n", maxMessageBytes+1)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("an over-limit Content-Length was accepted")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not refuse the over-limit Content-Length")
+	}
+	cliW.Close()
+	cliR.Close()
+}
+
+func TestDAPStopIsIdempotent(t *testing.T) {
+	s := NewServerWithIO("main.nil", `let x = 1;`, strings.NewReader(""), io.Discard)
+	// Disconnect racing a read failure used to close stopCh twice and panic.
+	s.stop()
+	s.stop()
+	select {
+	case <-s.stopCh:
+	default:
+		t.Fatal("stop did not close the stop channel")
+	}
+}
+
 // dapReadTimeout bounds a single read.
 //
 // This is a socket deadline, not a session budget: it fires only when the

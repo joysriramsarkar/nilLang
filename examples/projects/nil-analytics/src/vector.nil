@@ -1,0 +1,54 @@
+let dot = fn(v1, v2) {
+    let size = len(v1);
+    if (size != len(v2)) {
+        return 0.0;
+    }
+    let total = 0.0;
+    let i = 0;
+    while (i < size) {
+        total = total + v1[i] * v2[i];
+        i = i + 1;
+    }
+    return total;
+};
+let add = fn(v1, v2) {
+    let size = len(v1);
+    let res = [];
+    let i = 0;
+    while (i < size) {
+        res = push(res, v1[i] + v2[i]);
+        i = i + 1;
+    }
+    return res;
+};
+let sub = fn(v1, v2) {
+    let size = len(v1);
+    let res = [];
+    let i = 0;
+    while (i < size) {
+        res = push(res, v1[i] - v2[i]);
+        i = i + 1;
+    }
+    return res;
+};
+let scale = fn(v, scalar) {
+    let res = [];
+    let i = 0;
+    while (i < len(v)) {
+        res = push(res, v[i] * scalar);
+        i = i + 1;
+    }
+    return res;
+};
+let sum = fn(v) {
+    let total = 0.0;
+    let i = 0;
+    while (i < len(v)) {
+        total = total + v[i];
+        i = i + 1;
+    }
+    return total;
+};
+let normSq = fn(v) {
+    return dot(v, v);
+};

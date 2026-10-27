@@ -1,0 +1,11 @@
+fn serializeKV(keys, hash) {
+    let res = "";
+    for k in keys {
+        res = res + k + "=" + "\((hash[k]))" + ";";
+    }
+    return res;
+}
+
+let data = {"user": "admin", "id": 42};
+let keys = ["user", "id"];
+puts("সিরিয়ালাইজড স্ট্রিং: " + serializeKV(keys, data));

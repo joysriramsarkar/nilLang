@@ -1,0 +1,22 @@
+fn getPrimes(limit) {
+    let primes = [];
+    let num = 2;
+    while (num <= limit) {
+        let isP = true;
+        let d = 2;
+        while (d * d <= num) {
+            if (num % d == 0) {
+                isP = false;
+                break;
+            }
+            d = d + 1;
+        }
+        if (isP) {
+            primes = push(primes, num);
+        }
+        num = num + 1;
+    }
+    return primes;
+}
+
+puts("৩০ পর্যন্ত মৌলিক সংখ্যা: \(getPrimes(30))");

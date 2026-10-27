@@ -18,13 +18,9 @@ The following compatibility surfaces are frozen:
 - Effect semantics frozen
 - Capability semantics frozen
 
-During the freeze, changes may correct an implementation/specification mismatch,
-close a safety hole, improve diagnostics without changing their stable code, or add
-tests and tooling. New syntax, types, effects, capabilities, and runtime semantics
-must wait until the freeze exits.
+During the freeze, changes may correct an implementation/specification mismatch, close a safety hole, improve diagnostics without changing their stable code, or add tests and tooling. New syntax, types, effects, capabilities, and runtime semantics must wait until the freeze exits.
 
-Any intentional compatibility change requires all of the following in the same
-change:
+Any intentional compatibility change requires all of the following in the same change:
 
 1. A specification update under `docs/spec/`.
 2. Evaluator and VM conformance coverage when the behavior is executable.
@@ -32,6 +28,4 @@ change:
 4. A migration note in the release notes.
 5. Explicit approval to amend this freeze contract.
 
-The implementation is not allowed to claim an unimplemented draft feature as a
-Nilang 0.1 guarantee. Draft and experimental behavior must be labelled as such in
-the specification.
+The implementation is not allowed to claim an unimplemented draft feature as a Nilang 0.1 guarantee. Draft and experimental behavior must be labelled as such in the specification.

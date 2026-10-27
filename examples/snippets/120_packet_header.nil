@@ -1,0 +1,6 @@
+fn makeHeader(srcPort, dstPort, proto) {
+    return {"src": srcPort, "dst": dstPort, "proto": proto};
+}
+
+let pkt = makeHeader(8080, 443, "TCP");
+puts("প্যাকেট হেডার: \(pkt.proto) \(pkt.src) -> \(pkt.dst)");

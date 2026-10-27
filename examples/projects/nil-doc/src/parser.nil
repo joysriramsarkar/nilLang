@@ -1,0 +1,57 @@
+import "./types.nil" as Types;
+import "./lexer.nil" as Lexer;
+let parseDocument = fn(markdownText) {
+    let lines = split(markdownText, "\n");
+    let children = [];
+    let inCodeBlock = false;
+    let codeBlockLang = "";
+    let codeBlockLines = [];
+    let i = 0;
+    while (i < len(lines)) {
+        let rawLine = lines[i];
+        let classified = Lexer.classifyLine(rawLine);
+        if (classified.kind == Types.NODE_CODE_BLOCK) {
+            if (inCodeBlock) {
+                let codeBody = join(codeBlockLines, "\n");
+                let codeNode = Types.createNode(Types.NODE_CODE_BLOCK, codeBody, 0, []);
+                codeNode["lang"] = codeBlockLang;
+                children = push(children, codeNode);
+                inCodeBlock = false;
+                codeBlockLang = "";
+                codeBlockLines = [];
+            } else {
+                inCodeBlock = true;
+                codeBlockLang = classified.text;
+                codeBlockLines = [];
+            }
+        } else {
+            if (inCodeBlock) {
+                codeBlockLines = push(codeBlockLines, rawLine);
+            } else {
+                if (classified.kind != "EMPTY") {
+                    let node = Types.createNode(classified.kind, classified.text, classified.level, []);
+                    children = push(children, node);
+                }
+            }
+        }
+        i = i + 1;
+    }
+    if (inCodeBlock) {
+        let codeBody = join(codeBlockLines, "\n");
+        let codeNode = Types.createNode(Types.NODE_CODE_BLOCK, codeBody, 0, []);
+        codeNode["lang"] = codeBlockLang;
+        children = push(children, codeNode);
+    }
+    return Types.createNode(Types.NODE_DOC, "Root Document", 0, children);
+};
+let countNodes = fn(astDoc, nodeKind) {
+    let count = 0;
+    let i = 0;
+    while (i < len(astDoc.children)) {
+        if (astDoc.children[i].nodeKind == nodeKind) {
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+    return count;
+};

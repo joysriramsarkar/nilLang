@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+
+	"github.com/joysriramsarkar/nilLang/compiler/lexer"
 )
 
 // errInvalidLiteral marks a numeric literal the parser cannot convert.
@@ -22,8 +24,10 @@ var bengaliDigitStart, bengaliDigitEnd = rune(0x09E6), rune(0x09EF) // ০-৯ B
 // its ASCII equivalent and removes digit separators ('_'), which the
 // specification permits for readability (for example 1_000_000).
 //
-// Characters that are not digits and not separators are preserved so that a
-// radix-prefixed literal keeps its meaning; base detection happens afterwards.
+// Digit values come from lexer.DigitValue — the single definition shared with
+// the scanner, so a digit the lexer accepts always folds here. Characters that
+// are not digits and not separators are preserved so that a radix-prefixed
+// literal keeps its meaning; base detection happens afterwards.
 func foldDigits(s string) (string, bool) {
 	if !needsFolding(s) {
 		return s, false
@@ -40,7 +44,11 @@ func foldDigits(s string) (string, bool) {
 		case r == '_':
 			// Digit separator: dropped before conversion.
 		default:
-			b.WriteRune(r)
+			if v, ok := lexer.DigitValue(r); ok && (r < '0' || r > '9') {
+				b.WriteRune(rune('0' + v))
+			} else {
+				b.WriteRune(r)
+			}
 		}
 	}
 	return b.String(), true
@@ -48,9 +56,10 @@ func foldDigits(s string) (string, bool) {
 
 func needsFolding(s string) bool {
 	for _, r := range s {
-		if r == '_' ||
-			(r >= bengaliDigitStart && r <= bengaliDigitEnd) ||
-			(r >= digitFoldStart && r <= digitFoldEnd) {
+		if r == '_' {
+			return true
+		}
+		if _, ok := lexer.DigitValue(r); ok && (r < '0' || r > '9') {
 			return true
 		}
 	}
@@ -59,8 +68,8 @@ func needsFolding(s string) bool {
 
 // parseIntLiteral converts an integer literal to its value.
 //
-// It accepts decimal, 0x hex, 0o octal, and 0b binary, in ASCII or Bengali or
-// fullwidth digits, with optional '_' separators. A negative literal is formed
+// It accepts decimal, 0x hex, 0o octal, and 0b binary, in ASCII or any Unicode
+// decimal digits, with optional '_' separators. A negative literal is formed
 // by the parser's unary minus rather than by a sign inside the literal, which
 // is why a leading '-' is rejected here.
 func parseIntLiteral(literal string) (int64, error) {

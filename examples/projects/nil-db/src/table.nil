@@ -1,0 +1,80 @@
+import "./schema.nil" as Schema;
+let createTable = fn(schema) {
+    return {"schema": schema, "rows": [], "autoIncrementId": 1};
+};
+let insert = fn(table, data) {
+    let pkName = table.schema.primaryKey;
+    if (data[pkName] == null) {
+        data[pkName] = table.autoIncrementId;
+        table["autoIncrementId"] = table.autoIncrementId + 1;
+    } else {
+        let existing = findById(table, data[pkName]);
+        if (isSome(existing)) {
+            return Err("প্রাইমারি কি ডুপ্লিকেট: " + str(data[pkName]));
+        }
+    }
+    let validation = Schema.validateRow(table.schema, data);
+    if (isErr(validation)) {
+        return validation;
+    }
+    table["rows"] = push(table.rows, data);
+    return Ok(data);
+};
+let findById = fn(table, id) {
+    let pkName = table.schema.primaryKey;
+    let i = 0;
+    while (i < len(table.rows)) {
+        let r = table.rows[i];
+        if (r[pkName] == id) {
+            return Some(r);
+        }
+        i = i + 1;
+    }
+    return None();
+};
+let update = fn(table, id, updates, keys) {
+    let pkName = table.schema.primaryKey;
+    let i = 0;
+    while (i < len(table.rows)) {
+        let r = table.rows[i];
+        if (r[pkName] == id) {
+            let kIdx = 0;
+            while (kIdx < len(keys)) {
+                let k = keys[kIdx];
+                if (k != pkName) {
+                    r[k] = updates[k];
+                }
+                kIdx = kIdx + 1;
+            }
+            return Ok(r);
+        }
+        i = i + 1;
+    }
+    return Err("রেকর্ড খুঁজে পাওয়া যায়নি: ID " + str(id));
+};
+let deleteById = fn(table, id) {
+    let pkName = table.schema.primaryKey;
+    let newRows = [];
+    let deleted = false;
+    let i = 0;
+    while (i < len(table.rows)) {
+        let r = table.rows[i];
+        if (r[pkName] == id) {
+            deleted = true;
+        } else {
+            newRows = push(newRows, r);
+        }
+        i = i + 1;
+    }
+    if (deleted) {
+        table["rows"] = newRows;
+        return Ok(true);
+    }
+    return Err("মুছে ফেলার মতো কোনো রেকর্ড পাওয়া যায়নি");
+};
+let getAllRows = fn(table) {
+    return table.rows;
+};
+let countRows = fn(table) {
+    return len(table.rows);
+};

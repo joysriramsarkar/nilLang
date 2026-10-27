@@ -1,0 +1,7 @@
+let role = "admin";
+let access = match role {
+    "admin" => "পূর্ণ নিয়ন্ত্রণ",
+    "user" => "ব্যবহারকারীর অধিকার",
+    _ => "অতিথি অধিকার",
+};
+puts("অনুমতি: " + access);

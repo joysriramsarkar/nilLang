@@ -1,0 +1,8 @@
+{
+  "name": "nil-db",
+  "version": "1.0.0",
+  "author": "Joysriram Sarkar",
+  "description": "In-Memory Relational Database & Query Engine in Nilang",
+  "entry": "src/main.nil",
+  "capabilities": ["stdout", "clock", "random", "filesystem"]
+}

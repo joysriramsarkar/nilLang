@@ -21,12 +21,19 @@ import (
 	pkgcompiler "github.com/joysriramsarkar/nilLang/pkg/compiler"
 )
 
+// maxMessageBytes caps a single framed message. The length comes from the
+// wire, so allocating it blindly lets one header exhaust memory.
+const maxMessageBytes = 8 << 20 // 8 MiB
+
 // Server is a DAP adapter over stdio (Content-Length framed JSON).
 type Server struct {
 	r   *bufio.Reader
 	w   io.Writer
 	mu  sync.Mutex
 	seq int
+
+	stopOnce sync.Once
+	writeErr error // first transport write failure, surfaced by Serve
 
 	sourceFile string
 	source     string
@@ -92,6 +99,9 @@ func (s *Server) read() (map[string]any, error) {
 	if length < 0 {
 		return nil, errors.New("missing Content-Length")
 	}
+	if length > maxMessageBytes {
+		return nil, fmt.Errorf("Content-Length %d exceeds the %d byte limit", length, maxMessageBytes)
+	}
 	buf := make([]byte, length)
 	if _, err := io.ReadFull(s.r, buf); err != nil {
 		return nil, err
@@ -103,27 +113,46 @@ func (s *Server) read() (map[string]any, error) {
 	return m, nil
 }
 
-func (s *Server) write(v any) {
-	data, err := json.Marshal(v)
+// stop signals the runVM goroutine to exit. Disconnect and a read failure can
+// race; closing the channel twice panics, so the close happens once.
+func (s *Server) stop() {
+	s.stopOnce.Do(func() { close(s.stopCh) })
+}
+
+// emit stamps the sequence number, frames and writes one message atomically.
+// Sequence assignment and the write share the lock so the runVM goroutine and
+// the serve loop cannot interleave sequence numbers out of order. The first
+// transport failure sticks and is surfaced by Serve.
+func (s *Server) emit(msg map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.writeErr != nil {
+		return
+	}
+	s.seq++
+	msg["seq"] = s.seq
+	data, err := json.Marshal(msg)
 	if err != nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	fmt.Fprintf(s.w, "Content-Length: %d\r\n\r\n", len(data))
-	s.w.Write(data)
+	if _, err := fmt.Fprintf(s.w, "Content-Length: %d\r\n\r\n", len(data)); err != nil {
+		s.writeErr = err
+		return
+	}
+	if _, err := s.w.Write(data); err != nil {
+		s.writeErr = err
+	}
 }
 
-func (s *Server) nextSeq() int {
+func (s *Server) stickyWriteErr() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.seq++
-	return s.seq
+	return s.writeErr
 }
 
 func (s *Server) respond(reqSeq int, command string, success bool, body any, message string) {
 	msg := map[string]any{
-		"seq": s.nextSeq(), "type": "response", "request_seq": reqSeq,
+		"type": "response", "request_seq": reqSeq,
 		"success": success, "command": command,
 	}
 	if body != nil {
@@ -132,15 +161,15 @@ func (s *Server) respond(reqSeq int, command string, success bool, body any, mes
 	if message != "" {
 		msg["message"] = message
 	}
-	s.write(msg)
+	s.emit(msg)
 }
 
 func (s *Server) event(name string, body any) {
-	msg := map[string]any{"seq": s.nextSeq(), "type": "event", "event": name}
+	msg := map[string]any{"type": "event", "event": name}
 	if body != nil {
 		msg["body"] = body
 	}
-	s.write(msg)
+	s.emit(msg)
 }
 
 // ─── program load ────────────────────────────────────────────────────────
@@ -252,7 +281,7 @@ func (s *Server) Serve() error {
 	for {
 		msg, err := s.read()
 		if err != nil {
-			close(s.stopCh)
+			s.stop()
 			return err
 		}
 		command, _ := msg["command"].(string)
@@ -424,8 +453,11 @@ func (s *Server) Serve() error {
 			}
 			s.respond(reqSeq, command, true, nil, "")
 		case "disconnect", "terminate":
-			close(s.stopCh)
+			s.stop()
 			s.respond(reqSeq, command, true, nil, "")
+			if err := s.stickyWriteErr(); err != nil {
+				return err
+			}
 			return nil
 		default:
 			s.respond(reqSeq, command, false, nil, "unsupported command: "+command)

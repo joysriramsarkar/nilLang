@@ -1,0 +1,24 @@
+fn createQueue() {
+    return {"items": []};
+}
+
+fn enqueue(q, val) {
+    q["items"] = push(q.items, val);
+}
+
+fn dequeue(q) {
+    if (len(q.items) == 0) {
+        return -1;
+    }
+    let front = q.items[0];
+    q["items"] = rest(q.items);
+    return front;
+}
+
+let q = createQueue();
+enqueue(q, "গ্রাহক ১");
+enqueue(q, "গ্রাহক ২");
+enqueue(q, "গ্রাহক ৩");
+puts("সেবা নিচ্ছেন: " + dequeue(q));
+puts("সেবা নিচ্ছেন: " + dequeue(q));
+puts("লাইনে আছেন: \(q.items)");

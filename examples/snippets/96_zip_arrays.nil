@@ -1,0 +1,18 @@
+fn zip(a, b) {
+    let res = [];
+    let n = if (len(a) < len(b)) {
+        len(a);
+    } else {
+        len(b);
+    };
+    let i = 0;
+    while (i < n) {
+        res = push(res, [a[i], b[i]]);
+        i = i + 1;
+    }
+    return res;
+}
+
+let keys = ["নাম", "বয়স", "শহর"];
+let vals = ["জয়", 24, "ঢাকা"];
+puts("জিপ ফলাফল: \(zip(keys, vals))");

@@ -1,0 +1,21 @@
+fn binarySearch(arr, target) {
+    let low = 0;
+    let high = len(arr) - 1;
+    while (low <= high) {
+        let mid = (low + high) / 2;
+        if (arr[mid] == target) {
+            return mid;
+        }
+        if (arr[mid] < target) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return -1;
+}
+
+let sortedList = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91];
+let idx = binarySearch(sortedList, 23);
+puts("23 এর অবস্থান: ইনডেক্স \(idx)");
+puts("100 এর অবস্থান: \(binarySearch(sortedList, 100))");

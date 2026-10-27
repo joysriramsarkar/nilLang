@@ -1,0 +1,4 @@
+let cities = ["ঢাকা", "কলকাতা", "সিলেট"];
+for idx, city in cities {
+    puts("ইনডেক্স \(idx) -> শহর: " + city);
+}

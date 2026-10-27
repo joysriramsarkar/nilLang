@@ -1,0 +1,29 @@
+import "./types.nil" as Types;
+let createColumn = fn(colName, colType, isPrimary, isRequired) {
+    return {"name": colName, "colType": colType, "isPrimary": isPrimary, "isRequired": isRequired};
+};
+let createSchema = fn(tableName, columns) {
+    let primaryCol = "id";
+    let i = 0;
+    while (i < len(columns)) {
+        let c = columns[i];
+        if (c.isPrimary) {
+            primaryCol = c.name;
+        }
+        i = i + 1;
+    }
+    return {"tableName": tableName, "columns": columns, "primaryKey": primaryCol};
+};
+let validateRow = fn(schema, rowData) {
+    let cols = schema.columns;
+    let i = 0;
+    while (i < len(cols)) {
+        let col = cols[i];
+        let val = rowData[col.name];
+        if (col.isRequired && val == null) {
+            return Err("বাধ্যতামূলক কলাম অনুপস্থিত: " + col.name);
+        }
+        i = i + 1;
+    }
+    return Ok(true);
+};

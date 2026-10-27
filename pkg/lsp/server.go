@@ -17,6 +17,10 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/typecheck"
 )
 
+// maxMessageBytes caps a single framed message. The length comes from the
+// wire, so allocating it blindly lets one header exhaust memory.
+const maxMessageBytes = 8 << 20 // 8 MiB
+
 type Document struct {
 	URI     string
 	Version int
@@ -31,8 +35,10 @@ type Server struct {
 	docsMu    sync.RWMutex
 	documents map[string]*Document
 
+	stateMu    sync.Mutex // guards isShutdown, running and writeErr
 	isShutdown bool
 	running    bool
+	writeErr   error // first transport write failure, surfaced by Serve
 }
 
 func NewServer(r io.Reader, w io.Writer) *Server {
@@ -45,17 +51,19 @@ func NewServer(r io.Reader, w io.Writer) *Server {
 
 // Serve starts the JSON-RPC read/eval/respond loop
 func (s *Server) Serve() error {
-	s.running = true
+	s.setRunning(true)
 	br := bufio.NewReader(s.reader)
 
-	for s.running {
-		// Read headers
-		contentLength := 0
+	for s.isRunning() {
+		// Read headers. A malformed or missing Content-Length ends the
+		// connection: the body that follows cannot be located, so skipping
+		// it would desynchronise every later message.
+		contentLength := -1
 		for {
 			line, err := br.ReadString('\n')
 			if err != nil {
 				if err == io.EOF {
-					return nil
+					return s.stickyWriteErr()
 				}
 				return err
 			}
@@ -70,36 +78,92 @@ func (s *Server) Serve() error {
 				headerVal := strings.TrimSpace(parts[1])
 				if strings.EqualFold(headerKey, "Content-Length") {
 					length, err := strconv.Atoi(headerVal)
-					if err == nil {
-						contentLength = length
+					if err != nil || length < 0 {
+						return fmt.Errorf("invalid Content-Length %q", headerVal)
 					}
+					contentLength = length
 				}
 			}
 		}
 
-		if contentLength <= 0 {
-			continue
+		if contentLength < 0 {
+			return fmt.Errorf("missing Content-Length header")
+		}
+		if contentLength > maxMessageBytes {
+			return fmt.Errorf("Content-Length %d exceeds the %d byte limit", contentLength, maxMessageBytes)
 		}
 
 		// Read payload
 		body := make([]byte, contentLength)
-		_, err := io.ReadFull(br, body)
-		if err != nil {
+		if _, err := io.ReadFull(br, body); err != nil {
 			return err
 		}
 
 		var req Request
 		if err := json.Unmarshal(body, &req); err != nil {
+			// The stream is at a message boundary, so reporting the parse
+			// error and continuing is safe — unlike skipping framing.
+			s.sendResponse(nil, nil, &ResponseError{Code: -32700, Message: "Parse error"})
 			continue
 		}
 
 		s.dispatch(req)
+		if err := s.stickyWriteErr(); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	return s.stickyWriteErr()
+}
+
+func (s *Server) setRunning(v bool) {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	s.running = v
+}
+
+func (s *Server) isRunning() bool {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	return s.running
+}
+
+func (s *Server) setShutdown() {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	s.isShutdown = true
+}
+
+func (s *Server) isShutdownState() bool {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	return s.isShutdown
+}
+
+func (s *Server) recordWriteErr(err error) {
+	if err == nil {
+		return
+	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if s.writeErr == nil {
+		s.writeErr = err
+	}
+}
+
+func (s *Server) stickyWriteErr() error {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	return s.writeErr
 }
 
 func (s *Server) dispatch(req Request) {
+	// After shutdown only exit is answered; anything else is a protocol
+	// violation, reported rather than dispatched.
+	if req.Method != "exit" && s.isShutdownState() {
+		s.sendResponse(req.ID, nil, &ResponseError{Code: -32600, Message: "Invalid request: server is shut down"})
+		return
+	}
 	switch req.Method {
 	case "initialize":
 		res := InitializeResult{
@@ -131,11 +195,11 @@ func (s *Server) dispatch(req Request) {
 		// Client notification, no reply needed
 
 	case "shutdown":
-		s.isShutdown = true
+		s.setShutdown()
 		s.sendResponse(req.ID, nil, nil)
 
 	case "exit":
-		s.running = false
+		s.setRunning(false)
 
 	case "textDocument/didOpen":
 		var params DidOpenTextDocumentParams
@@ -455,5 +519,7 @@ func (s *Server) writeMessage(msg any) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.writer.Write(buf.Bytes())
+	if _, err := s.writer.Write(buf.Bytes()); err != nil {
+		s.recordWriteErr(err)
+	}
 }

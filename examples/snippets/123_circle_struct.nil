@@ -1,0 +1,9 @@
+struct Circle { radius: Int }
+fn circleAreaApprox(c) {
+    let piApprox = 31416;
+    let r = c.radius;
+    return piApprox * r * r / 10000;
+}
+
+let c = Circle { radius: 10 };
+puts("বৃত্তের আনুমানিক ক্ষেত্রফল (ব্যাসার্ধ ১০): \(circleAreaApprox(c))");

@@ -1,0 +1,3 @@
+let items = ["কলম", "বই", "খাতা"];
+puts("প্রথম উপাদান: " + first(items));
+puts("শেষ উপাদান: " + last(items));

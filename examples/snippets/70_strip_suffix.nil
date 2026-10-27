@@ -1,0 +1,23 @@
+fn stripSuffix(str, suffix) {
+    let sLen = len(suffix);
+    let strLen = len(str);
+    if (strLen < sLen) {
+        return str;
+    }
+    let i = 0;
+    while (i < sLen) {
+        if (str[strLen - sLen + i] != suffix[i]) {
+            return str;
+        }
+        i = i + 1;
+    }
+    let res = "";
+    let j = 0;
+    while (j < strLen - sLen) {
+        res = res + str[j];
+        j = j + 1;
+    }
+    return res;
+}
+
+puts("সাফিক্স কাটার পর: " + stripSuffix("program.nil", ".nil"));

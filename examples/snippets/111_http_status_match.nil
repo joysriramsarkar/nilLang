@@ -1,0 +1,14 @@
+fn statusText(code) {
+    return match code {
+        200 => "200 OK",
+        201 => "201 Created",
+        400 => "400 Bad Request",
+        404 => "404 Not Found",
+        500 => "500 Internal Server Error",
+        _ => "Unknown Status",
+    };
+}
+
+puts(statusText(200));
+puts(statusText(404));
+puts(statusText(500));

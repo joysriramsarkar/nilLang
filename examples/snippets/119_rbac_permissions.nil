@@ -1,0 +1,19 @@
+fn checkAccess(role, action) {
+    if (role == "admin") {
+        return true;
+    }
+    if (role == "editor" && action != "delete") {
+        return true;
+    }
+    if (role == "viewer" && action == "read") {
+        return true;
+    }
+    return false;
+}
+
+let canEditorDel = checkAccess("editor", "delete");
+let canAdminDel = checkAccess("admin", "delete");
+let canViewerRead = checkAccess("viewer", "read");
+puts("Editor কি ডিলিট করতে পারবে? \(canEditorDel)");
+puts("Admin কি ডিলিট করতে পারবে? \(canAdminDel)");
+puts("Viewer কি রিড করতে পারবে? \(canViewerRead)");

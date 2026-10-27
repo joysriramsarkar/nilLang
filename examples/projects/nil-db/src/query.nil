@@ -1,0 +1,60 @@
+import "./types.nil" as Types;
+let where = fn(rows, columnName, op, targetValue) {
+    let filtered = [];
+    let i = 0;
+    while (i < len(rows)) {
+        let row = rows[i];
+        let val = row[columnName];
+        if (Types.evaluateCondition(val, op, targetValue)) {
+            filtered = push(filtered, row);
+        }
+        i = i + 1;
+    }
+    return filtered;
+};
+let limit = fn(rows, maxCount) {
+    let limited = [];
+    let i = 0;
+    while (i < len(rows) && i < maxCount) {
+        limited = push(limited, rows[i]);
+        i = i + 1;
+    }
+    return limited;
+};
+let selectColumns = fn(rows, columnNames) {
+    let projected = [];
+    let i = 0;
+    while (i < len(rows)) {
+        let srcRow = rows[i];
+        let newRow = {};
+        let c = 0;
+        while (c < len(columnNames)) {
+            let col = columnNames[c];
+            newRow[col] = srcRow[col];
+            c = c + 1;
+        }
+        projected = push(projected, newRow);
+        i = i + 1;
+    }
+    return projected;
+};
+let sumColumn = fn(rows, columnName) {
+    let total = 0.0;
+    let i = 0;
+    while (i < len(rows)) {
+        let val = rows[i][columnName];
+        if (val != null) {
+            total = total + val;
+        }
+        i = i + 1;
+    }
+    return total;
+};
+let avgColumn = fn(rows, columnName) {
+    let count = len(rows);
+    if (count == 0) {
+        return 0.0;
+    }
+    let total = sumColumn(rows, columnName);
+    return total / count;
+};

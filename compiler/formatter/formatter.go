@@ -111,6 +111,54 @@ func (f *ASTFormatter) formatStatement(stmt ast.Statement) {
 		f.buf.WriteString(fmt.Sprintf("while (%s) ", f.formatExpression(s.Condition)))
 		f.formatBlock(s.Body)
 
+	case *ast.ForStatement:
+		f.writeIndent()
+		if s.Value != nil {
+			if s.Key != nil && s.Key.Value != s.Value.Value {
+				f.buf.WriteString(fmt.Sprintf("for %s, %s in %s ",
+					s.Key.Value, s.Value.Value, f.formatExpression(s.Iterable)))
+			} else {
+				f.buf.WriteString(fmt.Sprintf("for %s in %s ",
+					s.Value.Value, f.formatExpression(s.Iterable)))
+			}
+			f.formatBlock(s.Body)
+		} else {
+			f.buf.WriteString(stmt.String())
+		}
+
+	case *ast.TraitDecl:
+		f.writeIndent()
+		name := ""
+		if s.Name != nil {
+			name = s.Name.Value
+		}
+		f.buf.WriteString(fmt.Sprintf("trait %s {\n", name))
+		f.indent++
+		for _, m := range s.Methods {
+			f.formatTraitMethod(m)
+		}
+		f.indent--
+		f.writeIndent()
+		f.buf.WriteString("}")
+
+	case *ast.ImplDecl:
+		f.writeIndent()
+		trait, typ := "", ""
+		if s.Trait != nil {
+			trait = s.Trait.Value
+		}
+		if s.Type != nil {
+			typ = s.Type.Value
+		}
+		f.buf.WriteString(fmt.Sprintf("impl %s for %s {\n", trait, typ))
+		f.indent++
+		for _, m := range s.Methods {
+			f.formatTraitMethod(m)
+		}
+		f.indent--
+		f.writeIndent()
+		f.buf.WriteString("}")
+
 	case *ast.StateDeclaration:
 		f.writeIndent()
 		typeAnn := ""
@@ -277,6 +325,31 @@ func (f *ASTFormatter) formatBlockToString(block *ast.BlockStatement) string {
 	return res
 }
 
+// formatTraitMethod prints one method inside a trait or impl block. A trait
+// signature has no body and no terminator, mirroring how it is written; an
+// impl method keeps its braced block so the body survives a round trip.
+func (f *ASTFormatter) formatTraitMethod(m *ast.TraitMethod) {
+	if m == nil {
+		return
+	}
+	f.writeIndent()
+	var params []string
+	for _, p := range m.Parameters {
+		if p != nil {
+			params = append(params, p.String())
+		}
+	}
+	f.buf.WriteString(fmt.Sprintf("fn %s(%s)", m.Name, strings.Join(params, ", ")))
+	if m.ReturnType != "" {
+		f.buf.WriteString(" -> " + m.ReturnType)
+	}
+	if m.Body != nil {
+		f.buf.WriteString(" ")
+		f.formatBlock(m.Body)
+	}
+	f.buf.WriteByte('\n')
+}
+
 func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 	if expr == nil {
 		return ""
@@ -356,6 +429,22 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 			return fmt.Sprintf("if (%s) %s else %s", cond, conseq, alt)
 		}
 		return fmt.Sprintf("if (%s) %s", cond, conseq)
+
+	case *ast.MatchExpression:
+		var b strings.Builder
+		b.WriteString("match " + f.formatExpression(e.Subject) + " {\n")
+		f.indent++
+		for _, arm := range e.Arms {
+			b.WriteString(strings.Repeat("    ", f.indent))
+			b.WriteString(arm.Pattern.String())
+			if arm.Guard != nil {
+				b.WriteString(" if " + f.formatExpression(arm.Guard))
+			}
+			b.WriteString(" => " + f.formatExpression(arm.Body) + ",\n")
+		}
+		f.indent--
+		b.WriteString(strings.Repeat("    ", f.indent) + "}")
+		return b.String()
 
 	case *ast.FunctionLiteral:
 		var params []string

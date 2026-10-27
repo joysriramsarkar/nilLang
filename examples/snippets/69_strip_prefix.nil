@@ -1,0 +1,21 @@
+fn stripPrefix(str, prefix) {
+    let pLen = len(prefix);
+    if (len(str) < pLen) {
+        return str;
+    }
+    let i = 0;
+    while (i < pLen) {
+        if (str[i] != prefix[i]) {
+            return str;
+        }
+        i = i + 1;
+    }
+    let res = "";
+    while (i < len(str)) {
+        res = res + str[i];
+        i = i + 1;
+    }
+    return res;
+}
+
+puts("প্রিফিক্স কাটার পর: " + stripPrefix("https://onuron.org", "https://"));

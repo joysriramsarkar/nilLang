@@ -1,0 +1,12 @@
+fn formatTime(h, m, s) {
+    fn pad(val) {
+        if (val < 10) {
+            return "0\(val)";
+        }
+        return "\(val)";
+    }
+    return pad(h) + ":" + pad(m) + ":" + pad(s);
+}
+
+puts("বর্তমান সময়: " + formatTime(11, 28, 5));
+puts("লগ সময়: " + formatTime(9, 4, 30));

@@ -1,0 +1,13 @@
+fn safeHashLookup(hash, key, keys, defVal) {
+    for k in keys {
+        if (k == key) {
+            return hash[k];
+        }
+    }
+    return defVal;
+}
+
+let conf = {"theme": "dark", "fontSize": 14};
+let keys = ["theme", "fontSize"];
+puts("Theme: " + safeHashLookup(conf, "theme", keys, "light"));
+puts("Lang: " + safeHashLookup(conf, "lang", keys, "bn"));

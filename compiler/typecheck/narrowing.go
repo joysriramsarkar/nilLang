@@ -198,13 +198,24 @@ func isUnknown(t types.Type) bool {
 	return t.Kind() == types.KindAny
 }
 
+// isIntegerOrAny reports whether a range bound is usable: an integer of any
+// width, or unknown. Widths are static-only — the run time holds one Integer —
+// so `i8` bounds are as good as `Int` ones.
+func isIntegerOrAny(t types.Type) bool {
+	if t == nil || t.Equals(types.Any) {
+		return true
+	}
+	_, numeric := types.RangeOf(t)
+	return numeric && !types.IsFloatWidth(t)
+}
+
 // applyNarrowing rewrites a builtin call's result type, and reports when the call
 // is a narrowing one applied to something that cannot be narrowed.
 //
 // The second half is what stops `unwrap(5)` from quietly producing `Any` for the
 // rest of the program. A builtin that cannot fail is being asked to, which is a
 // mistake worth naming — the same mistake as calling `length` on an integer.
-func (c *Checker) applyNarrowing(e *ast.CallExpression, fnSig *types.FunctionType) *types.FunctionType {
+func (c *Checker) applyNarrowing(e *ast.CallExpression, fnSig *types.FunctionType, argTypes []types.Type) *types.FunctionType {
 	ident, ok := e.Function.(*ast.Identifier)
 	if !ok || fnSig == nil {
 		return fnSig
@@ -216,13 +227,9 @@ func (c *Checker) applyNarrowing(e *ast.CallExpression, fnSig *types.FunctionTyp
 		return fnSig
 	}
 
-	argTypes := make([]types.Type, 0, len(e.Arguments))
-	for _, arg := range e.Arguments {
-		argTypes = append(argTypes, c.inferExpression(arg))
-	}
-
-	// The arguments were already inferred once by the caller; inferring them again
-	// here is cheap and keeps this function independent of where it is called from.
+	// The caller passes the argument types it already inferred. Re-inferring
+	// them here doubles the work at every nesting level, which turns nested
+	// narrowing calls into exponential time and exponential diagnostics.
 	if ident.Value == "unwrap" || ident.Value == "unwrapOr" {
 		if len(argTypes) == 0 {
 			return fnSig

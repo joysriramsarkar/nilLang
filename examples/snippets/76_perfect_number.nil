@@ -1,0 +1,21 @@
+fn isPerfect(n) {
+    if (n <= 1) {
+        return false;
+    }
+    let sum = 1;
+    let i = 2;
+    while (i * i <= n) {
+        if (n % i == 0) {
+            sum = sum + i;
+            if (i * i != n) {
+                sum = sum + n / i;
+            }
+        }
+        i = i + 1;
+    }
+    return sum == n;
+}
+
+puts("6 কি নিখুঁত সংখ্যা? \(isPerfect(6))");
+puts("28 কি নিখুঁত সংখ্যা? \(isPerfect(28))");
+puts("12 কি নিখুঁত সংখ্যা? \(isPerfect(12))");

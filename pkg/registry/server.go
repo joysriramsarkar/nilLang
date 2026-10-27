@@ -1,16 +1,29 @@
 package registry
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
+
+// maxJSONBodyBytes caps JSON request bodies so a single request cannot
+// exhaust server memory before decoding fails.
+const maxJSONBodyBytes = 1 << 20 // 1 MiB
+
+var safeNamePattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.\-]*$`)
 
 // Server represents the registry HTTP server
 type Server struct {
@@ -174,6 +187,11 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.authorized(r) {
+		s.errorResponse(w, http.StatusUnauthorized, "valid API key required (X-API-Key header or Bearer token)")
+		return
+	}
+
 	// Parse multipart form
 	maxUpload := int64(s.config.MaxUploadMB) * 1024 * 1024
 	if err := r.ParseMultipartForm(maxUpload); err != nil {
@@ -197,10 +215,17 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	// Registry-controlled names must never steer the file outside the upload
+	// directory: reduce both to their base names and allowlist the shape.
+	if !validPackageName(publishReq.Name) || !validPackageName(publishReq.Version) {
+		s.errorResponse(w, http.StatusBadRequest, "invalid package name or version")
+		return
+	}
+	safeBase := fmt.Sprintf("%s-%s.nilax", filepath.Base(publishReq.Name), filepath.Base(publishReq.Version))
+
 	// Save uploaded file
 	uploadDir := filepath.Join(s.config.DataDir, "uploads")
-	filename := fmt.Sprintf("%s-%s.nilax", publishReq.Name, publishReq.Version)
-	filePath := filepath.Join(uploadDir, filename)
+	filePath := filepath.Join(uploadDir, safeBase)
 
 	dst, err := os.Create(filePath)
 	if err != nil {
@@ -209,9 +234,16 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	written, err := dst.ReadFrom(file)
+	// ParseMultipartForm caps memory, not total size: enforce the configured
+	// upload ceiling on the byte stream itself.
+	written, err := io.Copy(dst, io.LimitReader(file, maxUpload+1))
 	if err != nil {
 		s.errorResponse(w, http.StatusInternalServerError, "failed to write file")
+		return
+	}
+	if written > maxUpload {
+		_ = os.Remove(filePath)
+		s.errorResponse(w, http.StatusBadRequest, "package exceeds maximum upload size")
 		return
 	}
 
@@ -269,7 +301,22 @@ func (s *Server) handlePackageByID(w http.ResponseWriter, r *http.Request) {
 		s.jsonResponse(w, http.StatusOK, pkg)
 
 	case http.MethodDelete:
-		if err := s.storage.DeletePackage(name); err != nil {
+		if !s.authorized(r) {
+			s.errorResponse(w, http.StatusUnauthorized, "valid API key required (X-API-Key header or Bearer token)")
+			return
+		}
+		if !validPackageName(name) {
+			s.errorResponse(w, http.StatusBadRequest, "invalid package name")
+			return
+		}
+		// Storage keys packages by "name@version" ID; resolve the name first
+		// so delete-by-name does not always 404.
+		pkg, err := s.storage.GetPackageByName(name)
+		if err != nil {
+			s.errorResponse(w, http.StatusNotFound, "package not found: "+name)
+			return
+		}
+		if err := s.storage.DeletePackage(pkg.ID); err != nil {
 			s.errorResponse(w, http.StatusNotFound, "package not found: "+name)
 			return
 		}
@@ -293,6 +340,11 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	name := parts[0]
 	version := parts[1]
 
+	if !validPackageName(name) || !validPackageName(version) {
+		s.errorResponse(w, http.StatusBadRequest, "invalid download path")
+		return
+	}
+
 	pkg, err := s.storage.GetPackageByName(name)
 	if err != nil {
 		s.errorResponse(w, http.StatusNotFound, "package not found")
@@ -308,7 +360,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	s.storage.IncrementDownloads(pkg.ID)
 
 	// Serve the file
-	filename := fmt.Sprintf("%s-%s.nilax", name, version)
+	filename := fmt.Sprintf("%s-%s.nilax", filepath.Base(name), filepath.Base(version))
 	filePath := filepath.Join(s.config.DataDir, "uploads", filename)
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -337,13 +389,18 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.errorResponse(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if req.Username == "" || req.Email == "" {
-		s.errorResponse(w, http.StatusBadRequest, "username and email are required")
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		s.errorResponse(w, http.StatusBadRequest, "username, email and password are required")
+		return
+	}
+	if !validPackageName(req.Username) {
+		s.errorResponse(w, http.StatusBadRequest, "invalid username")
 		return
 	}
 
@@ -355,21 +412,30 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := fmt.Sprintf("nil_%x", time.Now().UnixNano())
+	apiKey, err := newAPIKey()
+	if err != nil {
+		s.errorResponse(w, http.StatusInternalServerError, "failed to issue API key")
+		return
+	}
+	salt := newSalt()
 	user := &User{
-		ID:        fmt.Sprintf("usr-%d", time.Now().UnixMilli()),
-		Username:  req.Username,
-		Email:     req.Email,
-		APIKey:    apiKey,
-		CreatedAt: time.Now(),
-		IsAdmin:   len(s.users) == 0,
+		ID:           fmt.Sprintf("usr-%d", time.Now().UnixMilli()),
+		Username:     req.Username,
+		Email:        req.Email,
+		APIKey:       apiKey,
+		PasswordSalt: salt,
+		PasswordHash: hashPassword(salt, req.Password),
+		CreatedAt:    time.Now(),
+		IsAdmin:      len(s.users) == 0,
 	}
 
 	s.users[req.Username] = user
 
+	public := *user
+	public.APIKey = ""
 	s.jsonResponse(w, http.StatusCreated, map[string]interface{}{
 		"message": "user registered successfully",
-		"user":    user,
+		"user":    &public,
 		"api_key": apiKey,
 	})
 }
@@ -383,7 +449,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.errorResponse(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -394,15 +462,78 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, exists := s.users[req.Username]
 	if !exists || (req.Email != "" && user.Email != req.Email) {
-		s.errorResponse(w, http.StatusUnauthorized, "invalid username or email")
+		s.errorResponse(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(hashPassword(user.PasswordSalt, req.Password)), []byte(user.PasswordHash)) != 1 {
+		s.errorResponse(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
+	public := *user
+	public.APIKey = ""
 	s.jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"message": "login successful",
-		"user":    user,
+		"user":    &public,
 		"api_key": user.APIKey,
 	})
+}
+
+// authorized reports whether the request carries a known API key. Publish and
+// delete always require a key once any user exists; when the server also runs
+// with EnableAuth, keys are required unconditionally.
+func (s *Server) authorized(r *http.Request) bool {
+	key := r.Header.Get("X-API-Key")
+	if auth := r.Header.Get("Authorization"); key == "" && strings.HasPrefix(auth, "Bearer ") {
+		key = strings.TrimPrefix(auth, "Bearer ")
+	}
+	s.userMu.RLock()
+	defer s.userMu.RUnlock()
+	if len(s.users) == 0 && !s.config.EnableAuth {
+		// Fresh server with no users yet and auth not enforced: allow the
+		// bootstrap publish. Once the first user registers, keys are required.
+		return true
+	}
+	if key == "" {
+		return false
+	}
+	return s.keyValidLocked(key)
+}
+
+func (s *Server) keyValidLocked(key string) bool {
+	for _, u := range s.users {
+		if subtle.ConstantTimeCompare([]byte(u.APIKey), []byte(key)) == 1 && key != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func validPackageName(name string) bool {
+	return safeNamePattern.MatchString(name)
+}
+
+func newAPIKey() (string, error) {
+	var buf [32]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return "nil_" + hex.EncodeToString(buf[:]), nil
+}
+
+func newSalt() string {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		// Fall back to a time-based salt rather than failing registration;
+		// uniqueness still holds and the hash remains salted.
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf[:])
+}
+
+func hashPassword(salt, password string) string {
+	sum := sha256.Sum256([]byte(salt + "\x00" + password))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Server) handleWebUI(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,15 @@
+let pipeline = fn(val, funcs) {
+    let current = val;
+    for f in funcs {
+        current = f(current);
+    }
+    return current;
+};
+let steps = [fn(x) {
+    return x + 10;
+}, fn(x) {
+    return x * 3;
+}, fn(x) {
+    return x - 5;
+}];
+puts("পাইপলাইন ফলাফল: \(pipeline(5, steps))");

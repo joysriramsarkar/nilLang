@@ -1,0 +1,10 @@
+struct Vehicle { model: String, kmDriven: Int, fuelConsumed: Int }
+fn mileage(v) {
+    if (v.fuelConsumed <= 0) {
+        return 0;
+    }
+    return v.kmDriven / v.fuelConsumed;
+}
+
+let car = Vehicle { model: "Onuron EV", kmDriven: 450, fuelConsumed: 30 };
+puts(car.model + " মাইলেজ: \(mileage(car)) কিমি/লিটার");

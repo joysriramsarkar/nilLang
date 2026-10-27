@@ -1,0 +1,8 @@
+fn convertCurrency(amount, rateBdt) {
+    return amount * rateBdt;
+}
+
+let usdRate = 120;
+let eurRate = 130;
+puts("100 USD = ৳\(convertCurrency(100, usdRate))");
+puts("50 EUR = ৳\(convertCurrency(50, eurRate))");

@@ -1,0 +1,7 @@
+let a = 100;
+let b = 200;
+puts("অদল-বদলের আগে: a = \(a), b = \(b)");
+let temp = a;
+a = b;
+b = temp;
+puts("অদল-বদলের পরে: a = \(a), b = \(b)");

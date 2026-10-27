@@ -1,0 +1,10 @@
+let isStudent = true;
+let hasID = true;
+if (isStudent && hasID) {
+    puts("লাইব্রেরিতে প্রবেশ করতে পারেন।");
+}
+let isWeekend = false;
+let isHoliday = true;
+if (isWeekend || isHoliday) {
+    puts("আজ ছুটি!");
+}

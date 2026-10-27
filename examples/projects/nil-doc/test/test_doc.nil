@@ -1,0 +1,35 @@
+import "../src/types.nil" as Types;
+import "../src/lexer.nil" as Lexer;
+import "../src/parser.nil" as Parser;
+puts("🧪 NilDoc পার্সার টেস্ট স্যুট চালু হচ্ছে...\n");
+let passed = 0;
+let total = 0;
+let assertTest = fn(name, condition) {
+    total = total + 1;
+    if (condition) {
+        puts("  ✅ [PASS] " + name);
+        passed = passed + 1;
+    } else {
+        puts("  ❌ [FAIL] " + name);
+    }
+};
+assertTest("startsWith সঠিকভাবে কাজ করছে", Lexer.startsWith("Hello World", "Hello"));
+assertTest("ভুল প্রিফিক্সে startsWith মিথ্যা দেয়", !Lexer.startsWith("Hello World", "World"));
+let h1 = Lexer.classifyLine("# প্রধান শিরোনাম");
+assertTest("লেভেল ১ হেডিং শনাক্ত হয়েছে", h1.kind == Types.NODE_HEADING && h1.level == 1);
+let h2 = Lexer.classifyLine("## উপ-শিরোনাম");
+assertTest("লেভেল ২ হেডিং শনাক্ত হয়েছে", h2.kind == Types.NODE_HEADING && h2.level == 2);
+let listLine = Lexer.classifyLine("- প্রথম তালিকা উপাদান");
+assertTest("লিস্ট উপাদান শনাক্ত হয়েছে", listLine.kind == Types.NODE_LIST_ITEM);
+let quoteLine = Lexer.classifyLine("> মূল্যবান একটি বাণী");
+assertTest("কোটেশন শনাক্ত হয়েছে", quoteLine.kind == Types.NODE_QUOTE);
+let mdText = "# শিরোনাম\nএকটি সাধারণ প্যারাগ্রাফ।\n- পয়েন্ট ১\n- পয়েন্ট ২\n```nil\nlet x = 10;\n```";
+let doc = Parser.parseDocument(mdText);
+assertTest("ডকুমেন্ট এএসটি নোড তৈরি হয়েছে", doc.nodeKind == Types.NODE_DOC);
+assertTest("হেডিং ১টি রয়েছে", Parser.countNodes(doc, Types.NODE_HEADING) == 1);
+assertTest("লিস্ট উপাদান ২টি রয়েছে", Parser.countNodes(doc, Types.NODE_LIST_ITEM) == 2);
+assertTest("কোড ব্লক ১টি রয়েছে", Parser.countNodes(doc, Types.NODE_CODE_BLOCK) == 1);
+puts("\n📊 টেস্ট ফলাফল: " + str(passed) + "/" + str(total) + " টি টেস্ট পাস করেছে।");
+if (passed == total) {
+    puts("🎉 NilDoc-এর সকল টেস্ট সফলভাবে পাস করেছে!");
+}

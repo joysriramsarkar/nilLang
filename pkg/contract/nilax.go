@@ -2,6 +2,8 @@ package contract
 
 import (
 	"archive/zip"
+	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -620,9 +622,15 @@ func (s *Set) stageTrust(m *Manifest, opts ValidateOptions) Violations {
 		return vs
 	}
 
-	if len(m.SignatureHex) != 128 {
+	if len(m.SignatureHex) != 128 || !isLowerHex(m.SignatureHex) {
 		vs.Add(StageTrust, "signature", m.SignatureHex,
 			"an Ed25519 signature is 128 lowercase hex characters")
+		return vs
+	}
+	sigBytes, err := hex.DecodeString(m.SignatureHex)
+	if err != nil || len(sigBytes) != ed25519.SignatureSize {
+		vs.Add(StageTrust, "signature", m.SignatureHex,
+			"signature is not 64 bytes of Ed25519 signature")
 		return vs
 	}
 
@@ -632,12 +640,19 @@ func (s *Set) stageTrust(m *Manifest, opts ValidateOptions) Violations {
 		return vs
 	}
 
-	// The key id lives in the signature record for v1 and beside the signature
-	// for v2. Whichever it is, a package whose key id is not in the store is
-	// refused rather than verified against an empty store.
+	// The key id lives in the signature record for v2; v1 carries a bare
+	// signature with no key binding at all.
 	keyID := m.keyID()
 	if keyID == "" {
-		vs.Add(StageTrust, "key_id", "", "signature does not name a signing key")
+		if opts.Trust == TrustRequired {
+			// A v1 embedded signature names no key and defines no signed
+			// bytes, so there is nothing to verify it against. Presence
+			// alone must never satisfy a required-trust decision.
+			vs.Add(StageTrust, "signature", "",
+				"format_version 1 embedded signature is unverifiable: it names no key; use a sidecar .sig or a format_version 2 signature")
+		}
+		// Under TrustIfPresent the legacy mark is reported nowhere and
+		// passes: local development packages predate verifiable signatures.
 		return vs
 	}
 	tk, ok := opts.TrustStore.Key(keyID)
@@ -647,8 +662,127 @@ func (s *Set) stageTrust(m *Manifest, opts ValidateOptions) Violations {
 	}
 	if tk.Revoked {
 		vs.Add(StageTrust, "key_id", keyID, "signing key has been revoked")
+		return vs
+	}
+	if m.FormatVersion == 2 {
+		if err := verifyManifestSignatureV2(m, tk, sigBytes); err != nil {
+			vs.Add(StageTrust, "signature", "", err.Error())
+			return vs
+		}
 	}
 	return vs
+}
+
+// v2SignatureRequiredMembers must all be covered by signature.signed_fields.
+// A signer that leaves one out is asking the verifier to trust an uncovered
+// claim, which the contract refuses.
+var v2SignatureRequiredMembers = []string{
+	"format_version", "app_id", "version", "payload", "source_revision",
+	"compiler", "runtime_abi", "target", "capabilities", "dependencies",
+	"payload_checksums",
+}
+
+// isLowerHex reports whether s is all lowercase hex digits.
+func isLowerHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
+// verifyManifestSignatureV2 checks a format_version 2 manifest signature per
+// contracts/signing/signing.json manifest_signature_v2: canonical bytes are the
+// manifest with object keys sorted, no insignificant whitespace, and the
+// signature member removed, restricted to the listed signed_fields.
+func verifyManifestSignatureV2(m *Manifest, tk TrustedKey, sig []byte) error {
+	var doc struct {
+		Algorithm    string   `json:"algorithm"`
+		KeyID        string   `json:"key_id"`
+		SignedFields []string `json:"signed_fields"`
+		Signature    string   `json:"signature"`
+	}
+	rawSig, ok := m.Raw["signature"]
+	if !ok {
+		return fmt.Errorf("signature record is missing")
+	}
+	if err := json.Unmarshal(rawSig, &doc); err != nil {
+		return fmt.Errorf("signature record is not readable: %v", err)
+	}
+	if doc.Algorithm != "" && doc.Algorithm != "Ed25519" {
+		// Unknown algorithms are refused, never skipped.
+		return fmt.Errorf("unsupported signature algorithm %q", doc.Algorithm)
+	}
+	if len(doc.SignedFields) == 0 {
+		return fmt.Errorf("signature names no signed fields")
+	}
+	for _, f := range doc.SignedFields {
+		if f == "signature" || f == "metadata" {
+			return fmt.Errorf("signed_fields must not cover %q", f)
+		}
+	}
+	covered := make(map[string]bool, len(doc.SignedFields))
+	for _, f := range doc.SignedFields {
+		covered[f] = true
+	}
+	for _, req := range v2SignatureRequiredMembers {
+		if !covered[req] {
+			return fmt.Errorf("signed_fields omits required member %q", req)
+		}
+	}
+
+	// Recompute the key id when it has the derived shape (32 lowercase hex):
+	// a swapped key id on a different key is refused as a tampered store.
+	// Friendly aliases such as "onuron-team" predate derivation and skip this.
+	if len(tk.KeyID) == 32 && isLowerHex(tk.KeyID) {
+		pub, err := hex.DecodeString(tk.PublicKeyHex)
+		if err != nil || len(pub) != ed25519.PublicKeySize {
+			return fmt.Errorf("trust store holds a malformed public key for %q", tk.KeyID)
+		}
+		sum := sha256.Sum256(pub)
+		if hex.EncodeToString(sum[:16]) != tk.KeyID {
+			return fmt.Errorf("key id %q does not match the stored public key", tk.KeyID)
+		}
+	}
+
+	pubBytes, err := hex.DecodeString(tk.PublicKeyHex)
+	if err != nil || len(pubBytes) != ed25519.PublicKeySize {
+		return fmt.Errorf("trust store holds a malformed public key for %q", tk.KeyID)
+	}
+
+	canonical, err := canonicalSignedBytes(m.Raw, doc.SignedFields)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(ed25519.PublicKey(pubBytes), canonical, sig) {
+		return fmt.Errorf("Ed25519 signature does not verify over the manifest's signed fields")
+	}
+	return nil
+}
+
+// canonicalSignedBytes serialises exactly the listed manifest members with
+// keys sorted and no insignificant whitespace. encoding/json emits map keys in
+// lexicographic byte order, which is the canonicalisation the contract pins.
+func canonicalSignedBytes(raw map[string]json.RawMessage, fields []string) ([]byte, error) {
+	picked := make(map[string]json.RawMessage, len(fields))
+	for _, f := range fields {
+		v, ok := raw[f]
+		if !ok {
+			return nil, fmt.Errorf("signed field %q is absent from the manifest", f)
+		}
+		var compacted bytes.Buffer
+		if err := json.Compact(&compacted, v); err != nil {
+			return nil, fmt.Errorf("signed field %q is not valid JSON", f)
+		}
+		picked[f] = json.RawMessage(append([]byte(nil), compacted.Bytes()...))
+	}
+	out, err := json.Marshal(picked)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalising signed fields: %v", err)
+	}
+	return out, nil
 }
 
 // stageCompatibility checks ABI, target and backend support.

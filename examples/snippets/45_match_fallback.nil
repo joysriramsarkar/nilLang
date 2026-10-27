@@ -1,0 +1,11 @@
+fn testNumber(n) {
+    return match n {
+        0 => "শূন্য",
+        1 => "এক",
+        _ => "অন্য কোনো সংখ্যা",
+    };
+}
+
+puts(testNumber(0));
+puts(testNumber(1));
+puts(testNumber(99));

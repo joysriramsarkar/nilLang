@@ -752,12 +752,18 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 			return c.numericArithmetic(e)
 
 		case "==", "!=":
+			c.inferExpression(e.Left)
+			c.inferExpression(e.Right)
 			return types.Bool
 
 		case "<", "<=", ">", ">=":
+			c.inferExpression(e.Left)
+			c.inferExpression(e.Right)
 			return types.Bool
 
 		case "&&", "||":
+			c.inferExpression(e.Left)
+			c.inferExpression(e.Right)
 			return types.Bool
 		}
 		return types.Any
@@ -1055,7 +1061,7 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 			// A narrowing builtin reports the type it actually produces rather
 			// than the `Any` it is registered with. This runs after instantiation
 			// so that a generic whose argument is a Result narrows too.
-			fnSig = c.applyNarrowing(e, fnSig)
+			fnSig = c.applyNarrowing(e, fnSig, argTypes)
 
 			// A generic signature is instantiated with what the arguments said, and
 			// both the remaining checks and the call's own type come from the
@@ -1128,6 +1134,38 @@ func (c *Checker) inferExpression(expr ast.Expression) types.Type {
 		// Checked the same as a plain access: `?.` changes what a null receiver
 		// does, not what a member is called.
 		return c.safeMemberAccess(e)
+
+	// Task bodies are deliberately not traversed here: the concurrency
+	// spec pins runtime faults for task bodies (§4.2 typed fault), so an
+	// undefined name or a non-callable call inside `task { }` must reach the
+	// scheduler and surface as TaskFaulted, not fail the gate. Checking
+	// bodies would move those errors from run time to compile time and
+	// break TestConcurrencySpecConformance and TestTypedRuntimeErrorsAreStable.
+	case *ast.AwaitExpression:
+		if e.Right != nil {
+			c.inferExpression(e.Right)
+		}
+		return types.Any
+
+	case *ast.RangeExpression:
+		// Bounds are inferred so an undefined name in `start..end` is
+		// reported. A range has no value of its own — the lowering pass
+		// rejects one outside a `for` header — so the type is `Any`.
+		// The run time requires integer bounds (any width, not just Int),
+		// hence the operand check.
+		if e.Start != nil {
+			start := c.inferExpression(e.Start)
+			if !isIntegerOrAny(start) {
+				c.report("E0101", fmt.Sprintf("Range start must be an integer, got %s", start), e.Token.Line, e.Token.Column)
+			}
+		}
+		if e.End != nil {
+			end := c.inferExpression(e.End)
+			if !isIntegerOrAny(end) {
+				c.report("E0101", fmt.Sprintf("Range end must be an integer, got %s", end), e.Token.Line, e.Token.Column)
+			}
+		}
+		return types.Any
 
 	default:
 		return types.Any

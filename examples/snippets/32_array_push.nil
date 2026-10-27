@@ -1,0 +1,5 @@
+let list = [1, 2];
+list = push(list, 3);
+list = push(list, 4);
+puts("তালিকা: \(list)");
+puts("দৈর্ঘ্য: \(len(list))");

@@ -46,6 +46,25 @@ func (l *Lexer) peekChar() rune {
 	return r
 }
 
+// peekCharAt returns the rune n-1 positions past the current one: peekCharAt(1)
+// is peekChar. Short reads at the end of input report 0.
+func (l *Lexer) peekCharAt(n int) rune {
+	offset := l.readPosition
+	var r rune
+	for i := 0; i < n; i++ {
+		if offset >= len(l.input) {
+			return 0
+		}
+		var size int
+		r, size = utf8.DecodeRuneInString(l.input[offset:])
+		if size == 0 {
+			return 0
+		}
+		offset += size
+	}
+	return r
+}
+
 func (l *Lexer) NextToken() token.Token {
 	var tok token.Token
 
@@ -143,10 +162,10 @@ func (l *Lexer) NextToken() token.Token {
 		switch l.peekChar() {
 		case '?':
 			l.readChar()
-			tok = newToken(token.QUESTION_QUESTION, l.ch, curLine, curCol)
+			tok = token.Token{Type: token.QUESTION_QUESTION, Literal: "??", Line: curLine, Column: curCol}
 		case '.':
 			l.readChar()
-			tok = newToken(token.QUESTION_DOT, l.ch, curLine, curCol)
+			tok = token.Token{Type: token.QUESTION_DOT, Literal: "?.", Line: curLine, Column: curCol}
 		default:
 			tok = newToken(token.QUESTION, l.ch, curLine, curCol)
 		}
@@ -316,11 +335,47 @@ func (l *Lexer) readString() (string, bool) {
 			case 'v':
 				sb.WriteRune('\v')
 			case '\\':
-				sb.WriteRune('\\')
+				// An escaped backslash before `(` must stay two chars:
+				// collapsing it would turn source `\\(` into `\(` and
+				// the parser could no longer tell an escaped backslash
+				// plus a paren from a real interpolation opener. The
+				// parser unescapes `\\` in template literal parts.
+				if l.peekChar() == '(' {
+					sb.WriteString("\\\\")
+				} else {
+					sb.WriteRune('\\')
+				}
 			case '"':
 				sb.WriteRune('"')
 			case '(':
+				// `\(` opens an interpolation: consume through its matching
+				// `)` so a quote inside — `\("a)b")` — does not end the
+				// outer string early. The scan is string-aware for the same
+				// reason the template splitter is.
 				sb.WriteString("\\(")
+				// ScanBalanced returns the absolute index of the
+				// matching `)`, not a relative offset.
+				end, ok := ScanBalanced(l.input, l.readPosition)
+				if !ok {
+					return sb.String(), false
+				}
+				parenPos := end
+				// Step past the `\(` itself, which is already written: the
+				// loop below consumes only the interpolation's contents.
+				l.readChar()
+				for l.position < parenPos && l.ch != 0 {
+					if l.ch == '\n' {
+						l.line++
+						l.col = 0
+					}
+					sb.WriteRune(l.ch)
+					l.readChar()
+				}
+				// l.ch is now the closing paren: write it and continue.
+				// The loop head advances past it, exactly as it does for
+				// every other rune handled above, so no step is skipped.
+				sb.WriteRune(l.ch)
+				continue
 			case 'e':
 				// \e — ESC (0x1B), the ANSI control introducer.
 				sb.WriteRune('\x1b')
@@ -336,11 +391,11 @@ func (l *Lexer) readString() (string, bool) {
 				if text, ok := l.peekRunes(width); ok && allHex(text) {
 					value, parseErr := strconv.ParseUint(string(text), 16, 32)
 					if parseErr == nil && utf8.ValidRune(rune(value)) {
-						if l.ch == 'x' {
-							sb.WriteByte(byte(value))
-						} else {
-							sb.WriteRune(rune(value))
-						}
+						// Every escape denotes a Unicode code point, including
+						// \xHH: emitting the byte would splice raw non-UTF-8
+						// into the string and corrupt every later operation on
+						// it. \xE9 is therefore é, the same as \u00E9.
+						sb.WriteRune(rune(value))
 						l.skipRunes(width)
 						continue
 					}
@@ -417,13 +472,21 @@ func (l *Lexer) readNumber() (string, bool) {
 	// when followed by at least one valid digit for that base, so "0" and
 	// "0.5" are unaffected and "0x" alone falls through as a decimal 0 plus an
 	// identifier, which the parser then reports with a precise diagnostic.
-	if l.ch == '0' && isRadixPrefix(l.peekChar()) {
-		l.readChar() // consume '0'
-		l.readChar() // consume the radix marker
-		for isHexDigit(l.ch) || l.ch == '_' {
-			l.readChar()
+	// Digits are validated per base: in `0b102` the `2` is not a binary digit,
+	// so the literal ends at `0b10` and the parser reports the stray `2`.
+	if zero, isZero := DigitValue(l.ch); isZero && zero == 0 && isRadixPrefix(l.peekChar()) {
+		valid := validRadixDigit(l.peekChar())
+		if !valid(l.peekCharAt(2)) && l.peekCharAt(2) != '_' {
+			// No valid digit follows the prefix: not a radix literal at all.
+			// Fall through to the decimal path, which yields a plain "0".
+		} else {
+			l.readChar() // consume '0'
+			l.readChar() // consume the radix marker
+			for valid(l.ch) || l.ch == '_' {
+				l.readChar()
+			}
+			return l.input[position:l.position], false
 		}
-		return l.input[position:l.position], false
 	}
 
 	isFloat := false
@@ -434,7 +497,100 @@ func (l *Lexer) readNumber() (string, bool) {
 		}
 		l.readChar()
 	}
+	// Scientific notation: `1e10`, `1.5e-3`, `2E+10`. The exponent marker is
+	// only consumed when a valid exponent follows, so `1e` alone still lexes
+	// as `1` plus an identifier, exactly as before.
+	if (l.ch == 'e' || l.ch == 'E') && isExponentStart(l.peekChar(), l.peekCharAt(2)) {
+		isFloat = true
+		l.readChar() // consume e/E
+		if l.ch == '+' || l.ch == '-' {
+			l.readChar()
+		}
+		for isDigit(l.ch) || l.ch == '_' {
+			l.readChar()
+		}
+	}
 	return l.input[position:l.position], isFloat
+}
+
+// isExponentStart reports whether the runes after an `e`/`E` form a valid
+// exponent: a digit, or a sign followed by a digit.
+func isExponentStart(next, after rune) bool {
+	if isDigit(next) {
+		return true
+	}
+	return (next == '+' || next == '-') && isDigit(after)
+}
+
+// FindInterpolationStart locates the next `\(` that opens an interpolation
+// at or after from. A `\(` preceded by an even-length run of backslashes is
+// an escaped backslash followed by a plain paren, not an interpolation:
+// `\\(` stays literal while `\\\(` opens one after a literal backslash.
+// Returns -1 when there is none.
+func FindInterpolationStart(raw string, from int) int {
+	i := from
+	for i < len(raw) {
+		if raw[i] != '\\' {
+			i++
+			continue
+		}
+		j := i
+		for j < len(raw) && raw[j] == '\\' {
+			j++
+		}
+		if j < len(raw) && raw[j] == '(' && (j-i)%2 == 1 {
+			return j - 1
+		}
+		i = j
+		if j < len(raw) && raw[j] == '(' {
+			i++
+		}
+	}
+	return -1
+}
+
+// ScanBalanced finds the `)` closing the interpolation whose contents start
+// at start (just past `\(`). Parentheses inside string literals do not count
+// — without that, `\("a)b")` ends at the string's paren and the expression
+// is truncated. Backslash escapes inside strings are skipped so `\"` does
+// not end the string early. ok is false when the input ends first.
+// Byte offsets are safe here: every byte the scan compares against is ASCII,
+// which never appears inside a multibyte rune.
+func ScanBalanced(input string, start int) (end int, ok bool) {
+	parenDepth := 1
+	pos := start
+	var inString byte
+	for pos < len(input) {
+		c := input[pos]
+		if inString != 0 {
+			if c == '\\' {
+				pos += 2
+				continue
+			}
+			if c == inString {
+				inString = 0
+			}
+			pos++
+			continue
+		}
+		switch c {
+		case '"':
+			inString = '"'
+			pos++
+		case '(':
+			parenDepth++
+			pos++
+		case ')':
+			parenDepth--
+			if parenDepth == 0 {
+				return pos, true
+			}
+			pos++
+		default:
+			pos++
+		}
+	}
+	return pos, false
 }
 
 // isRadixPrefix reports whether r introduces a base-prefixed integer.
@@ -444,6 +600,58 @@ func isRadixPrefix(r rune) bool {
 		return true
 	}
 	return false
+}
+
+// validRadixDigit returns the digit predicate for a radix marker: hex digits
+// for 0x, octal for 0o, binary for 0b. Scanning with the wrong predicate
+// silently accepts digits the base cannot hold. Digits are Unicode decimal
+// digits in any script — `০b১০১০` is binary ten — so the predicates fold
+// through DigitValue rather than comparing ASCII ranges.
+func validRadixDigit(marker rune) func(rune) bool {
+	switch marker {
+	case 'x', 'X':
+		return func(r rune) bool {
+			if isHexDigit(r) {
+				return true
+			}
+			_, ok := DigitValue(r)
+			return ok
+		}
+	case 'o', 'O':
+		return func(r rune) bool {
+			v, ok := DigitValue(r)
+			return ok && v <= 7
+		}
+	default: // 'b', 'B'
+		return func(r rune) bool {
+			v, ok := DigitValue(r)
+			return ok && v <= 1
+		}
+	}
+}
+
+// DigitValue returns the decimal value of any Unicode decimal digit (category
+// Nd), not just ASCII. Every Nd digit belongs to a contiguous run of exactly
+// ten, so scanning down to the run's start finds its zero without a
+// per-script table, and scripts Unicode adds later work without code changes.
+// The scan is bounded: more than nine steps means the rune is not in a
+// decimal run after all.
+func DigitValue(r rune) (int, bool) {
+	if '0' <= r && r <= '9' {
+		return int(r - '0'), true
+	}
+	if !unicode.IsDigit(r) {
+		return 0, false
+	}
+	zero := r
+	for i := 0; i < 9 && unicode.IsDigit(zero-1); i++ {
+		zero--
+	}
+	v := int(r - zero)
+	if v < 0 || v > 9 || !unicode.IsDigit(zero) {
+		return 0, false
+	}
+	return v, true
 }
 
 func isIdentStart(ch rune) bool {

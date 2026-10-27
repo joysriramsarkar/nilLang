@@ -1,0 +1,11 @@
+fn parseCsvLine(line) {
+    let fields = split(line, ",");
+    let clean = [];
+    for f in fields {
+        clean = push(clean, trim(f));
+    }
+    return clean;
+}
+
+let row = parseCsvLine("Joy, 24, Developer, Dhaka");
+puts("সিএসভি ফিল্ড সংখ্যা: \(len(row)) | প্রথম: " + row[0]);

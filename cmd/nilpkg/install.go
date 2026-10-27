@@ -91,32 +91,54 @@ func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nil
 	fmt.Printf("   লেখক: %s\n", pkg.Author)
 	fmt.Println()
 
-	// Registry-controlled fields must never steer the download outside the
-	// temporary directory, so reduce both to their base names.
-	safeName := filepath.Base(pkg.Name)
-	safeVersion := filepath.Base(pkg.Version)
-	tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%s.nilax", safeName, safeVersion))
+	// The temp file must not be predictable: a fixed name in the shared temp
+	// directory is a symlink/clobber race and collides between concurrent
+	// installs.
+	tmp, err := os.CreateTemp("", fmt.Sprintf("%s-%s-*.nilax", filepath.Base(pkg.Name), filepath.Base(pkg.Version)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ টেম্প ফাইল তৈরি করতে ব্যর্থ: %s\n", err)
+		os.Exit(1)
+	}
+	tempFile := tmp.Name()
 
-	if strings.HasPrefix(pkg.DownloadURL, "http://") || strings.HasPrefix(pkg.DownloadURL, "https://") {
-		fmt.Printf("⬇️  ডাউনলোড হচ্ছে: %s\n", pkg.DownloadURL)
-		resp, err := http.Get(pkg.DownloadURL)
+	downloadURL := resolveDownloadURL(cfg, pkg.DownloadURL)
+	if downloadURL == "" {
+		_ = os.Remove(tempFile)
+		fmt.Fprintf(os.Stderr, "❌ প্যাকেজে কোনো বৈধ ডাউনলোড ইউআরএল নেই\n")
+		os.Exit(1)
+	}
+
+	{
+		fmt.Printf("⬇️  ডাউনলোড হচ্ছে: %s\n", downloadURL)
+		// A default client hangs forever on a slow-drip server, so the
+		// download uses explicit timeouts and a redirect ceiling. Only
+		// http(s) is ever fetched: a registry entry pointing at a local file
+		// is refused rather than read (local files install via direct path).
+		client := &http.Client{
+			Timeout: 5 * time.Minute,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 5 {
+					return fmt.Errorf("too many redirects")
+				}
+				if req.URL.Scheme != "https" && req.URL.Scheme != "http" {
+					return fmt.Errorf("redirect to non-HTTP URL refused")
+				}
+				return nil
+			},
+		}
+		resp, err := client.Get(downloadURL)
 		if err != nil {
+			_ = os.Remove(tempFile)
 			fmt.Fprintf(os.Stderr, "❌ ডাউনলোড করতে ব্যর্থ: %s\n", err)
 			os.Exit(1)
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			_ = os.Remove(tempFile)
 			fmt.Fprintf(os.Stderr, "❌ ডাউনলোড ব্যর্থ (HTTP %d): %s\n", resp.StatusCode, resp.Status)
 			os.Exit(1)
 		}
-
-		out, err := os.Create(tempFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "❌ টেম্প ফাইল তৈরি করতে ব্যর্থ: %s\n", err)
-			os.Exit(1)
-		}
-		defer out.Close()
 
 		// Never let a remote registry fill the disk: stop after the declared
 		// size (with slack) or the hard cap, whichever is smaller.
@@ -124,30 +146,22 @@ func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nil
 		if pkg.Size > 0 && pkg.Size < limit {
 			limit = pkg.Size
 		}
-		written, err := io.Copy(out, io.LimitReader(resp.Body, limit+1))
+		written, err := io.Copy(tmp, io.LimitReader(resp.Body, limit+1))
 		if err != nil {
+			_ = os.Remove(tempFile)
 			fmt.Fprintf(os.Stderr, "❌ ফাইল সেভ করতে ব্যর্থ: %s\n", err)
 			os.Exit(1)
 		}
 		if written > limit {
+			_ = os.Remove(tempFile)
 			fmt.Fprintf(os.Stderr, "❌ ডাউনলোড আকার সীমা অতিক্রম করেছে (সর্বোচ্চ %d বাইট)\n", limit)
 			os.Exit(1)
 		}
-		out.Close()
-	} else if strings.HasPrefix(pkg.DownloadURL, "file://") || len(pkg.DownloadURL) > 0 {
-		filePath := strings.TrimPrefix(pkg.DownloadURL, "file://")
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "❌ প্যাকেজ ফাইল পড়তে ব্যর্থ (%s): %s\n", filePath, err)
-			os.Exit(1)
-		}
-		if err := os.WriteFile(tempFile, data, 0644); err != nil {
+		if err := tmp.Close(); err != nil {
+			_ = os.Remove(tempFile)
 			fmt.Fprintf(os.Stderr, "❌ টেম্প ফাইল সেভ করতে ব্যর্থ: %s\n", err)
 			os.Exit(1)
 		}
-	} else {
-		fmt.Fprintf(os.Stderr, "❌ প্যাকেজে কোনো ডাউনলোড ইউআরএল নেই\n")
-		os.Exit(1)
 	}
 
 	// The registry index publishes a checksum for every package. Compare it
@@ -174,4 +188,31 @@ func installFromRegistry(cfg *nilpkg.Config, db *nilpkg.Database, installer *nil
 
 	installFromFile(installer, tempFile)
 	_ = os.Remove(tempFile)
+}
+
+// resolveDownloadURL accepts only http(s) download locations. The registry
+// server records relative /api/v1/download/... URLs, which resolve against
+// the first configured http(s) repository; anything else (file://, bare
+// paths, other schemes) is refused so a malicious index entry cannot steer
+// the client at the local filesystem.
+func resolveDownloadURL(cfg *nilpkg.Config, raw string) string {
+	if strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://") {
+		return raw
+	}
+	if !strings.HasPrefix(raw, "/") {
+		return ""
+	}
+	base := ""
+	if cfg != nil {
+		for _, repo := range cfg.Repositories {
+			if strings.HasPrefix(repo, "https://") || strings.HasPrefix(repo, "http://") {
+				base = strings.TrimSuffix(repo, "/")
+				break
+			}
+		}
+	}
+	if base == "" {
+		return ""
+	}
+	return base + raw
 }

@@ -208,6 +208,8 @@ func TestFoldDigits(t *testing.T) {
 		{"１２３", "123", true},
 		{"0xFF", "0xFF", false},
 		{"০xFF", "0xFF", true},
+		{"1e10", "1e10", false},
+		{"0b1010", "0b1010", false},
 	}
 
 	for _, tc := range cases {
@@ -230,4 +232,68 @@ func mustParse(t *testing.T, source string) *ast.Program {
 		t.Fatalf("unexpected parse errors for %q: %v", source, p.Errors())
 	}
 	return prog
+}
+
+// TestScientificNotation pins that `1e10` is one float literal, not an integer
+// followed by an identifier, and that the value survives evaluation scale.
+func TestScientificNotation(t *testing.T) {
+	cases := []struct {
+		source string
+		want   float64
+	}{
+		{"let x = 1e10;", 1e10},
+		{"let x = 1.5e-3;", 1.5e-3},
+		{"let x = 2E+10;", 2e10},
+		{"let x = ১e২;", 100},
+	}
+	for _, tc := range cases {
+		prog := mustParse(t, tc.source)
+		let := prog.Statements[0].(*ast.LetStatement)
+		lit, ok := let.Value.(*ast.FloatLiteral)
+		if !ok {
+			t.Fatalf("%q: expected a float literal, got %T", tc.source, let.Value)
+		}
+		if lit.Value != tc.want {
+			t.Errorf("%q = %v, want %v", tc.source, lit.Value, tc.want)
+		}
+	}
+}
+
+// TestRadixDigitsValidatedPerBase pins that a digit outside the base ends the
+// literal: `0b102` is `0b10` followed by a stray `2`, which the parser rejects
+// rather than silently accepting binary 102.
+func TestRadixDigitsValidatedPerBase(t *testing.T) {
+	for _, src := range []string{"let x = 0b102;", "let x = 0o89;"} {
+		p := NewWithSource(lexer.New(src), src)
+		p.ParseProgram()
+		if len(p.Errors()) == 0 {
+			t.Errorf("%q should have been rejected", src)
+		}
+	}
+}
+
+// TestUnicodeDecimalDigitsBeyondBengali pins that decimal digits from other
+// scripts convert to their values instead of failing after the lexer accepted
+// them: Devanagari ४२ is 42, Arabic-Indic ٤٢ is 42.
+func TestUnicodeDecimalDigitsBeyondBengali(t *testing.T) {
+	cases := []struct {
+		source string
+		want   int64
+	}{
+		{"let x = ४२;", 42},
+		{"let x = ٤٢;", 42},
+		{"let x = ๔๒;", 42},
+		{"let x = ০b১০১০;", 10},
+	}
+	for _, tc := range cases {
+		prog := mustParse(t, tc.source)
+		let := prog.Statements[0].(*ast.LetStatement)
+		lit, ok := let.Value.(*ast.IntegerLiteral)
+		if !ok {
+			t.Fatalf("%q: expected an integer literal, got %T", tc.source, let.Value)
+		}
+		if lit.Value != tc.want {
+			t.Errorf("%q = %d, want %d", tc.source, lit.Value, tc.want)
+		}
+	}
 }

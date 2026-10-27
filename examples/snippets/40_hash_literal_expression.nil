@@ -1,0 +1,6 @@
+let x = 10;
+let y = 20;
+let point = {"x": x, "y": y, "sum": x + y};
+puts("বিন্দু X: \(point.x)");
+puts("বিন্দু Y: \(point.y)");
+puts("যোগফল: \(point.sum)");

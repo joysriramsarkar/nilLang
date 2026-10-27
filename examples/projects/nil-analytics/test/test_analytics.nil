@@ -1,0 +1,46 @@
+import "../src/vector.nil" as Vector;
+import "../src/matrix.nil" as Matrix;
+import "../src/stats.nil" as Stats;
+import "../src/regression.nil" as ML;
+puts("🧪 NilAnalytics ডেটা সায়েন্স টেস্ট স্যুট চালু হচ্ছে...\n");
+let passed = 0;
+let total = 0;
+let assertTest = fn(name, condition) {
+    total = total + 1;
+    if (condition) {
+        puts("  ✅ [PASS] " + name);
+        passed = passed + 1;
+    } else {
+        puts("  ❌ [FAIL] " + name);
+    }
+};
+let vDot = Vector.dot([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]);
+assertTest("ভেক্টর ডট প্রোডাক্ট ৩২ (1*4 + 2*5 + 3*6 = 32)", vDot == 32.0);
+let vAdd = Vector.add([10.0, 20.0], [5.0, 15.0]);
+assertTest("ভেক্টর যোগফল [15, 35]", vAdd[0] == 15.0 && vAdd[1] == 35.0);
+let mA = [[1.0, 2.0], [3.0, 4.0]];
+let mB = [[2.0, 0.0], [1.0, 2.0]];
+let mRes = Matrix.matMul(mA, mB);
+assertTest("ম্যাট্রিক্স গুণফল C[0][0] = 4", mRes[0][0] == 4.0);
+assertTest("ম্যাট্রিক্স গুণফল C[1][0] = 10", mRes[1][0] == 10.0);
+let mTrans = Matrix.transpose([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]);
+assertTest("ম্যাট্রিক্স ট্রান্সপোজ ৩ সারি ও ২ কলাম", len(mTrans) == 3 && len(mTrans[0]) == 2);
+let sq49 = Stats.sqrt(49.0);
+assertTest("৪৯ এর বর্গমূল ৭.০", sq49 > 6.999 && sq49 < 7.001);
+let nums = [10.0, 20.0, 30.0, 40.0];
+assertTest("গড় মান ২৫.০", Stats.mean(nums) == 25.0);
+assertTest("সর্বনিম্ন ১০.০", Stats.minVal(nums) == 10.0);
+assertTest("সর্বোচ্চ ৪০.০", Stats.maxVal(nums) == 40.0);
+let oddList = [9.0, 1.0, 5.0, 3.0, 7.0];
+assertTest("বিজোড় তালিকার মধ্যমা ৫.০", Stats.median(oddList) == 5.0);
+let xTrain = [1.0, 2.0, 3.0, 4.0];
+let yTrain = [3.0, 5.0, 7.0, 9.0];
+let model = ML.trainLinearModel(xTrain, yTrain);
+assertTest("রিগ্রেশন ঢাল (Slope) ২.০", model.slope > 1.99 && model.slope < 2.01);
+assertTest("রিগ্রেশন ছেদক (Intercept) ১.০", model.intercept > 0.99 && model.intercept < 1.01);
+let r2 = ML.calculateR2(model, xTrain, yTrain);
+assertTest("নিখুঁত ডেটায় R² স্কোর ১.০ (১০০%)", r2 > 0.999);
+puts("\n📊 টেস্ট ফলাফল: " + str(passed) + "/" + str(total) + " টি টেস্ট পাস করেছে।");
+if (passed == total) {
+    puts("🎉 NilAnalytics-এর সকল টেস্ট সফলভাবে পাস করেছে!");
+}

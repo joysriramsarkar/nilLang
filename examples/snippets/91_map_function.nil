@@ -1,0 +1,13 @@
+fn mapArr(arr, transform) {
+    let res = [];
+    for item in arr {
+        res = push(res, transform(item));
+    }
+    return res;
+}
+
+let nums = [1, 2, 3, 4];
+let doubled = mapArr(nums, fn(x) {
+    return x * 2;
+});
+puts("দ্বিগুণ মান: \(doubled)");

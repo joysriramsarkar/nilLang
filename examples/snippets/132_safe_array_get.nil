@@ -1,0 +1,10 @@
+fn safeGet(arr, idx) {
+    if (idx < 0 || idx >= len(arr)) {
+        return None();
+    }
+    return Some(arr[idx]);
+}
+
+let list = [10, 20, 30];
+puts("ইনডেক্স ১: \(unwrapOr(safeGet(list, 1), (-1)))");
+puts("ইনডেক্স ৯৯: \(unwrapOr(safeGet(list, 99), (-1)))");

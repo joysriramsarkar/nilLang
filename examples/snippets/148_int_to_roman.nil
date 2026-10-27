@@ -1,0 +1,19 @@
+fn toRomanSimple(num) {
+    let vals = [100, 90, 50, 40, 10, 9, 5, 4, 1];
+    let syms = ["C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"];
+    let res = "";
+    let n = num;
+    let i = 0;
+    while (i < len(vals)) {
+        while (n >= vals[i]) {
+            res = res + syms[i];
+            n = n - vals[i];
+        }
+        i = i + 1;
+    }
+    return res;
+}
+
+puts("14 রোমানে: " + toRomanSimple(14));
+puts("42 রোমানে: " + toRomanSimple(42));
+puts("99 রোমানে: " + toRomanSimple(99));

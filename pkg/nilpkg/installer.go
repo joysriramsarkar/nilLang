@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/joysriramsarkar/nilLang/pkg/contract"
 )
 
 // Installer handles package installation and removal
@@ -146,6 +148,9 @@ func (inst *Installer) extractBundle(bundlePath, targetDir string) (int64, error
 
 	var totalSize int64
 
+	if len(zipReader.File) > contract.MaxArchiveEntries {
+		return 0, fmt.Errorf("bundle has %d entries, exceeding the limit of %d", len(zipReader.File), contract.MaxArchiveEntries)
+	}
 	for _, file := range zipReader.File {
 		filePath := filepath.Join(targetDir, file.Name)
 
@@ -158,13 +163,18 @@ func (inst *Installer) extractBundle(bundlePath, targetDir string) (int64, error
 			os.MkdirAll(filePath, 0755)
 			continue
 		}
+		if file.UncompressedSize64 > contract.MaxEntryBytes {
+			return 0, fmt.Errorf("bundle entry %s exceeds the %d byte limit", file.Name, contract.MaxEntryBytes)
+		}
 
 		// Create parent directory
 		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 			return 0, err
 		}
 
-		// Extract file
+		// Extract file, bounded so a zip bomb cannot fill the disk. The
+		// reader already enforces the same caps; this repeats them because
+		// extraction reads the archive a second time.
 		dstFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
 		if err != nil {
 			return 0, err
@@ -176,15 +186,22 @@ func (inst *Installer) extractBundle(bundlePath, targetDir string) (int64, error
 			return 0, err
 		}
 
-		written, err := io.Copy(dstFile, srcFile)
+		written, err := io.Copy(dstFile, io.LimitReader(srcFile, contract.MaxEntryBytes+1))
 		srcFile.Close()
 		dstFile.Close()
 
 		if err != nil {
 			return 0, err
 		}
+		if written > contract.MaxEntryBytes {
+			_ = os.Remove(filePath)
+			return 0, fmt.Errorf("bundle entry %s exceeds the %d byte limit", file.Name, contract.MaxEntryBytes)
+		}
 
 		totalSize += written
+		if totalSize > contract.MaxArchiveBytes {
+			return 0, fmt.Errorf("bundle exceeds the %d byte total limit", contract.MaxArchiveBytes)
+		}
 	}
 
 	return totalSize, nil

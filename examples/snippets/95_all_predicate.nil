@@ -1,0 +1,14 @@
+fn allMatch(arr, predicate) {
+    for item in arr {
+        if (!predicate(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+let pos = [1, 2, 3, 4];
+let allPos = allMatch(pos, fn(x) {
+    return x > 0;
+});
+puts("সব সংখ্যা কি ধনাত্মক? \(allPos)");

@@ -1,0 +1,33 @@
+let COL_INT = "INT";
+let COL_STRING = "STRING";
+let COL_FLOAT = "FLOAT";
+let COL_BOOL = "BOOL";
+let OP_EQ = "EQ";
+let OP_NEQ = "NEQ";
+let OP_GT = "GT";
+let OP_GTE = "GTE";
+let OP_LT = "LT";
+let OP_LTE = "LTE";
+let SORT_ASC = "ASC";
+let SORT_DESC = "DESC";
+let evaluateCondition = fn(cellValue, op, targetValue) {
+    if (op == OP_EQ) {
+        return cellValue == targetValue;
+    }
+    if (op == OP_NEQ) {
+        return cellValue != targetValue;
+    }
+    if (op == OP_GT) {
+        return cellValue > targetValue;
+    }
+    if (op == OP_GTE) {
+        return cellValue >= targetValue;
+    }
+    if (op == OP_LT) {
+        return cellValue < targetValue;
+    }
+    if (op == OP_LTE) {
+        return cellValue <= targetValue;
+    }
+    return false;
+};

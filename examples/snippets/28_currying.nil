@@ -1,0 +1,8 @@
+let curriedAdd = fn(a) {
+    return fn(b) {
+        return a + b;
+    };
+};
+let addFive = curriedAdd(5);
+puts("৫ + ১০ = \(addFive(10))");
+puts("৫ + ২০ = \(addFive(20))");

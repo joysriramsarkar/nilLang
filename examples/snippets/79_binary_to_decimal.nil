@@ -1,0 +1,17 @@
+fn toDecimal(binStr) {
+    let res = 0;
+    for ch in binStr {
+        let d = if (ch == "1") {
+            1;
+        } else {
+            0;
+        };
+        res = res * 2 + d;
+    }
+    return res;
+}
+
+let d1 = toDecimal("1101");
+let d2 = toDecimal("11111111");
+puts("1101 এর দশমিক: \(d1)");
+puts("11111111 এর দশমিক: \(d2)");

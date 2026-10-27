@@ -1,0 +1,5 @@
+let square = fn(x) {
+    return x * x;
+};
+puts("৪ এর বর্গ: \(square(4))");
+puts("৯ এর বর্গ: \(square(9))");

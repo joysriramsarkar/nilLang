@@ -1,0 +1,7 @@
+let age = 20;
+let status = if (age >= 18) {
+    "প্রাপ্তবয়স্ক";
+} else {
+    "নাবালক";
+};
+puts("স্ট্যাটাস: " + status);

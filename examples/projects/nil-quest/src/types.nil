@@ -1,0 +1,14 @@
+let CLASS_WARRIOR = "WARRIOR";
+let CLASS_MAGE = "MAGE";
+let CLASS_ROGUE = "ROGUE";
+let ITEM_WEAPON = "WEAPON";
+let ITEM_ARMOR = "ARMOR";
+let ITEM_POTION = "POTION";
+let STATUS_ALIVE = "ALIVE";
+let STATUS_DEFEATED = "DEFEATED";
+let ELEM_PHYSICAL = "PHYSICAL";
+let ELEM_FIRE = "FIRE";
+let ELEM_ICE = "ICE";
+let xpRequiredForLevel = fn(level) {
+    return level * 100;
+};

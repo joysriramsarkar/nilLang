@@ -1,0 +1,16 @@
+fn nextRandom(seed) {
+    let a = 1103515245;
+    let c = 12345;
+    let m = 2147483647;
+    let nextSeed = (a * seed + c) % m;
+    if (nextSeed < 0) {
+        nextSeed = 0 - nextSeed;
+    }
+    return nextSeed;
+}
+
+let s0 = 42;
+let s1 = nextRandom(s0);
+let s2 = nextRandom(s1);
+puts("র‌্যান্ডম সংখ্যা ১: \((s1 % 100))");
+puts("র‌্যান্ডম সংখ্যা ২: \((s2 % 100))");

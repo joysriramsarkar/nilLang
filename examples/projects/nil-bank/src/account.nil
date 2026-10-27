@@ -1,0 +1,72 @@
+import "./types.nil" as Types;
+let accounts = [];
+let createAccount = fn(accNumber, holderName, accType, initialDeposit, currency) {
+    if (!Types.isValidAmount(initialDeposit)) {
+        return Err("প্রাথমিক জমার পরিমাণ অবশ্যই ০-এর বেশি হতে হবে");
+    }
+    let acc = {"accNumber": accNumber, "holderName": holderName, "accType": accType, "balance": initialDeposit, "currency": currency, "status": Types.STATUS_ACTIVE, "dailyWithdrawn": 0, "tier": "STANDARD", "createdAt": time()};
+    if (initialDeposit >= 500000) {
+        acc["tier"] = "PLATINUM";
+    } else {
+        if (initialDeposit >= 100000) {
+            acc["tier"] = "GOLD";
+        }
+    }
+    accounts = push(accounts, acc);
+    return Ok(acc);
+};
+let findAccount = fn(accNumber) {
+    let i = 0;
+    while (i < len(accounts)) {
+        let acc = accounts[i];
+        if (acc.accNumber == accNumber) {
+            return Some(acc);
+        }
+        i = i + 1;
+    }
+    return None();
+};
+let updateBalance = fn(accNumber, newBalance) {
+    let i = 0;
+    while (i < len(accounts)) {
+        let acc = accounts[i];
+        if (acc.accNumber == accNumber) {
+            acc["balance"] = newBalance;
+            if (newBalance >= 500000) {
+                acc["tier"] = "PLATINUM";
+            } else {
+                if (newBalance >= 100000) {
+                    acc["tier"] = "GOLD";
+                } else {
+                    acc["tier"] = "STANDARD";
+                }
+            }
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+};
+let setAccountStatus = fn(accNumber, newStatus) {
+    let opt = findAccount(accNumber);
+    if (isNone(opt)) {
+        return Err("অ্যাকাউন্ট খুঁজে পাওয়া যায়নি");
+    }
+    let acc = unwrapOr(opt, null);
+    acc["status"] = newStatus;
+    return Ok(acc);
+};
+let getAllAccounts = fn() {
+    return accounts;
+};
+let calculateTotalDepositsBDT = fn() {
+    let total = 0.0;
+    let i = 0;
+    while (i < len(accounts)) {
+        let acc = accounts[i];
+        let inBDT = Types.convertToBDT(acc.balance, acc.currency);
+        total = total + inBDT;
+        i = i + 1;
+    }
+    return total;
+};

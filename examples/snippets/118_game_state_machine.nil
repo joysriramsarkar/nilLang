@@ -1,0 +1,7 @@
+enum GameState { Menu, Playing, Paused, GameOver }
+fn canAct(st) {
+    return st == Playing;
+}
+
+puts("Menu-তে অ্যাকশন নেওয়া যাবে? \(canAct(Menu))");
+puts("Playing-এ অ্যাকশন নেওয়া যাবে? \(canAct(Playing))");

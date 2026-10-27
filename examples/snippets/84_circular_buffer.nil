@@ -1,0 +1,17 @@
+fn createBuffer(cap) {
+    return {"cap": cap, "items": []};
+}
+
+fn addBuffer(buf, val) {
+    if (len(buf.items) >= buf.cap) {
+        buf["items"] = rest(buf.items);
+    }
+    buf["items"] = push(buf.items, val);
+}
+
+let b = createBuffer(3);
+addBuffer(b, 10);
+addBuffer(b, 20);
+addBuffer(b, 30);
+addBuffer(b, 40);
+puts("বাফারের বর্তমান অবস্থা (ক্যাপাসিটি ৩): \(b.items)");

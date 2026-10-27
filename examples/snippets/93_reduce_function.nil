@@ -1,0 +1,13 @@
+fn reduceArr(arr, reducer, initial) {
+    let acc = initial;
+    for item in arr {
+        acc = reducer(acc, item);
+    }
+    return acc;
+}
+
+let nums = [1, 2, 3, 4, 5];
+let sum = reduceArr(nums, fn(acc, x) {
+    return acc + x;
+}, 0);
+puts("যোগফল রিডিউস: \(sum)");

@@ -1,0 +1,31 @@
+fn createStack() {
+    return {"items": []};
+}
+
+fn pushStack(stack, item) {
+    stack["items"] = push(stack.items, item);
+}
+
+fn popStack(stack) {
+    let n = len(stack.items);
+    if (n == 0) {
+        return -1;
+    }
+    let top = stack.items[n - 1];
+    let newItems = [];
+    let i = 0;
+    while (i < n - 1) {
+        newItems = push(newItems, stack.items[i]);
+        i = i + 1;
+    }
+    stack["items"] = newItems;
+    return top;
+}
+
+let s = createStack();
+pushStack(s, 10);
+pushStack(s, 20);
+pushStack(s, 30);
+puts("পপ: \(popStack(s))");
+puts("পপ: \(popStack(s))");
+puts("অবশিষ্ট স্ট্যাক: \(s.items)");

@@ -1,0 +1,11 @@
+fn canVote(age) {
+    if (age >= 18) {
+        return Ok("ভোট প্রদান করতে পারবেন");
+    }
+    return Err("বয়স ১৮ পূর্ণ হয়নি");
+}
+
+let v21 = unwrapOr(canVote(21), "ভুল");
+let v15Can = isOk(canVote(15));
+puts("২১ বছর বয়স: " + v21);
+puts("১৫ বছর বয়স কি পারবে? \(v15Can)");
