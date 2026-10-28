@@ -8,12 +8,22 @@ import (
 	"github.com/joysriramsarkar/nilLang/pkg/signing"
 )
 
+// setHome points os.UserHomeDir at a temp dir on every platform:
+// $HOME on Unix, %USERPROFILE% on Windows (which ignores $HOME, so a
+// HOME-only override silently tests the real profile there).
+func setHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	return home
+}
+
 // A config file that omits verify_signatures must not silently downgrade
 // signature verification: LoadConfig unmarshals over DefaultConfig, so an
 // absent field keeps its default.
 func TestLoadConfigKeepsDefaultsForOmittedFields(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := setHome(t)
 
 	dir := filepath.Join(home, ".nilang")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -47,8 +57,7 @@ func TestLoadConfigKeepsDefaultsForOmittedFields(t *testing.T) {
 
 // An explicit false in the file is a choice and must be honoured.
 func TestLoadConfigHonoursExplicitVerifySignaturesFalse(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	home := setHome(t)
 
 	dir := filepath.Join(home, ".nilang")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
