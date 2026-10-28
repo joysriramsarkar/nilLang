@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,6 +20,10 @@ type Storage struct {
 	packages    map[string]*PackageInfo
 	versions    map[string][]*VersionInfo
 	users       map[string]*User
+	// owners maps a package name to the username that first published it.
+	// Ownership survives restarts and version updates; it is the basis for
+	// the publish/delete authorization checks in the server.
+	owners map[string]string
 }
 
 // NewStorage creates a new storage instance
@@ -29,6 +34,7 @@ func NewStorage(dataDir string) (*Storage, error) {
 		packages:    make(map[string]*PackageInfo),
 		versions:    make(map[string][]*VersionInfo),
 		users:       make(map[string]*User),
+		owners:      make(map[string]string),
 	}
 
 	// Create directories
@@ -72,16 +78,80 @@ func (s *Storage) load() error {
 		}
 	}
 
-	// Load users
+	// Load users. The on-disk form is userRecord, not User: User deliberately
+	// never serializes its password hash/salt, but those must survive a
+	// restart or every login breaks and the "no users yet" bootstrap state
+	// (which relaxes authorization) comes back.
 	usersPath := filepath.Join(s.dataDir, "users.json")
 	if data, err := os.ReadFile(usersPath); err == nil {
-		var users map[string]*User
-		if err := json.Unmarshal(data, &users); err == nil {
-			s.users = users
+		var records map[string]*userRecord
+		if err := json.Unmarshal(data, &records); err == nil {
+			s.users = make(map[string]*User, len(records))
+			for name, rec := range records {
+				s.users[name] = rec.toUser()
+			}
+		}
+	}
+
+	// Load package ownership
+	ownersPath := filepath.Join(s.dataDir, "owners.json")
+	if data, err := os.ReadFile(ownersPath); err == nil {
+		var owners map[string]string
+		if err := json.Unmarshal(data, &owners); err == nil {
+			s.owners = owners
+		}
+	}
+	// Packages published before owners.json existed carry the owner in the
+	// index itself; adopt those so an upgrade does not orphan ownership.
+	for _, pkg := range s.packages {
+		if pkg.Owner != "" {
+			if _, ok := s.owners[pkg.Name]; !ok {
+				s.owners[pkg.Name] = pkg.Owner
+			}
 		}
 	}
 
 	return nil
+}
+
+// userRecord is the persisted form of User. PasswordHash/PasswordSalt ride
+// along here — and only here; the User type keeps them out of every API
+// response via its json:"-" tags, while this file is written 0600.
+type userRecord struct {
+	ID           string    `json:"id"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	APIKey       string    `json:"api_key,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	IsAdmin      bool      `json:"is_admin"`
+	PasswordHash string    `json:"password_hash"`
+	PasswordSalt string    `json:"password_salt"`
+}
+
+func recordOfUser(u *User) *userRecord {
+	return &userRecord{
+		ID:           u.ID,
+		Username:     u.Username,
+		Email:        u.Email,
+		APIKey:       u.APIKey,
+		CreatedAt:    u.CreatedAt,
+		IsAdmin:      u.IsAdmin,
+		PasswordHash: u.PasswordHash,
+		PasswordSalt: u.PasswordSalt,
+	}
+}
+
+func (r *userRecord) toUser() *User {
+	return &User{
+		ID:           r.ID,
+		Username:     r.Username,
+		Email:        r.Email,
+		APIKey:       r.APIKey,
+		CreatedAt:    r.CreatedAt,
+		IsAdmin:      r.IsAdmin,
+		PasswordHash: r.PasswordHash,
+		PasswordSalt: r.PasswordSalt,
+	}
 }
 
 func (s *Storage) save() error {
@@ -97,10 +167,22 @@ func (s *Storage) save() error {
 		os.WriteFile(versionsPath, data, 0644)
 	}
 
-	// Save users
+	// Save users in record form (includes the password hash/salt that User
+	// never serializes). The file holds API keys and password hashes, so it
+	// is owner-only.
 	usersPath := filepath.Join(s.dataDir, "users.json")
-	if data, err := json.MarshalIndent(s.users, "", "  "); err == nil {
-		os.WriteFile(usersPath, data, 0644)
+	records := make(map[string]*userRecord, len(s.users))
+	for name, u := range s.users {
+		records[name] = recordOfUser(u)
+	}
+	if data, err := json.MarshalIndent(records, "", "  "); err == nil {
+		os.WriteFile(usersPath, data, 0600)
+	}
+
+	// Save package ownership
+	ownersPath := filepath.Join(s.dataDir, "owners.json")
+	if data, err := json.MarshalIndent(s.owners, "", "  "); err == nil {
+		os.WriteFile(ownersPath, data, 0644)
 	}
 
 	return nil
@@ -113,6 +195,15 @@ func (s *Storage) AddPackage(pkg *PackageInfo) error {
 
 	pkg.ID = generateID(pkg.Name, pkg.Version)
 	pkg.UpdatedAt = time.Now()
+
+	// The first publisher of a name owns it. Later publishes of the same
+	// name (already ownership-checked by the server) keep the recorded
+	// owner, including when an admin publishes on the owner's behalf.
+	if existing, ok := s.owners[pkg.Name]; ok {
+		pkg.Owner = existing
+	} else if pkg.Owner != "" {
+		s.owners[pkg.Name] = pkg.Owner
+	}
 
 	s.packages[pkg.ID] = pkg
 
@@ -307,6 +398,72 @@ func (s *Storage) DeletePackage(id string) error {
 
 	delete(s.packages, id)
 	return s.save()
+}
+
+// PackageOwner returns the username that owns a package name. The bool is
+// false when the name has never been published by a registered user (it is
+// unowned, e.g. published anonymously during bootstrap).
+func (s *Storage) PackageOwner(name string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	owner, ok := s.owners[name]
+	return owner, ok
+}
+
+// UserCount returns how many users are registered. Zero has a specific
+// meaning for authorization: the server has never had a user, so the
+// bootstrap rules apply.
+func (s *Storage) UserCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.users)
+}
+
+// GetUser returns the user with the given username.
+func (s *Storage) GetUser(username string) (*User, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	u, ok := s.users[username]
+	return u, ok
+}
+
+// UserForAPIKey returns the user a key belongs to. The comparison is
+// constant-time per key, matching the login path.
+func (s *Storage) UserForAPIKey(key string) (*User, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if key == "" {
+		return nil, false
+	}
+	for _, u := range s.users {
+		if subtle.ConstantTimeCompare([]byte(u.APIKey), []byte(key)) == 1 {
+			return u, true
+		}
+	}
+	return nil, false
+}
+
+// RegisterUser adds a user and persists it immediately, so accounts — and
+// the admin flag — survive a restart. The first user ever registered
+// becomes admin. It reports false without changing anything when the
+// username is taken; the existence check and the insert are atomic under
+// the storage lock, so two racing registrations cannot both succeed.
+func (s *Storage) RegisterUser(u *User) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.users[u.Username]; exists {
+		return false, nil
+	}
+	if len(s.users) == 0 {
+		u.IsAdmin = true
+	}
+	s.users[u.Username] = u
+	if err := s.save(); err != nil {
+		delete(s.users, u.Username)
+		return false, err
+	}
+	return true, nil
 }
 
 func generateID(name, version string) string {

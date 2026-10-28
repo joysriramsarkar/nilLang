@@ -133,7 +133,28 @@ func NewWithState(s *SymbolTable, constants []object.Object) *Compiler {
 	return compiler
 }
 
-func (c *Compiler) Compile(node ast.Node) error {
+// Compile translates a (lowered) AST into bytecode.
+//
+// It is the boundary an embedder calls, and it never panics. Compilation
+// reaches code.Make, which panics on operand overflow — a program with
+// more than 65535 constants, more than 255 locals in one function, or a
+// jump past 64KB — and those limits are reachable by program size alone,
+// not only by compiler bugs. Letting the panic escape would crash the
+// embedding host at compile time the way hostile bytecode once could at
+// run time, so the panic is recovered here and reported as an error.
+// Recursive descent inside the package calls compile directly; only
+// this entry point recovers, so a failure aborts the whole compilation
+// instead of being swallowed at an inner node and compiled past.
+func (c *Compiler) Compile(node ast.Node) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("internal compiler error: %v", r)
+		}
+	}()
+	return c.compile(node)
+}
+
+func (c *Compiler) compile(node ast.Node) error {
 	// Record a debug line-table entry for this node's source position before
 	// emitting its instructions. This powers VM source-level debugging.
 	c.recordNodePosition(node)
@@ -141,7 +162,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 	// A visibility marker changes what leaves the module, not what the
 	// declaration does inside it, so the wrapper compiles to the declaration.
 	if wrapped, ok := node.(*ast.ExportStatement); ok && wrapped.Decl != nil {
-		return c.Compile(wrapped.Decl)
+		return c.compile(wrapped.Decl)
 	}
 
 	switch node := node.(type) {
@@ -159,7 +180,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 		for _, s := range node.Statements {
-			err := c.Compile(s)
+			err := c.compile(s)
 			if err != nil {
 				return err
 			}
@@ -171,7 +192,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// which would forget the bindings on exit.
 		if node.Body != nil {
 			for _, s := range node.Body.Statements {
-				if err := c.Compile(s); err != nil {
+				if err := c.compile(s); err != nil {
 					return err
 				}
 			}
@@ -183,7 +204,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		return c.compileImport(node)
 
 	case *ast.ExpressionStatement:
-		err := c.Compile(node.Expression)
+		err := c.compile(node.Expression)
 		if err != nil {
 			return err
 		}
@@ -191,11 +212,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.InfixExpression:
 		if node.Operator == "&&" {
-			if err := c.Compile(node.Left); err != nil {
+			if err := c.compile(node.Left); err != nil {
 				return err
 			}
 			jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
-			if err := c.Compile(node.Right); err != nil {
+			if err := c.compile(node.Right); err != nil {
 				return err
 			}
 			c.emit(code.OpBang)
@@ -211,7 +232,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return nil
 		}
 		if node.Operator == "||" {
-			if err := c.Compile(node.Left); err != nil {
+			if err := c.compile(node.Left); err != nil {
 				return err
 			}
 			jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
@@ -220,7 +241,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 			afterLeftPos := len(c.currentInstructions())
 			c.changeOperand(jumpNotTruthyPos, afterLeftPos)
-			if err := c.Compile(node.Right); err != nil {
+			if err := c.compile(node.Right); err != nil {
 				return err
 			}
 			c.emit(code.OpBang)
@@ -231,12 +252,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return nil
 		}
 
-		err := c.Compile(node.Left)
+		err := c.compile(node.Left)
 		if err != nil {
 			return err
 		}
 
-		err = c.Compile(node.Right)
+		err = c.compile(node.Right)
 		if err != nil {
 			return err
 		}
@@ -269,7 +290,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.PrefixExpression:
-		err := c.Compile(node.Right)
+		err := c.compile(node.Right)
 		if err != nil {
 			return err
 		}
@@ -308,7 +329,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.StringTemplate:
 		for i, part := range node.Parts {
 			if part.IsExpression {
-				err := c.Compile(part.Expression)
+				err := c.compile(part.Expression)
 				if err != nil {
 					return err
 				}
@@ -323,7 +344,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.IfExpression:
-		err := c.Compile(node.Condition)
+		err := c.compile(node.Condition)
 		if err != nil {
 			return err
 		}
@@ -331,7 +352,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// Emit OpJumpNotTruthy with placeholder offset
 		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
 
-		err = c.Compile(node.Consequence)
+		err = c.compile(node.Consequence)
 		if err != nil {
 			return err
 		}
@@ -351,7 +372,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if node.Alternative == nil {
 			c.emit(code.OpNull)
 		} else {
-			err := c.Compile(node.Alternative)
+			err := c.compile(node.Alternative)
 			if err != nil {
 				return err
 			}
@@ -375,7 +396,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		loop := &loopContext{continueTarget: conditionStart}
 		c.loops = append(c.loops, loop)
 
-		err := c.Compile(node.Condition)
+		err := c.compile(node.Condition)
 		if err != nil {
 			c.loops = c.loops[:len(c.loops)-1]
 			return err
@@ -383,7 +404,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999)
 
-		err = c.Compile(node.Body)
+		err = c.compile(node.Body)
 		if err != nil {
 			c.loops = c.loops[:len(c.loops)-1]
 			return err
@@ -422,13 +443,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// same hidden subject simply overwrites it.
 		symbol := c.symbolTable.Define(node.Name.Value)
 
-		if err := c.Compile(node.Value); err != nil {
+		if err := c.compile(node.Value); err != nil {
 			return err
 		}
 		c.emitSymbolStore(symbol)
 
 		// The body's value is the expression's value, so nothing is popped.
-		return c.Compile(node.Body)
+		return c.compile(node.Body)
 
 	case *ast.MatchExpression:
 		return fmt.Errorf("internal error: a `match` reached the bytecode compiler without being lowered")
@@ -469,7 +490,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// stays valid after the restore.
 		c.symbolTable.EnterBlock()
 		for _, s := range node.Statements {
-			err := c.Compile(s)
+			err := c.compile(s)
 			if err != nil {
 				c.symbolTable.LeaveBlock()
 				return err
@@ -492,7 +513,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		err := c.Compile(node.Value)
+		err := c.compile(node.Value)
 		if err != nil {
 			return err
 		}
@@ -520,7 +541,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.markLoopFreshIfTopLevelLoop(node.Name.Value, symbol)
 		if node.Value == nil {
 			c.emit(code.OpNull)
-		} else if err := c.Compile(node.Value); err != nil {
+		} else if err := c.compile(node.Value); err != nil {
 			return err
 		}
 		if symbol.Scope == GlobalScope {
@@ -534,7 +555,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("component declaration requires a name")
 		}
 		for _, state := range node.States {
-			if err := c.Compile(state); err != nil {
+			if err := c.compile(state); err != nil {
 				return err
 			}
 		}
@@ -559,14 +580,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 		pairCount++
 		if node.Render != nil && node.Render.Body != nil {
 			emitKey("render")
-			if err := c.Compile(&ast.FunctionLiteral{Token: node.Render.Token, Body: node.Render.Body}); err != nil {
+			if err := c.compile(&ast.FunctionLiteral{Token: node.Render.Token, Body: node.Render.Body}); err != nil {
 				return err
 			}
 			pairCount++
 		}
 		if node.Build != nil && node.Build.Body != nil {
 			emitKey("build")
-			if err := c.Compile(&ast.FunctionLiteral{Token: node.Build.Token, Body: node.Build.Body}); err != nil {
+			if err := c.compile(&ast.FunctionLiteral{Token: node.Build.Token, Body: node.Build.Body}); err != nil {
 				return err
 			}
 			pairCount++
@@ -574,7 +595,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		emitKey("events")
 		for _, handler := range node.Handlers {
 			emitKey(handler.Event.Value)
-			if err := c.Compile(&ast.FunctionLiteral{Token: handler.Token, Parameters: identifiersToParameters(handler.Parameters), Body: handler.Body}); err != nil {
+			if err := c.compile(&ast.FunctionLiteral{Token: handler.Token, Parameters: identifiersToParameters(handler.Parameters), Body: handler.Body}); err != nil {
 				return err
 			}
 		}
@@ -598,7 +619,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if node.Operator == "+=" || node.Operator == "-=" {
 			c.loadSymbol(symbol)
 		}
-		if err := c.Compile(node.Value); err != nil {
+		if err := c.compile(node.Value); err != nil {
 			return err
 		}
 		switch node.Operator {
@@ -620,13 +641,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.IndexAssignStatement:
-		if err := c.Compile(node.Left); err != nil {
+		if err := c.compile(node.Left); err != nil {
 			return err
 		}
-		if err := c.Compile(node.Index); err != nil {
+		if err := c.compile(node.Index); err != nil {
 			return err
 		}
-		if err := c.Compile(node.Value); err != nil {
+		if err := c.compile(node.Value); err != nil {
 			return err
 		}
 		c.emit(code.OpSetIndex)
@@ -641,7 +662,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.ArrayLiteral:
 		for _, el := range node.Elements {
-			err := c.Compile(el)
+			err := c.compile(el)
 			if err != nil {
 				return err
 			}
@@ -656,10 +677,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// printed form, which happened to be deterministic but was not the
 		// order the developer wrote.
 		for _, entry := range orderedHashPairs(node) {
-			if err := c.Compile(entry.Key); err != nil {
+			if err := c.compile(entry.Key); err != nil {
 				return err
 			}
-			if err := c.Compile(entry.Value); err != nil {
+			if err := c.compile(entry.Value); err != nil {
 				return err
 			}
 		}
@@ -667,12 +688,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpHash, node.EntryCount()*2)
 
 	case *ast.IndexExpression:
-		err := c.Compile(node.Left)
+		err := c.compile(node.Left)
 		if err != nil {
 			return err
 		}
 
-		err = c.Compile(node.Index)
+		err = c.compile(node.Index)
 		if err != nil {
 			return err
 		}
@@ -680,7 +701,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpIndex)
 
 	case *ast.DotExpression:
-		if err := c.Compile(node.Left); err != nil {
+		if err := c.compile(node.Left); err != nil {
 			return err
 		}
 		c.emit(code.OpConstant, c.addConstant(&object.String{Value: node.Member.Value}))
@@ -701,7 +722,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 		}
 
-		err := c.Compile(node.Body)
+		err := c.compile(node.Body)
 		if err != nil {
 			return err
 		}
@@ -758,13 +779,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.TaskExpression:
 		function := &ast.FunctionLiteral{Token: node.Token, Parameters: []*ast.Parameter{}, Body: node.Body}
-		if err := c.Compile(function); err != nil {
+		if err := c.compile(function); err != nil {
 			return err
 		}
 		c.emit(code.OpTask)
 
 	case *ast.AwaitExpression:
-		if err := c.Compile(node.Right); err != nil {
+		if err := c.compile(node.Right); err != nil {
 			return err
 		}
 		c.emit(code.OpAwait)
@@ -774,7 +795,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpReturn)
 			break
 		}
-		err := c.Compile(node.ReturnValue)
+		err := c.compile(node.ReturnValue)
 		if err != nil {
 			return err
 		}
@@ -788,7 +809,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// was inert.
 		if name, ok := c.gatedBuiltinCall(node); ok {
 			for _, a := range node.Arguments {
-				if err := c.Compile(a); err != nil {
+				if err := c.compile(a); err != nil {
 					return err
 				}
 			}
@@ -797,13 +818,13 @@ func (c *Compiler) Compile(node ast.Node) error {
 			break
 		}
 
-		err := c.Compile(node.Function)
+		err := c.compile(node.Function)
 		if err != nil {
 			return err
 		}
 
 		for _, a := range node.Arguments {
-			err := c.Compile(a)
+			err := c.compile(a)
 			if err != nil {
 				return err
 			}
@@ -884,7 +905,7 @@ func (c *Compiler) compileImport(node *ast.ImportStatement) error {
 	// defined in the module can call each other (OpGetGlobal) at VM runtime.
 	before := c.symbolTable.NumDefinitions()
 	for _, stmt := range prog.Statements {
-		if err := c.Compile(stmt); err != nil {
+		if err := c.compile(stmt); err != nil {
 			return fmt.Errorf("module %s: %w", canonical, err)
 		}
 	}

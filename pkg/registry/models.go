@@ -26,6 +26,11 @@ type PackageInfo struct {
 	Downloads    int64             `json:"downloads"`
 	Deprecated   bool              `json:"deprecated"`
 	Signature    string            `json:"signature,omitempty"`
+	// Owner is the username of the registered user who first published
+	// this package name. Only the owner (or an admin) may publish new
+	// versions of the name or delete it. Empty for packages published
+	// anonymously during bootstrap, before any user existed.
+	Owner string `json:"owner,omitempty"`
 }
 
 // PackageListResponse represents the response for listing packages

@@ -90,12 +90,12 @@ func (c *Collector) markLocked(obj object.Object, marked map[object.Object]bool)
 
 	switch typed := obj.(type) {
 	case *object.Array:
-		for _, elem := range typed.Elements {
+		for _, elem := range typed.Snapshot() {
 			c.markLocked(elem, marked)
 		}
 
 	case *object.Hash:
-		for _, pair := range typed.Pairs {
+		for _, pair := range typed.OrderedPairs() {
 			c.markLocked(pair.Key, marked)
 			c.markLocked(pair.Value, marked)
 		}
@@ -120,10 +120,30 @@ func (c *Collector) markLocked(obj object.Object, marked map[object.Object]bool)
 		c.markLocked(typed.Value, marked)
 		c.markLocked(typed.Error, marked)
 
+	case *object.Optional:
+		// A Some holds a value the program can still reach with unwrap, so
+		// that value is live for exactly as long as the Optional is.
+		if typed.HasValue {
+			c.markLocked(typed.Value, marked)
+		}
+
+	case *object.Tensor:
+		// A tensor's storage is []float64 plus shape metadata — it holds
+		// no Object references, so there is nothing beneath it to mark.
+
+	case *object.Channel:
+		// Values in flight sit inside the Go channel, which cannot be
+		// inspected without consuming them (receiving *is* the program's
+		// semantics). They are therefore not traced: the same trade the
+		// Future case above makes for an unresolved future. A value whose
+		// only reference is an unconsumed channel send is retained by the
+		// Go runtime itself, and this collector's bookkeeping does not
+		// free Go memory — see the EnableGC comment in the VM.
+
 	case *object.CaptureCell:
 		// A shared mutable cell is the mechanism by which two closures observe
 		// the same variable, so its value is a live reference.
-		c.markLocked(typed.Value, marked)
+		c.markLocked(typed.Get(), marked)
 
 	case *object.Entity:
 		// Entity schema metadata carries no heap child pointers.

@@ -42,7 +42,7 @@ func evalForStatement(fs *ast.ForStatement, env *object.Environment) object.Obje
 
 	switch collection := iterable.(type) {
 	case *object.Array:
-		for index, element := range collection.Elements {
+		for index, element := range collection.Snapshot() {
 			items = append(items, loopItem{
 				Key:   &object.Integer{Value: int64(index)},
 				Value: element,
