@@ -709,7 +709,7 @@ Access`/`IsNull` cases in `tests/conformance`, all across engines.
   - `0.0 / 0.0` -> `NaN`
 
 ### 5.2 Numeric Overflow
-- `Int` operations wrap on two's complement 64-bit boundaries in performance mode, or raise `IntegerOverflow` in debug mode.
+- `Int` operations wrap on two's complement 64-bit boundaries. Both the Evaluator and the VM wrap identically; there is currently no separate debug mode and no `IntegerOverflow` error. (A checked-arithmetic mode may be added in a future version; until then, wrapping is the defined behaviour in all modes.)
 
 
 ### 5.3 Equality between different kinds

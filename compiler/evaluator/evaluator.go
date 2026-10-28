@@ -1208,13 +1208,13 @@ func evalStringIndexExpression(str, index object.Object) object.Object {
 func evalArrayIndexExpression(array, index object.Object) object.Object {
 	arrayObject := array.(*object.Array)
 	idx := index.(*object.Integer).Value
-	max := int64(len(arrayObject.Elements) - 1)
 
-	if idx < 0 || idx > max {
+	element, ok := arrayObject.Get(idx)
+	if !ok {
 		return NULL
 	}
 
-	return arrayObject.Elements[idx]
+	return element
 }
 
 func evalHashLiteral(node *ast.HashLiteral, env *object.Environment) object.Object {
@@ -1274,7 +1274,7 @@ func evalHashIndexExpression(hash, index object.Object) object.Object {
 		return runtimeError(object.CategoryTypeError, "unusable as hash key: %s", index.Type())
 	}
 
-	pair, ok := hashObject.Pairs[key.HashKey()]
+	pair, ok := hashObject.GetByHashKey(key.HashKey())
 	if !ok {
 		return NULL
 	}
@@ -1306,10 +1306,9 @@ func evalIndexAssign(left, index, val object.Object) object.Object {
 			return newError("array index must be an integer, got %s", index.Type())
 		}
 		idx := idxObj.Value
-		if idx < 0 || idx >= int64(len(l.Elements)) {
+		if !l.Set(idx, val) {
 			return runtimeError(object.CategoryIndexOutOfBounds, "index %d out of bounds", idx)
 		}
-		l.Elements[idx] = val
 		return val
 	default:
 		return runtimeError(object.CategoryTypeError, "index-assignment not supported on: %s", left.Type())
@@ -1340,11 +1339,11 @@ func evalDotExpression(left object.Object, member string) object.Object {
 		}
 	case *object.Hash:
 		strKey := &object.String{Value: member}
-		if pair, ok := obj.Pairs[strKey.HashKey()]; ok {
+		if pair, ok := obj.Get(strKey); ok {
 			return pair.Value
 		}
 
-		for _, pair := range obj.Pairs {
+		for _, pair := range obj.OrderedPairs() {
 			if strObj, ok := pair.Key.(*object.String); ok {
 				if strings.EqualFold(strObj.Value, member) {
 					return pair.Value
@@ -1453,7 +1452,7 @@ func appendHashList(hash *object.Hash, listKey string, item object.Object) {
 	hKey := k.HashKey()
 
 	var arr *object.Array
-	if pair, ok := hash.Pairs[hKey]; ok {
+	if pair, ok := hash.GetByHashKey(hKey); ok {
 		if a, isArr := pair.Value.(*object.Array); isArr {
 			arr = a
 		}
@@ -1464,7 +1463,7 @@ func appendHashList(hash *object.Hash, listKey string, item object.Object) {
 		hash.SetPair(k, arr)
 	}
 
-	arr.Elements = append(arr.Elements, item)
+	arr.Append(item)
 }
 
 func MakeHashObj(m map[string]object.Object) *object.Hash {

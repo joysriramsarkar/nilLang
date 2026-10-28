@@ -130,6 +130,11 @@ func (v *Verifier) VerifyBundle(path string) (*VerificationResult, error) {
 			result.Errors = append(result.Errors, fmt.Sprintf("signature checksum mismatch: bundle=%s sig=%s", checksum, sig.Checksum))
 		} else if tk, ok := v.trustStore().Key(sig.SignerKeyID); !ok {
 			result.Errors = append(result.Errors, fmt.Sprintf("untrusted signing key: %s", sig.SignerKeyID))
+		} else if tk.Revoked {
+			// The contract trust stage refuses revoked keys; the sidecar
+			// path must apply the same rule, or revocation only works for
+			// one of the two signature mechanisms.
+			result.Errors = append(result.Errors, fmt.Sprintf("signing key has been revoked: %s", sig.SignerKeyID))
 		} else if verifyErr := signing.VerifySignature(tk.PublicKeyHex, sig); verifyErr != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("invalid package signature: %v", verifyErr))
 		} else {
@@ -173,9 +178,9 @@ func (m mapTrustStore) Key(keyID string) (contract.TrustedKey, bool) {
 
 func (v *Verifier) trustStore() contract.TrustStore {
 	keys := map[string]contract.TrustedKey{
-		"onuron-team": {
-			KeyID:        "onuron-team",
-			PublicKeyHex: "d863fc2a699bc7733c621979ecef87e6958b5ff8d6c620e6c7c864739aaac7dd",
+		signing.OnuronTeamKeyID: {
+			KeyID:        signing.OnuronTeamKeyID,
+			PublicKeyHex: signing.OnuronTeamPublicKeyHex,
 			Algorithm:    "ed25519",
 		},
 	}
@@ -196,6 +201,10 @@ func (v *Verifier) trustStore() contract.TrustStore {
 							KeyID:        ki.KeyID,
 							PublicKeyHex: pubHex,
 							Algorithm:    "ed25519",
+							// Carry the keystore's revocation flag through:
+							// without it a revoked local key stays trusted
+							// here even though the keystore says otherwise.
+							Revoked: ki.Revoked,
 						}
 					}
 				}

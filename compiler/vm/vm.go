@@ -440,6 +440,27 @@ func (vm *VM) truncateStack(newSP int) {
 	vm.sp = newSP
 }
 
+// frameStackDepth reports how many stack slots belong to the current
+// frame: everything from the frame's base pointer to the stack top.
+//
+// Instructions that consume a counted run of stack values (OpArray,
+// OpHash, OpClosure, OpNativeCall) validate against this, not against
+// the global sp. The global count includes every caller frame's slots,
+// so a hand-built instruction inside a function could otherwise name a
+// count larger than its own frame pushed and lift the caller's values
+// into an array or a call — no panic, the bounds hold globally, but
+// frame isolation is broken.
+func (vm *VM) frameStackDepth() int {
+	if vm.framesIndex <= 0 {
+		return vm.sp
+	}
+	depth := vm.sp - vm.currentFrame().basePointer
+	if depth < 0 {
+		return 0
+	}
+	return depth
+}
+
 // readU16 reads a two-byte operand at ip+1, refusing truncated bytecode
 // instead of slicing past the end of the instruction stream.
 func (vm *VM) readU16(ins code.Instructions, ip int) (uint16, error) {
@@ -711,7 +732,7 @@ func (vm *VM) Run() (err error) {
 			// the current cell, mirroring OpSetLocal, or the closure holding
 			// it would never observe the write.
 			if cell, ok := vm.globals[globalIndex].(*object.CaptureCell); ok {
-				cell.Value = val
+				cell.Set(val)
 			} else {
 				vm.globals[globalIndex] = val
 			}
@@ -735,7 +756,7 @@ func (vm *VM) Run() (err error) {
 			// must see the value, never the cell. Only loop-body `let`
 			// bindings at top level ever hold cells here.
 			if cell, ok := global.(*object.CaptureCell); ok {
-				global = cell.Value
+				global = cell.Get()
 			}
 			err := vm.push(global)
 			if err != nil {
@@ -750,8 +771,8 @@ func (vm *VM) Run() (err error) {
 			numElements := int(numElementsRaw)
 			vm.currentFrame().ip += 2
 
-			if numElements < 0 || numElements > vm.sp {
-				return errInvalidBytecode("array of %d elements with only %d values on the stack", numElements, vm.sp)
+			if numElements < 0 || numElements > vm.frameStackDepth() {
+				return errInvalidBytecode("array of %d elements with only %d values on the stack", numElements, vm.frameStackDepth())
 			}
 			array := vm.buildArray(vm.sp-numElements, vm.sp)
 			vm.truncateStack(vm.sp - numElements)
@@ -774,8 +795,8 @@ func (vm *VM) Run() (err error) {
 			numElements := int(numHashElementsRaw)
 			vm.currentFrame().ip += 2
 
-			if numElements < 0 || numElements > vm.sp || numElements%2 != 0 {
-				return errInvalidBytecode("hash of %d elements with %d values on the stack", numElements, vm.sp)
+			if numElements < 0 || numElements > vm.frameStackDepth() || numElements%2 != 0 {
+				return errInvalidBytecode("hash of %d elements with %d values on the stack", numElements, vm.frameStackDepth())
 			}
 			hash, err := vm.buildHash(vm.sp-numElements, vm.sp)
 			if err != nil {
@@ -910,7 +931,7 @@ func (vm *VM) Run() (err error) {
 			// A boxed local holds a cell, so the assignment must go through it
 			// for the closure to observe the write.
 			if cell, ok := vm.stack[addr].(*object.CaptureCell); ok {
-				cell.Value = val
+				cell.Set(val)
 			} else {
 				vm.stack[addr] = val
 			}
@@ -932,7 +953,7 @@ func (vm *VM) Run() (err error) {
 			// reading through the cell.
 			value := vm.stack[addr]
 			if cell, ok := value.(*object.CaptureCell); ok {
-				value = cell.Value
+				value = cell.Get()
 			}
 
 			err := vm.push(value)
@@ -962,7 +983,7 @@ func (vm *VM) Run() (err error) {
 			// or a bare value there.
 			cell, alreadyBoxed := vm.stack[addr].(*object.CaptureCell)
 			if !alreadyBoxed {
-				cell = &object.CaptureCell{Value: vm.stack[addr]}
+				cell = object.NewCaptureCell(vm.stack[addr])
 				vm.allocateObject(cell)
 				vm.stack[addr] = cell
 			}
@@ -993,7 +1014,7 @@ func (vm *VM) Run() (err error) {
 			// passes into one binding — so a held cell is replaced with a
 			// new one, while a plain value stores exactly like OpSetLocal.
 			if _, ok := vm.stack[addr].(*object.CaptureCell); ok {
-				cell := &object.CaptureCell{Value: val}
+				cell := object.NewCaptureCell(val)
 				vm.allocateObject(cell)
 				vm.stack[addr] = cell
 			} else {
@@ -1017,7 +1038,7 @@ func (vm *VM) Run() (err error) {
 			mu := vm.ensureGlobalsMu()
 			mu.Lock()
 			if _, ok := vm.globals[globalIndex].(*object.CaptureCell); ok {
-				cell := &object.CaptureCell{Value: val}
+				cell := object.NewCaptureCell(val)
 				vm.allocateObject(cell)
 				vm.globals[globalIndex] = cell
 			} else {
@@ -1042,7 +1063,7 @@ func (vm *VM) Run() (err error) {
 			// what keeps same-pass siblings shared.
 			cell, alreadyBoxed := vm.globals[globalIndex].(*object.CaptureCell)
 			if !alreadyBoxed {
-				cell = &object.CaptureCell{Value: vm.globals[globalIndex]}
+				cell = object.NewCaptureCell(vm.globals[globalIndex])
 				vm.allocateObject(cell)
 				vm.globals[globalIndex] = cell
 			}
@@ -1081,8 +1102,8 @@ func (vm *VM) Run() (err error) {
 			numFree := int(numFreeByte)
 			vm.currentFrame().ip += 3
 
-			if numFree < 0 || numFree > vm.sp {
-				return errInvalidBytecode("closure captures %d values with only %d on the stack", numFree, vm.sp)
+			if numFree < 0 || numFree > vm.frameStackDepth() {
+				return errInvalidBytecode("closure captures %d values with only %d on the stack", numFree, vm.frameStackDepth())
 			}
 			err := vm.pushClosure(int(constIndex), numFree)
 			if err != nil {
@@ -1100,7 +1121,7 @@ func (vm *VM) Run() (err error) {
 			if err != nil {
 				return err
 			}
-			if err := vm.push(freeCell.Value); err != nil {
+			if err := vm.push(freeCell.Get()); err != nil {
 				return err
 			}
 
@@ -1140,7 +1161,7 @@ func (vm *VM) Run() (err error) {
 			if err != nil {
 				return err
 			}
-			freeCell.Value = newVal
+			freeCell.Set(newVal)
 
 		case code.OpCurrentClosure:
 			currentClosure := vm.currentFrame().cl
@@ -1290,8 +1311,8 @@ func (vm *VM) Run() (err error) {
 				return errInvalidBytecode("native call name is %s, want string", typeName(nameConst))
 			}
 			name := nameStr.Value
-			if numArgs < 0 || numArgs > vm.sp {
-				return errInvalidBytecode("native call with %d args and %d values on the stack", numArgs, vm.sp)
+			if numArgs < 0 || numArgs > vm.frameStackDepth() {
+				return errInvalidBytecode("native call with %d args and %d values on the stack", numArgs, vm.frameStackDepth())
 			}
 			args := make([]object.Object, numArgs)
 			for i := numArgs - 1; i >= 0; i-- {
@@ -1532,28 +1553,50 @@ func (vm *VM) executeComparison(op code.Opcode) error {
 	}
 }
 
-// objectsEqual compares two values for `==` when neither is a number, a string,
-// or a collection with its own comparison.
+// objectsEqual compares two values for `==` when neither is a number nor
+// a string (executeComparison dispatches those before reaching here).
 //
-// It matches on type and value rather than pointer identity. Comparing the Go
-// interfaces directly would report `isOk(x) == false` as unequal, because the
-// boolean a builtin returned is a different pointer from this package's `False`.
-// Booleans and null are the values with no `Inspect` distinction worth relying
-// on, so they are matched structurally; everything else falls back to the
-// printed form, which is what the branch above already does.
+// SEMANTICS.md §5.3 fixes the rule: two booleans compare by value, null
+// equals only null, and two collections compare by *identity* — `[1, 2]
+// == [1, 2]` is false because the literals build two arrays. The
+// tree-walking evaluator implements exactly this (its default case is Go
+// interface equality, i.e. pointer identity for every reference type),
+// and this function mirrors it case for case so the engines cannot drift
+// apart again.
+//
+// The earlier implementation compared Inspect() text, which is
+// structural: it called two separately built arrays with equal contents
+// equal (the evaluator said false), made hash equality depend on
+// insertion order, and called Ok(1) == Ok(1) true. Value comparison is
+// kept for the primitive cases that can still reach here defensively;
+// every reference type — Array, Hash, Closure, Result, Optional, Tensor,
+// Future, Channel, Function, Builtin, CaptureCell, Entity — compares by
+// identity.
 func objectsEqual(left, right object.Object) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
 	if left.Type() != right.Type() {
 		return false
 	}
 
-	switch left := left.(type) {
+	switch l := left.(type) {
 	case *object.Boolean:
-		rightBool, ok := right.(*object.Boolean)
-		return ok && left.Value == rightBool.Value
+		r, ok := right.(*object.Boolean)
+		return ok && l.Value == r.Value
 	case *object.Null:
 		return true
+	case *object.Integer:
+		r, ok := right.(*object.Integer)
+		return ok && l.Value == r.Value
+	case *object.Float:
+		r, ok := right.(*object.Float)
+		return ok && l.Value == r.Value
+	case *object.String:
+		r, ok := right.(*object.String)
+		return ok && l.Value == r.Value
 	default:
-		return left.Inspect() == right.Inspect()
+		return left == right
 	}
 }
 
@@ -1711,7 +1754,7 @@ func (vm *VM) executeGetField(left, member object.Object) error {
 		return errTypeMismatch("property access .%s not supported on type %s", name.Value, left.Type())
 	}
 
-	pair, present := hashObject.Pairs[name.HashKey()]
+	pair, present := hashObject.Get(name)
 	if !present {
 		// The wording matches the evaluator's on purpose. Two engines reporting
 		// the same mistake in different words is a divergence a conformance suite
@@ -1751,10 +1794,9 @@ func (vm *VM) executeSetIndex(target, index, val object.Object) error {
 			return errTypeMismatch("array index must be an integer, got %s", index.Type())
 		}
 		idx := idxObj.Value
-		if idx < 0 || idx >= int64(len(t.Elements)) {
+		if !t.Set(idx, val) {
 			return errIndexOutOfBounds("index %d out of bounds", idx)
 		}
-		t.Elements[idx] = val
 		return nil
 	case *object.Hash:
 		if _, ok := index.(object.Hashable); !ok {
@@ -1774,13 +1816,13 @@ func (vm *VM) executeSetIndex(target, index, val object.Object) error {
 func (vm *VM) executeArrayIndex(array, index object.Object) error {
 	arrayObject := array.(*object.Array)
 	i := index.(*object.Integer).Value
-	max := int64(len(arrayObject.Elements) - 1)
 
-	if i < 0 || i > max {
+	element, ok := arrayObject.Get(i)
+	if !ok {
 		return vm.push(Null)
 	}
 
-	return vm.push(arrayObject.Elements[i])
+	return vm.push(element)
 }
 
 func (vm *VM) executeHashIndex(hash, index object.Object) error {
@@ -1791,7 +1833,7 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 		return errTypeMismatch("unusable as hash key: %s", index.Type())
 	}
 
-	pair, ok := hashObject.Pairs[key.HashKey()]
+	pair, ok := hashObject.GetByHashKey(key.HashKey())
 	if !ok {
 		return vm.push(Null)
 	}
@@ -2207,7 +2249,7 @@ func (vm *VM) pushClosure(constIndex, numFree int) error {
 		if cell, ok := raw.(*object.CaptureCell); ok {
 			free[i] = cell
 		} else {
-			free[i] = &object.CaptureCell{Value: raw}
+			free[i] = object.NewCaptureCell(raw)
 			vm.allocateObject(free[i])
 		}
 	}

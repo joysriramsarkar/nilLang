@@ -203,8 +203,9 @@ func numericArray(value object.Object, label string) ([]float64, object.Object) 
 	if !ok {
 		return nil, newError("%s must be ARRAY, got %s", label, value.Type())
 	}
-	values := make([]float64, len(array.Elements))
-	for index, element := range array.Elements {
+	snapshot := array.Snapshot()
+	values := make([]float64, len(snapshot))
+	for index, element := range snapshot {
 		switch element := element.(type) {
 		case *object.Integer:
 			values[index] = float64(element.Value)
@@ -222,8 +223,9 @@ func integerArray(value object.Object, label string) ([]int, object.Object) {
 	if !ok {
 		return nil, newError("%s must be ARRAY, got %s", label, value.Type())
 	}
-	values := make([]int, len(array.Elements))
-	for index, element := range array.Elements {
+	snapshot := array.Snapshot()
+	values := make([]int, len(snapshot))
+	for index, element := range snapshot {
 		integer, ok := element.(*object.Integer)
 		if !ok {
 			return nil, newError("%s element %d must be INTEGER, got %s", label, index, element.Type())

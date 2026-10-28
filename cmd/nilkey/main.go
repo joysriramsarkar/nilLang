@@ -69,6 +69,9 @@ func printUsage() {
 	fmt.Println("  delete <key-id>       কী মুছে ফেলুন")
 	fmt.Println("  version               ভার্সন তথ্য দেখুন")
 	fmt.Println("  help                  এই সাহায্য বার্তা দেখুন")
+	fmt.Println()
+	fmt.Println("পাসওয়ার্ড: -password flag (command line-এ দৃশ্যমান থাকে — সতর্কতা ছাপা হয়),")
+	fmt.Println("  " + PasswordEnvVar + " env, অথবা interactive prompt — এই ক্রমে নেওয়া হয়।")
 }
 
 func cmdGenerate() {
@@ -80,7 +83,19 @@ func cmdGenerate() {
 
 	owner := *nameFlag
 	email := *emailFlag
+
+	// Password resolution: flag (warned) → env → interactive prompt with
+	// confirmation. Only the interactive path asks for confirmation; a
+	// flag/env password was typed deliberately already.
 	password := *passFlag
+	interactive := false
+	if password != "" {
+		warnFlagPassword()
+	} else if env := os.Getenv(PasswordEnvVar); env != "" {
+		password = env
+	} else {
+		interactive = true
+	}
 
 	reader := bufio.NewReader(os.Stdin)
 
@@ -96,7 +111,7 @@ func cmdGenerate() {
 		email = strings.TrimSpace(email)
 	}
 
-	if password == "" {
+	if interactive {
 		fmt.Print("🔑 কীস্টোর পাসওয়ার্ড: ")
 		passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
 		if err != nil {
@@ -159,9 +174,7 @@ func cmdList() {
 			password = strings.TrimPrefix(arg, "-password=")
 		}
 	}
-	if password == "" {
-		password = promptPassword("🔑 কীস্টোর পাসওয়ার্ড: ")
-	}
+	password = resolvePassword(password, "🔑 কীস্টোর পাসওয়ার্ড: ")
 
 	keystorePath := getKeystorePath()
 	keyStore, err := signing.NewKeyStore(keystorePath, password)
@@ -202,9 +215,7 @@ func cmdSign() {
 			keyID = strings.TrimPrefix(arg, "-key=")
 		}
 	}
-	if password == "" {
-		password = promptPassword("🔑 কীস্টোর পাসওয়ার্ড: ")
-	}
+	password = resolvePassword(password, "🔑 কীস্টোর পাসওয়ার্ড: ")
 
 	keystorePath := getKeystorePath()
 	keyStore, err := signing.NewKeyStore(keystorePath, password)
@@ -229,7 +240,7 @@ func cmdSign() {
 			for _, k := range keys {
 				fmt.Printf("   %s  (owner: %s, purpose: %s)\n", k.KeyID, k.Owner, k.Purpose)
 			}
-			fmt.Println("\nব্যবহার: nilkey sign <file.nilax> -key=<key-id> -password=...")
+			fmt.Println("\nব্যবহার: nilkey sign <file.nilax> -key=<key-id> (" + PasswordEnvVar + " env দিয়ে পাসওয়ার্ড দিন)")
 		} else {
 			fmt.Fprintf(os.Stderr, "❌ %s\n", err)
 		}
@@ -353,7 +364,7 @@ func cmdExport() {
 	}
 
 	keyID := os.Args[2]
-	password := promptPassword("🔑 কীস্টোর পাসওয়ার্ড: ")
+	password := resolvePassword("", "🔑 কীস্টোর পাসওয়ার্ড: ")
 
 	keystorePath := getKeystorePath()
 	keyStore, err := signing.NewKeyStore(keystorePath, password)
@@ -382,7 +393,7 @@ func cmdDelete() {
 	}
 
 	keyID := os.Args[2]
-	password := promptPassword("🔑 কীস্টোর পাসওয়ার্ড: ")
+	password := resolvePassword("", "🔑 কীস্টোর পাসওয়ার্ড: ")
 
 	keystorePath := getKeystorePath()
 	keyStore, err := signing.NewKeyStore(keystorePath, password)
@@ -397,6 +408,32 @@ func cmdDelete() {
 	}
 
 	fmt.Printf("✅ কী '%s' মুছে ফেলা হয়েছে\n", keyID)
+}
+
+// PasswordEnvVar supplies the keystore password when the -password flag
+// is not given, for scripts and CI.
+const PasswordEnvVar = "NILKEY_PASSWORD"
+
+// warnFlagPassword is printed whenever a password arrives via the command
+// line: argv is visible to every process listing (ps) and is kept in shell
+// history, so the flag stays supported for compatibility but is never the
+// silent default path.
+func warnFlagPassword() {
+	fmt.Fprintln(os.Stderr, "⚠️  সতর্কতা: -password flag-এর পাসওয়ার্ড command line-এ দৃশ্যমান থাকে (process list ও shell history)। "+PasswordEnvVar+" env অথবা interactive prompt ব্যবহার করুন।")
+}
+
+// resolvePassword picks the keystore password in order: the -password
+// flag value (with a warning), the NILKEY_PASSWORD environment variable,
+// or an interactive terminal prompt.
+func resolvePassword(flagValue, prompt string) string {
+	if flagValue != "" {
+		warnFlagPassword()
+		return flagValue
+	}
+	if env := os.Getenv(PasswordEnvVar); env != "" {
+		return env
+	}
+	return promptPassword(prompt)
 }
 
 func promptPassword(prompt string) string {

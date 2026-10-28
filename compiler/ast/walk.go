@@ -221,10 +221,53 @@ func Inspect(node Node, f func(Node) bool) {
 		}
 		InspectBlockBody(n.Body, f)
 
+	case *TraitDecl:
+		if n.Name != nil {
+			Inspect(n.Name, f)
+		}
+		for _, method := range n.Methods {
+			inspectTraitMethod(method, f)
+		}
+		// The raw Body is not walked: the parser lifts every statement in it
+		// into Methods (and rejects anything else), so walking both would
+		// visit each signature twice. A trait method has no body, so nothing
+		// expression-bearing is lost.
+
+	case *ImplDecl:
+		if n.Trait != nil {
+			Inspect(n.Trait, f)
+		}
+		if n.Type != nil {
+			Inspect(n.Type, f)
+		}
+		for _, method := range n.Methods {
+			inspectTraitMethod(method, f)
+		}
+
+	case *ExternStatement:
+		// The declaration is a signature with no body, but the Fn is an
+		// ordinary FunctionLiteral, so walking it visits the name and the
+		// parameter names the same way a definition's are visited.
+		if n.Fn != nil {
+			Inspect(n.Fn, f)
+		}
+
 	// ── Expressions ───────────────────────────────────────────────────────
 	case *IntegerLiteral, *FloatLiteral, *StringLiteral, *Boolean, *NullLiteral,
-		*Identifier, *AwaitExpression, *TaskExpression:
+		*Identifier:
 		// Leaf nodes.
+
+	// Await and task are not leaves: each wraps work of its own — the awaited
+	// expression, the task's body — and an analysis that stops at the wrapper
+	// never sees the calls inside either. They were once listed with the
+	// leaves above, which is how calls under `await` went uncollected.
+	case *AwaitExpression:
+		if n.Right != nil {
+			Inspect(n.Right, f)
+		}
+
+	case *TaskExpression:
+		InspectBlockBody(n.Body, f)
 
 	case *PrefixExpression:
 		Inspect(n.Right, f)
@@ -314,6 +357,24 @@ func inspectMatchPattern(pattern MatchPattern, f func(Node) bool) {
 	for _, alternative := range pattern.Alternatives {
 		inspectMatchPattern(alternative, f)
 	}
+}
+
+// inspectTraitMethod walks one trait or impl method in place.
+//
+// A TraitMethod is not a Node in its own right, so — like RenderMethod and
+// EventHandler — it is traversed where it sits. Parameter names are visited
+// as they are for a FunctionLiteral; the body is walked for an impl method
+// and is nil for a trait signature.
+func inspectTraitMethod(method *TraitMethod, f func(Node) bool) {
+	if method == nil {
+		return
+	}
+	for _, param := range method.Parameters {
+		if param != nil && param.Name != nil {
+			Inspect(param.Name, f)
+		}
+	}
+	InspectBlockBody(method.Body, f)
 }
 
 // InspectBlockBody visits a block, tolerating a nil body.

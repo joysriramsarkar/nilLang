@@ -25,6 +25,31 @@ import (
 // wire, so allocating it blindly lets one header exhaust memory.
 const maxMessageBytes = 8 << 20 // 8 MiB
 
+// maxHeaderLineBytes caps one header line, for the same reason: the body
+// cap does not stop a peer from streaming a never-ending "line" into the
+// reader's buffer. DAP headers are a few dozen bytes; 64 KiB is generous.
+const maxHeaderLineBytes = 64 << 10 // 64 KiB
+
+// readHeaderLine reads one '\n'-terminated line with a hard length cap,
+// assembling bufio ReadSlice fragments (ReadString buffers without limit).
+func readHeaderLine(r *bufio.Reader) (string, error) {
+	var line []byte
+	for {
+		frag, err := r.ReadSlice('\n')
+		line = append(line, frag...)
+		if len(line) > maxHeaderLineBytes {
+			return "", fmt.Errorf("header line exceeds the %d byte limit", maxHeaderLineBytes)
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return string(line), nil
+	}
+}
+
 // Server is a DAP adapter over stdio (Content-Length framed JSON).
 type Server struct {
 	r   *bufio.Reader
@@ -79,7 +104,7 @@ func NewServerWithIO(sourceFile, source string, r io.Reader, w io.Writer) *Serve
 func (s *Server) read() (map[string]any, error) {
 	length := -1
 	for {
-		line, err := s.r.ReadString('\n')
+		line, err := readHeaderLine(s.r)
 		if err != nil {
 			return nil, err
 		}
@@ -284,185 +309,208 @@ func (s *Server) Serve() error {
 			s.stop()
 			return err
 		}
-		command, _ := msg["command"].(string)
-		reqSeq := intOf(msg["seq"])
-		args, _ := msg["arguments"].(map[string]any)
-
-		switch command {
-		case "initialize":
-			s.respond(reqSeq, command, true, map[string]any{
-				"capabilities": map[string]any{
-					"supportsConfigurationDoneRequest":  true,
-					"supportsEvaluateForHovers":         true,
-					"supportsFunctionBreakpoints":       true,
-					"supportsConditionalBreakpoints":    true,
-					"supportsHitConditionalBreakpoints": false,
-					"exceptionBreakpointFilters": []map[string]any{
-						{"filter": "all", "label": "All errors", "default": false},
-						{"filter": "uncaught", "label": "Uncaught errors", "default": false},
-					},
-				},
-				"serverInfo": map[string]any{"name": "nil dap", "version": "1.0.0"},
-			}, "")
-			s.event("initialized", nil)
-		case "launch", "attach":
-			if s.machine == nil {
-				if err := s.compileProgram(); err != nil {
-					s.respond(reqSeq, command, false, nil, err.Error())
-					continue
-				}
-			}
-			s.respond(reqSeq, command, true, nil, "")
-		case "configurationDone":
-			s.respond(reqSeq, command, true, nil, "")
-			s.startVM()
-		case "setBreakpoints":
-			if s.machine == nil {
-				if err := s.compileProgram(); err != nil {
-					s.respond(reqSeq, command, false, nil, err.Error())
-					continue
-				}
-			}
-			src := sourcePath(args)
-			bps := breakpointSpecs(args)
-			lines := make([]int, 0, len(bps))
-			for _, b := range bps {
-				lines = append(lines, b.line)
-			}
-			s.ds.SetBreakpoints(src, lines)
-			// L9.3: record per-line conditions; a condition the evaluator
-			// cannot handle marks its breakpoint unverified with a message
-			// rather than failing silently at pause time.
-			if s.conditions == nil {
-				s.conditions = map[int]string{}
-			} else {
-				for k := range s.conditions {
-					delete(s.conditions, k)
-				}
-			}
-			out := make([]map[string]any, 0, len(bps))
-			for i, b := range bps {
-				entry := map[string]any{
-					"id": i + 1, "line": b.line,
-					"source": map[string]any{"name": src, "path": src},
-				}
-				if b.condition == "" {
-					entry["verified"] = validLine(s.source, b.line)
-				} else if validCondition(b.condition) {
-					s.conditions[b.line] = b.condition
-					entry["verified"] = validLine(s.source, b.line)
-				} else {
-					entry["verified"] = false
-					entry["message"] = "unsupported condition: use a variable name or `name ==/!= literal`"
-				}
-				out = append(out, entry)
-			}
-			s.respond(reqSeq, command, true, map[string]any{"breakpoints": out}, "")
-		case "setExceptionBreakpoints":
-			filters := exceptionFilters(args)
-			s.exceptionFilters = filters
-			out := make([]map[string]any, 0, len(filters))
-			for _, f := range filters {
-				out = append(out, map[string]any{"filter": f, "verified": true})
-			}
-			s.respond(reqSeq, command, true, map[string]any{"breakpoints": out}, "")
-		case "threads":
-			s.respond(reqSeq, command, true, map[string]any{"threads": []map[string]any{{"id": 1, "name": "main"}}}, "")
-		case "stackTrace":
-			if s.machine == nil {
-				s.respond(reqSeq, command, false, nil, "program not loaded")
-				continue
-			}
-			frames := s.machine.CallStack()
-			out := make([]map[string]any, 0, len(frames))
-			for _, f := range frames {
-				out = append(out, map[string]any{
-					"id": f.Index + 1, "name": f.Function, "line": f.Line, "column": f.Column,
-					"source": map[string]any{"name": filepath.Base(f.File), "path": f.File},
-				})
-			}
-			s.respond(reqSeq, command, true, map[string]any{"stackFrames": out, "totalFrames": len(out)}, "")
-		case "scopes":
-			s.respond(reqSeq, command, true, map[string]any{"scopes": []map[string]any{
-				{"name": "Locals", "variablesReference": 1, "expensive": false},
-				{"name": "Globals", "variablesReference": 2, "expensive": false},
-				{"name": "Captured", "variablesReference": 3, "expensive": false},
-			}}, "")
-		case "variables":
-			if s.machine == nil {
-				s.respond(reqSeq, command, false, nil, "program not loaded")
-				continue
-			}
-			var vars []vm.Variable
-			switch intOf(args["variablesReference"]) {
-			case 1:
-				vars = s.machine.Locals()
-			case 2:
-				vars = s.machine.Globals()
-			case 3:
-				vars = s.machine.FreeVars()
-			}
-			out := make([]map[string]any, 0, len(vars))
-			for _, v := range vars {
-				out = append(out, map[string]any{"name": v.Name, "value": v.Value, "type": v.Type, "variablesReference": 0})
-			}
-			s.respond(reqSeq, command, true, map[string]any{"variables": out}, "")
-		case "evaluate":
-			if s.machine == nil {
-				s.respond(reqSeq, command, false, nil, "program not loaded")
-				continue
-			}
-			expr, _ := args["expression"].(string)
-			if v, ok := s.machine.EvaluateName(strings.TrimSpace(expr)); ok {
-				s.respond(reqSeq, command, true, map[string]any{"result": v.Value, "type": v.Type, "variablesReference": 0}, "")
-			} else {
-				s.respond(reqSeq, command, true, map[string]any{"result": "(nil)", "variablesReference": 0}, "")
-			}
-		case "continue":
-			if s.ds != nil {
-				s.stopReason = "breakpoint"
-				s.ds.Continue()
-				s.resume()
-			}
-			s.respond(reqSeq, command, true, map[string]any{"allThreadsContinued": true}, "")
-		case "next":
-			if s.ds != nil {
-				s.stopReason = "step"
-				s.ds.Step()
-				s.resume()
-			}
-			s.respond(reqSeq, command, true, nil, "")
-		case "stepIn":
-			if s.ds != nil {
-				s.stopReason = "step"
-				s.ds.Step()
-				s.resume()
-			}
-			s.respond(reqSeq, command, true, nil, "")
-		case "stepOut":
-			if s.ds != nil {
-				s.stopReason = "step"
-				s.ds.Step()
-				s.resume()
-			}
-			s.respond(reqSeq, command, true, nil, "")
-		case "pause":
-			if s.ds != nil {
-				s.stopReason = "pause"
-				s.ds.Pause()
-			}
-			s.respond(reqSeq, command, true, nil, "")
-		case "disconnect", "terminate":
-			s.stop()
-			s.respond(reqSeq, command, true, nil, "")
-			if err := s.stickyWriteErr(); err != nil {
-				return err
-			}
+		done, err := s.handleMessage(msg)
+		if err != nil {
+			return err
+		}
+		if done {
 			return nil
-		default:
-			s.respond(reqSeq, command, false, nil, "unsupported command: "+command)
 		}
 	}
+}
+
+// handleMessage dispatches one request. It returns done=true when the
+// session should end (disconnect/terminate). A panicking handler is
+// recovered and reported as a failed response for that request: one bad
+// command (a VM inspection edge, a malformed argument shape the comma-ok
+// assertions missed) must not kill the whole debug session.
+func (s *Server) handleMessage(msg map[string]any) (done bool, err error) {
+	command, _ := msg["command"].(string)
+	reqSeq := intOf(msg["seq"])
+	args, _ := msg["arguments"].(map[string]any)
+
+	defer func() {
+		if r := recover(); r != nil {
+			done, err = false, nil
+			s.respond(reqSeq, command, false, nil, fmt.Sprintf("internal error: %v", r))
+		}
+	}()
+
+	switch command {
+	case "initialize":
+		s.respond(reqSeq, command, true, map[string]any{
+			"capabilities": map[string]any{
+				"supportsConfigurationDoneRequest":  true,
+				"supportsEvaluateForHovers":         true,
+				"supportsFunctionBreakpoints":       true,
+				"supportsConditionalBreakpoints":    true,
+				"supportsHitConditionalBreakpoints": false,
+				"exceptionBreakpointFilters": []map[string]any{
+					{"filter": "all", "label": "All errors", "default": false},
+					{"filter": "uncaught", "label": "Uncaught errors", "default": false},
+				},
+			},
+			"serverInfo": map[string]any{"name": "nil dap", "version": "1.0.0"},
+		}, "")
+		s.event("initialized", nil)
+	case "launch", "attach":
+		if s.machine == nil {
+			if err := s.compileProgram(); err != nil {
+				s.respond(reqSeq, command, false, nil, err.Error())
+				return false, nil
+			}
+		}
+		s.respond(reqSeq, command, true, nil, "")
+	case "configurationDone":
+		s.respond(reqSeq, command, true, nil, "")
+		s.startVM()
+	case "setBreakpoints":
+		if s.machine == nil {
+			if err := s.compileProgram(); err != nil {
+				s.respond(reqSeq, command, false, nil, err.Error())
+				return false, nil
+			}
+		}
+		src := sourcePath(args)
+		bps := breakpointSpecs(args)
+		lines := make([]int, 0, len(bps))
+		for _, b := range bps {
+			lines = append(lines, b.line)
+		}
+		s.ds.SetBreakpoints(src, lines)
+		// L9.3: record per-line conditions; a condition the evaluator
+		// cannot handle marks its breakpoint unverified with a message
+		// rather than failing silently at pause time.
+		if s.conditions == nil {
+			s.conditions = map[int]string{}
+		} else {
+			for k := range s.conditions {
+				delete(s.conditions, k)
+			}
+		}
+		out := make([]map[string]any, 0, len(bps))
+		for i, b := range bps {
+			entry := map[string]any{
+				"id": i + 1, "line": b.line,
+				"source": map[string]any{"name": src, "path": src},
+			}
+			if b.condition == "" {
+				entry["verified"] = validLine(s.source, b.line)
+			} else if validCondition(b.condition) {
+				s.conditions[b.line] = b.condition
+				entry["verified"] = validLine(s.source, b.line)
+			} else {
+				entry["verified"] = false
+				entry["message"] = "unsupported condition: use a variable name or `name ==/!= literal`"
+			}
+			out = append(out, entry)
+		}
+		s.respond(reqSeq, command, true, map[string]any{"breakpoints": out}, "")
+	case "setExceptionBreakpoints":
+		filters := exceptionFilters(args)
+		s.exceptionFilters = filters
+		out := make([]map[string]any, 0, len(filters))
+		for _, f := range filters {
+			out = append(out, map[string]any{"filter": f, "verified": true})
+		}
+		s.respond(reqSeq, command, true, map[string]any{"breakpoints": out}, "")
+	case "threads":
+		s.respond(reqSeq, command, true, map[string]any{"threads": []map[string]any{{"id": 1, "name": "main"}}}, "")
+	case "stackTrace":
+		if s.machine == nil {
+			s.respond(reqSeq, command, false, nil, "program not loaded")
+			return false, nil
+		}
+		frames := s.machine.CallStack()
+		out := make([]map[string]any, 0, len(frames))
+		for _, f := range frames {
+			out = append(out, map[string]any{
+				"id": f.Index + 1, "name": f.Function, "line": f.Line, "column": f.Column,
+				"source": map[string]any{"name": filepath.Base(f.File), "path": f.File},
+			})
+		}
+		s.respond(reqSeq, command, true, map[string]any{"stackFrames": out, "totalFrames": len(out)}, "")
+	case "scopes":
+		s.respond(reqSeq, command, true, map[string]any{"scopes": []map[string]any{
+			{"name": "Locals", "variablesReference": 1, "expensive": false},
+			{"name": "Globals", "variablesReference": 2, "expensive": false},
+			{"name": "Captured", "variablesReference": 3, "expensive": false},
+		}}, "")
+	case "variables":
+		if s.machine == nil {
+			s.respond(reqSeq, command, false, nil, "program not loaded")
+			return false, nil
+		}
+		var vars []vm.Variable
+		switch intOf(args["variablesReference"]) {
+		case 1:
+			vars = s.machine.Locals()
+		case 2:
+			vars = s.machine.Globals()
+		case 3:
+			vars = s.machine.FreeVars()
+		}
+		out := make([]map[string]any, 0, len(vars))
+		for _, v := range vars {
+			out = append(out, map[string]any{"name": v.Name, "value": v.Value, "type": v.Type, "variablesReference": 0})
+		}
+		s.respond(reqSeq, command, true, map[string]any{"variables": out}, "")
+	case "evaluate":
+		if s.machine == nil {
+			s.respond(reqSeq, command, false, nil, "program not loaded")
+			return false, nil
+		}
+		expr, _ := args["expression"].(string)
+		if v, ok := s.machine.EvaluateName(strings.TrimSpace(expr)); ok {
+			s.respond(reqSeq, command, true, map[string]any{"result": v.Value, "type": v.Type, "variablesReference": 0}, "")
+		} else {
+			s.respond(reqSeq, command, true, map[string]any{"result": "(nil)", "variablesReference": 0}, "")
+		}
+	case "continue":
+		if s.ds != nil {
+			s.stopReason = "breakpoint"
+			s.ds.Continue()
+			s.resume()
+		}
+		s.respond(reqSeq, command, true, map[string]any{"allThreadsContinued": true}, "")
+	case "next":
+		if s.ds != nil {
+			s.stopReason = "step"
+			s.ds.Step()
+			s.resume()
+		}
+		s.respond(reqSeq, command, true, nil, "")
+	case "stepIn":
+		if s.ds != nil {
+			s.stopReason = "step"
+			s.ds.Step()
+			s.resume()
+		}
+		s.respond(reqSeq, command, true, nil, "")
+	case "stepOut":
+		if s.ds != nil {
+			s.stopReason = "step"
+			s.ds.Step()
+			s.resume()
+		}
+		s.respond(reqSeq, command, true, nil, "")
+	case "pause":
+		if s.ds != nil {
+			s.stopReason = "pause"
+			s.ds.Pause()
+		}
+		s.respond(reqSeq, command, true, nil, "")
+	case "disconnect", "terminate":
+		s.stop()
+		s.respond(reqSeq, command, true, nil, "")
+		if err := s.stickyWriteErr(); err != nil {
+			return false, err
+		}
+		return true, nil
+	default:
+		s.respond(reqSeq, command, false, nil, "unsupported command: "+command)
+	}
+	return false, nil
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────

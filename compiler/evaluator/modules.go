@@ -123,12 +123,12 @@ func evalImportStatement(node *ast.ImportStatement, env *object.Environment) obj
 		if len(node.Names) > 0 {
 			for _, ident := range node.Names {
 				keyObj := &object.String{Value: ident.Value}
-				if pair, hasKey := mod.Pairs[keyObj.HashKey()]; hasKey {
+				if pair, hasKey := mod.Get(keyObj); hasKey {
 					env.Set(ident.Value, pair.Value)
 				} else {
 					// Also check case-insensitive
 					found := false
-					for _, p := range mod.Pairs {
+					for _, p := range mod.OrderedPairs() {
 						if kStr, isStr := p.Key.(*object.String); isStr && strings.EqualFold(kStr.Value, ident.Value) {
 							env.Set(ident.Value, p.Value)
 							found = true
@@ -347,8 +347,10 @@ func evalStdlibImport(node *ast.ImportStatement, importPath string, env *object.
 		modPairs[sk.HashKey()] = object.HashPair{Key: sk, Value: v}
 	}
 	if resHash, isHash := evalRes.(*object.Hash); isHash {
-		for k, v := range resHash.Pairs {
-			modPairs[k] = v
+		for _, pair := range resHash.OrderedPairs() {
+			if hashable, ok := pair.Key.(object.Hashable); ok {
+				modPairs[hashable.HashKey()] = pair
+			}
 		}
 	}
 
@@ -384,7 +386,7 @@ func bindModuleToEnv(node *ast.ImportStatement, modObj *object.Hash, importPath 
 	var missing []string
 	for _, ident := range node.Names {
 		k := &object.String{Value: ident.Value}
-		pair, exists := modObj.Pairs[k.HashKey()]
+		pair, exists := modObj.Get(k)
 		if !exists {
 			missing = append(missing, ident.Value)
 			continue
@@ -701,7 +703,7 @@ func createTableObject(name string, tables *map[string][]map[string]interface{},
 			}
 
 			rec := make(map[string]interface{})
-			for _, pair := range hash.Pairs {
+			for _, pair := range hash.OrderedPairs() {
 				k := pair.Key.Inspect()
 				rec[k] = pair.Value.Inspect()
 			}
@@ -846,7 +848,7 @@ func createMoneyModule() *object.Hash {
 func getMinor(obj object.Object) int64 {
 	if h, ok := obj.(*object.Hash); ok {
 		k := &object.String{Value: "minor"}
-		if p, has := h.Pairs[k.HashKey()]; has {
+		if p, has := h.Get(k); has {
 			if i, isInt := p.Value.(*object.Integer); isInt {
 				return i.Value
 			}

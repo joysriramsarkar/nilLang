@@ -231,13 +231,70 @@ func (b *Builtin) Inspect() string  { return "builtin function" }
 
 type Array struct {
 	Elements []Object
+
+	// mu guards Elements. Tasks run on their own goroutines and share the
+	// arrays their parent created (L6.2), so an unsynchronised append or
+	// index write from two tasks is a data race — and where the write
+	// passes through a map or a shared slice header, a fatal runtime error
+	// that no recover can catch. Every access in the engines goes through
+	// the methods below; the field stays exported because embedders and
+	// the standard library construct arrays by literal.
+	mu sync.RWMutex
 }
 
 func (ao *Array) Type() ObjectType { return ARRAY_OBJ }
+
+// Len reports the number of elements.
+func (ao *Array) Len() int {
+	ao.mu.RLock()
+	defer ao.mu.RUnlock()
+	return len(ao.Elements)
+}
+
+// Get returns the element at index i, or false when i is out of range.
+func (ao *Array) Get(i int64) (Object, bool) {
+	ao.mu.RLock()
+	defer ao.mu.RUnlock()
+	if i < 0 || i >= int64(len(ao.Elements)) {
+		return nil, false
+	}
+	return ao.Elements[i], true
+}
+
+// Set writes value at index i and reports whether i was in range.
+func (ao *Array) Set(i int64, value Object) bool {
+	ao.mu.Lock()
+	defer ao.mu.Unlock()
+	if i < 0 || i >= int64(len(ao.Elements)) {
+		return false
+	}
+	ao.Elements[i] = value
+	return true
+}
+
+// Append adds value at the end of the array.
+func (ao *Array) Append(value Object) {
+	ao.mu.Lock()
+	defer ao.mu.Unlock()
+	ao.Elements = append(ao.Elements, value)
+}
+
+// Snapshot returns a copy of the element slice. Callers that iterate or
+// render take a snapshot so the lock is never held while calling into
+// other objects: a nested Inspect on a self-referential structure would
+// otherwise re-enter this array's lock, and Go mutexes are not reentrant.
+func (ao *Array) Snapshot() []Object {
+	ao.mu.RLock()
+	defer ao.mu.RUnlock()
+	out := make([]Object, len(ao.Elements))
+	copy(out, ao.Elements)
+	return out
+}
+
 func (ao *Array) Inspect() string {
 	var out bytes.Buffer
 	elements := []string{}
-	for _, e := range ao.Elements {
+	for _, e := range ao.Snapshot() {
 		elements = append(elements, e.Inspect())
 	}
 	out.WriteString("[")
@@ -264,6 +321,15 @@ type Hash struct {
 	// order may be empty for a hash assembled programmatically; OrderedPairs
 	// then falls back to a sorted key order rather than a random one.
 	order []HashKey
+
+	// mu guards Pairs and order together. Tasks share their parent's
+	// hashes (L6.2), and two tasks writing the same hash concurrently is
+	// a concurrent map write — a fatal error in Go, not a recoverable
+	// race. Reads and writes in the engines go through Get, SetPair,
+	// OrderedPairs and Len; the field stays exported because embedders
+	// construct hashes by literal, but direct field access outside this
+	// package is unsynchronised by definition.
+	mu sync.RWMutex
 }
 
 // NewHash creates an empty hash with room for size entries.
@@ -295,10 +361,54 @@ func (h *Hash) SetPair(key, value Object) {
 	}
 
 	hk := hashKey.HashKey()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.Pairs == nil {
+		h.Pairs = make(map[HashKey]HashPair)
+	}
 	if _, exists := h.Pairs[hk]; !exists {
 		h.order = append(h.order, hk)
 	}
 	h.Pairs[hk] = HashPair{Key: key, Value: value}
+}
+
+// Get returns the pair stored under key, and whether the key is present.
+// The key's HashKey is computed before the lock is taken: computing it can
+// call user-visible code (Inspect on some implementations), and the lock
+// must never be held across such a call.
+func (h *Hash) Get(key Object) (HashPair, bool) {
+	hashable, ok := key.(Hashable)
+	if !ok {
+		return HashPair{}, false
+	}
+	return h.GetByHashKey(hashable.HashKey())
+}
+
+// GetByHashKey returns the pair stored under a precomputed hash key.
+func (h *Hash) GetByHashKey(hk HashKey) (HashPair, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	pair, ok := h.Pairs[hk]
+	return pair, ok
+}
+
+// Len reports the number of pairs in the hash.
+func (h *Hash) Len() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.Pairs)
+}
+
+// Clone returns a new hash holding the same pairs in the same order. The
+// pairs themselves are shared; the lookup table and order are not, so
+// mutating the clone never touches the original.
+func (h *Hash) Clone() *Hash {
+	pairs := h.OrderedPairs()
+	out := NewHash(len(pairs))
+	for _, pair := range pairs {
+		out.SetPair(pair.Key, pair.Value)
+	}
+	return out
 }
 
 // OrderedPairs returns the hash's entries in insertion order.
@@ -307,6 +417,11 @@ func (h *Hash) SetPair(key, value Object) {
 // Pairs map directly, falls back to sorted-by-inspection order so that output is
 // deterministic rather than dependent on Go's randomised map iteration.
 func (h *Hash) OrderedPairs() []HashPair {
+	// The pairs are copied under the read lock and everything after —
+	// including the Inspect calls the sorted fallback makes — happens on
+	// the copy, so the lock is never held while calling into other
+	// objects (whose Inspect may reach back into this hash).
+	h.mu.RLock()
 	if len(h.order) > 0 {
 		out := make([]HashPair, 0, len(h.order))
 		for _, hk := range h.order {
@@ -314,22 +429,20 @@ func (h *Hash) OrderedPairs() []HashPair {
 				out = append(out, pair)
 			}
 		}
+		h.mu.RUnlock()
 		return out
 	}
 
-	keys := make([]HashKey, 0, len(h.Pairs))
-	for hk := range h.Pairs {
-		keys = append(keys, hk)
+	pairs := make([]HashPair, 0, len(h.Pairs))
+	for _, pair := range h.Pairs {
+		pairs = append(pairs, pair)
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return h.Pairs[keys[i]].Key.Inspect() < h.Pairs[keys[j]].Key.Inspect()
-	})
+	h.mu.RUnlock()
 
-	out := make([]HashPair, 0, len(keys))
-	for _, hk := range keys {
-		out = append(out, h.Pairs[hk])
-	}
-	return out
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].Key.Inspect() < pairs[j].Key.Inspect()
+	})
+	return pairs
 }
 
 func (h *Hash) Type() ObjectType { return HASH_OBJ }
@@ -344,7 +457,7 @@ func (h *Hash) Type() ObjectType { return HASH_OBJ }
 // observed rather than only looked up.
 func (h *Hash) Inspect() string {
 	var out bytes.Buffer
-	pairs := make([]string, 0, len(h.Pairs))
+	pairs := make([]string, 0, h.Len())
 	for _, pair := range h.OrderedPairs() {
 		pairs = append(pairs, fmt.Sprintf("%s: %s", pair.Key.Inspect(), pair.Value.Inspect()))
 	}
@@ -416,12 +529,43 @@ func (cf *CompiledFunction) LocalName(index int) string {
 // When a closure captures a variable that may be mutated, we wrap it in a
 // CaptureCell so that all closures sharing the same captured variable see
 // the same mutable cell rather than an immutable value copy.
+//
+// The value is unexported and moves through Get/Set: closures sharing a
+// cell may run on different task goroutines, so an unsynchronised field
+// read racing a write is a data race even though a single Object field
+// can never tear the way a map write can.
 type CaptureCell struct {
-	Value Object
+	mu    sync.RWMutex
+	value Object
+}
+
+// NewCaptureCell wraps value in a shared mutable cell.
+func NewCaptureCell(value Object) *CaptureCell {
+	return &CaptureCell{value: value}
+}
+
+// Get returns the value currently held by the cell.
+func (cc *CaptureCell) Get() Object {
+	cc.mu.RLock()
+	defer cc.mu.RUnlock()
+	return cc.value
+}
+
+// Set replaces the value held by the cell.
+func (cc *CaptureCell) Set(value Object) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	cc.value = value
 }
 
 func (cc *CaptureCell) Type() ObjectType { return CAPTURE_CELL_OBJ }
-func (cc *CaptureCell) Inspect() string  { return fmt.Sprintf("Cell(%s)", cc.Value.Inspect()) }
+func (cc *CaptureCell) Inspect() string {
+	value := cc.Get()
+	if value == nil {
+		return "Cell(null)"
+	}
+	return fmt.Sprintf("Cell(%s)", value.Inspect())
+}
 
 type Closure struct {
 	Fn   *CompiledFunction

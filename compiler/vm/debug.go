@@ -288,7 +288,8 @@ func (vm *VM) FreeVars() []Variable {
 		if cell == nil {
 			continue
 		}
-		out = append(out, Variable{Name: fmt.Sprintf("free[%d]", i), Value: inspectObject(cell.Value), Type: objectType(cell.Value)})
+		cellValue := cell.Get()
+		out = append(out, Variable{Name: fmt.Sprintf("free[%d]", i), Value: inspectObject(cellValue), Type: objectType(cellValue)})
 	}
 	return out
 }

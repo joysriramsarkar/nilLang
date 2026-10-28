@@ -881,6 +881,11 @@ func (c *Checker) checkFunctionBody(fn *ast.FunctionLiteral, declared types.Type
 //
 // A wildcard or a binding covers everything, which is reported separately; here it
 // simply means the rest of the check has nothing left to say.
+//
+// A guarded arm contributes nothing. A guard is an arbitrary condition, so
+// `Ok(x) if x > 0` says nothing about `Ok(0)`: counting the arm as coverage
+// would let a match pass the exhaustiveness check while leaving a value no
+// arm accepts. Only unguarded arms are walked, here and in hasWildcardArm.
 func (c *Checker) coveredCases(match *ast.MatchExpression) map[string]bool {
 	covered := make(map[string]bool)
 
@@ -916,6 +921,9 @@ func (c *Checker) coveredCases(match *ast.MatchExpression) map[string]bool {
 	}
 
 	for _, arm := range match.Arms {
+		if arm.Guard != nil {
+			continue
+		}
 		walk(arm.Pattern)
 	}
 	return covered
@@ -927,6 +935,9 @@ func (c *Checker) coveredCases(match *ast.MatchExpression) map[string]bool {
 // covers one case; `other =>` covers all of them, and treating the first as the
 // second would make exhaustiveness checking silently do nothing for any enum
 // whose variant names are also plausible variable names.
+//
+// A guarded wildcard is not a catch-all either: `_ if cond =>` matches only
+// when cond holds, so it cannot stand in for the cases no other arm covers.
 func (c *Checker) hasWildcardArm(match *ast.MatchExpression) bool {
 	found := false
 	var walk func(pattern ast.MatchPattern)
@@ -945,6 +956,9 @@ func (c *Checker) hasWildcardArm(match *ast.MatchExpression) bool {
 		}
 	}
 	for _, arm := range match.Arms {
+		if arm.Guard != nil {
+			continue
+		}
 		walk(arm.Pattern)
 	}
 	return found

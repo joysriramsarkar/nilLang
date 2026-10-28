@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -25,13 +24,14 @@ const maxJSONBodyBytes = 1 << 20 // 1 MiB
 
 var safeNamePattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.\-]*$`)
 
-// Server represents the registry HTTP server
+// Server represents the registry HTTP server. Registered users live in
+// Storage (loaded from and persisted to the data directory), not in a
+// server-local map: a server-local map forgot every user on restart,
+// which silently reopened the no-users bootstrap state.
 type Server struct {
 	config  *ServerConfig
 	storage *Storage
 	mux     *http.ServeMux
-	users   map[string]*User
-	userMu  sync.RWMutex
 }
 
 // ServerConfig holds server configuration
@@ -67,7 +67,6 @@ func NewServer(config *ServerConfig) (*Server, error) {
 		config:  config,
 		storage: storage,
 		mux:     http.NewServeMux(),
-		users:   make(map[string]*User),
 	}
 
 	server.setupRoutes()
@@ -187,7 +186,8 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.authorized(r) {
+	user, ok := s.authenticate(r)
+	if !ok {
 		s.errorResponse(w, http.StatusUnauthorized, "valid API key required (X-API-Key header or Bearer token)")
 		return
 	}
@@ -207,6 +207,21 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Registry-controlled names must never steer the file outside the upload
+	// directory: reduce both to their base names and allowlist the shape.
+	if !validPackageName(publishReq.Name) || !validPackageName(publishReq.Version) {
+		s.errorResponse(w, http.StatusBadRequest, "invalid package name or version")
+		return
+	}
+
+	// Ownership: a package name belongs to the user who first published
+	// it. Anyone else's key — however valid — does not entitle them to
+	// overwrite it. Checked before any bytes hit disk.
+	if !s.canModifyPackage(user, publishReq.Name) {
+		s.errorResponse(w, http.StatusForbidden, "package is owned by another user")
+		return
+	}
+
 	// Get uploaded file
 	file, _, err := r.FormFile("package")
 	if err != nil {
@@ -215,35 +230,59 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Registry-controlled names must never steer the file outside the upload
-	// directory: reduce both to their base names and allowlist the shape.
-	if !validPackageName(publishReq.Name) || !validPackageName(publishReq.Version) {
-		s.errorResponse(w, http.StatusBadRequest, "invalid package name or version")
-		return
-	}
 	safeBase := fmt.Sprintf("%s-%s.nilax", filepath.Base(publishReq.Name), filepath.Base(publishReq.Version))
 
-	// Save uploaded file
+	// Save the upload to a temporary file in the same directory and only
+	// move it into place once it is verified: a rejected re-publish must
+	// not destroy the previously published artifact.
 	uploadDir := filepath.Join(s.config.DataDir, "uploads")
 	filePath := filepath.Join(uploadDir, safeBase)
 
-	dst, err := os.Create(filePath)
+	dst, err := os.CreateTemp(uploadDir, safeBase+".*.tmp")
 	if err != nil {
 		s.errorResponse(w, http.StatusInternalServerError, "failed to save file")
 		return
 	}
-	defer dst.Close()
+	tmpPath := dst.Name()
 
 	// ParseMultipartForm caps memory, not total size: enforce the configured
-	// upload ceiling on the byte stream itself.
-	written, err := io.Copy(dst, io.LimitReader(file, maxUpload+1))
+	// upload ceiling on the byte stream itself. The SHA-256 is computed over
+	// the same stream, so the checksum verified below is over exactly the
+	// bytes that were received — not over anything the client merely claims.
+	hash := sha256.New()
+	written, err := io.Copy(io.MultiWriter(dst, hash), io.LimitReader(file, maxUpload+1))
+	_ = dst.Close()
 	if err != nil {
+		_ = os.Remove(tmpPath)
 		s.errorResponse(w, http.StatusInternalServerError, "failed to write file")
 		return
 	}
 	if written > maxUpload {
-		_ = os.Remove(filePath)
+		_ = os.Remove(tmpPath)
 		s.errorResponse(w, http.StatusBadRequest, "package exceeds maximum upload size")
+		return
+	}
+
+	// Verify the declared checksum against the bytes actually received.
+	// Before this, the server copied publishReq.Checksum into the index
+	// unverified, so the client's later download-time check compared the
+	// file against an attacker-controlled reference value. A declared
+	// checksum that does not match rejects the publish; when none is
+	// declared, the server-computed sum becomes the index value.
+	computedChecksum := hex.EncodeToString(hash.Sum(nil))
+	if publishReq.Checksum != "" && !strings.EqualFold(publishReq.Checksum, computedChecksum) {
+		_ = os.Remove(tmpPath)
+		s.errorResponse(w, http.StatusBadRequest, "checksum mismatch: uploaded bytes do not match the declared checksum")
+		return
+	}
+	checksum := publishReq.Checksum
+	if checksum == "" {
+		checksum = computedChecksum
+	}
+
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		_ = os.Remove(tmpPath)
+		s.errorResponse(w, http.StatusInternalServerError, "failed to store package file")
 		return
 	}
 
@@ -256,7 +295,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		AuthorEmail:  publishReq.AuthorEmail,
 		License:      publishReq.License,
 		DownloadURL:  fmt.Sprintf("/api/v1/download/%s/%s", publishReq.Name, publishReq.Version),
-		Checksum:     publishReq.Checksum,
+		Checksum:     checksum,
 		Size:         written,
 		Targets:      publishReq.Targets,
 		Dependencies: publishReq.Dependencies,
@@ -264,6 +303,9 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 		PublishedAt:  time.Now(),
 		UpdatedAt:    time.Now(),
 		Signature:    publishReq.Signature,
+	}
+	if user != nil {
+		pkg.Owner = user.Username
 	}
 
 	if err := s.storage.AddPackage(pkg); err != nil {
@@ -301,7 +343,8 @@ func (s *Server) handlePackageByID(w http.ResponseWriter, r *http.Request) {
 		s.jsonResponse(w, http.StatusOK, pkg)
 
 	case http.MethodDelete:
-		if !s.authorized(r) {
+		user, ok := s.authenticate(r)
+		if !ok {
 			s.errorResponse(w, http.StatusUnauthorized, "valid API key required (X-API-Key header or Bearer token)")
 			return
 		}
@@ -314,6 +357,10 @@ func (s *Server) handlePackageByID(w http.ResponseWriter, r *http.Request) {
 		pkg, err := s.storage.GetPackageByName(name)
 		if err != nil {
 			s.errorResponse(w, http.StatusNotFound, "package not found: "+name)
+			return
+		}
+		if !s.canModifyPackage(user, name) {
+			s.errorResponse(w, http.StatusForbidden, "package is owned by another user")
 			return
 		}
 		if err := s.storage.DeletePackage(pkg.ID); err != nil {
@@ -404,14 +451,6 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.userMu.Lock()
-	defer s.userMu.Unlock()
-
-	if _, exists := s.users[req.Username]; exists {
-		s.errorResponse(w, http.StatusConflict, "username already taken")
-		return
-	}
-
 	apiKey, err := newAPIKey()
 	if err != nil {
 		s.errorResponse(w, http.StatusInternalServerError, "failed to issue API key")
@@ -426,10 +465,19 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		PasswordSalt: salt,
 		PasswordHash: hashPassword(salt, req.Password),
 		CreatedAt:    time.Now(),
-		IsAdmin:      len(s.users) == 0,
 	}
 
-	s.users[req.Username] = user
+	// RegisterUser checks the name, assigns admin to the first-ever user,
+	// and persists — atomically, so the account survives a restart.
+	created, err := s.storage.RegisterUser(user)
+	if err != nil {
+		s.errorResponse(w, http.StatusInternalServerError, "failed to register user")
+		return
+	}
+	if !created {
+		s.errorResponse(w, http.StatusConflict, "username already taken")
+		return
+	}
 
 	public := *user
 	public.APIKey = ""
@@ -457,10 +505,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.userMu.RLock()
-	defer s.userMu.RUnlock()
-
-	user, exists := s.users[req.Username]
+	user, exists := s.storage.GetUser(req.Username)
 	if !exists || (req.Email != "" && user.Email != req.Email) {
 		s.errorResponse(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -479,34 +524,44 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authorized reports whether the request carries a known API key. Publish and
-// delete always require a key once any user exists; when the server also runs
-// with EnableAuth, keys are required unconditionally.
-func (s *Server) authorized(r *http.Request) bool {
+// authenticate resolves the request to the user its API key belongs to.
+// Publish and delete always require a key once any user exists; when the
+// server also runs with EnableAuth, keys are required unconditionally.
+// The second return value reports whether the request is authenticated at
+// all; the user is nil only for the bootstrap case (a server that has
+// never had a user, with auth not enforced), where there is no identity
+// to resolve to. Because users are persisted, that state no longer
+// returns after a restart once anyone has registered.
+func (s *Server) authenticate(r *http.Request) (*User, bool) {
 	key := r.Header.Get("X-API-Key")
 	if auth := r.Header.Get("Authorization"); key == "" && strings.HasPrefix(auth, "Bearer ") {
 		key = strings.TrimPrefix(auth, "Bearer ")
 	}
-	s.userMu.RLock()
-	defer s.userMu.RUnlock()
-	if len(s.users) == 0 && !s.config.EnableAuth {
+	if s.storage.UserCount() == 0 && !s.config.EnableAuth {
 		// Fresh server with no users yet and auth not enforced: allow the
 		// bootstrap publish. Once the first user registers, keys are required.
-		return true
+		return nil, true
 	}
-	if key == "" {
-		return false
+	user, ok := s.storage.UserForAPIKey(key)
+	if !ok {
+		return nil, false
 	}
-	return s.keyValidLocked(key)
+	return user, true
 }
 
-func (s *Server) keyValidLocked(key string) bool {
-	for _, u := range s.users {
-		if subtle.ConstantTimeCompare([]byte(u.APIKey), []byte(key)) == 1 && key != "" {
-			return true
-		}
+// canModifyPackage reports whether user may publish over or delete the
+// package name: the name's owner and admins may; everyone else may not.
+// Unowned names (bootstrap-published) may be modified by anyone who is
+// authenticated at all — the first registered publisher claims them.
+func (s *Server) canModifyPackage(user *User, name string) bool {
+	owner, owned := s.storage.PackageOwner(name)
+	if !owned || owner == "" {
+		return true
 	}
-	return false
+	if user == nil {
+		return false
+	}
+	return user.Username == owner || user.IsAdmin
 }
 
 func validPackageName(name string) bool {

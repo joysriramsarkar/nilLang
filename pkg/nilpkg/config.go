@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/joysriramsarkar/nilLang/pkg/signing"
 )
 
 const (
@@ -43,7 +45,7 @@ func DefaultConfig() *Config {
 		AutoUpdate:       true,
 		VerifySignatures: true,
 		TrustedKeys: map[string]string{
-			"onuron-team": "d863fc2a699bc7733c621979ecef87e6958b5ff8d6c620e6c7c864739aaac7dd",
+			signing.OnuronTeamKeyID: signing.OnuronTeamPublicKeyHex,
 		},
 		ParallelJobs: 4,
 	}
@@ -72,12 +74,18 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	// Unmarshal over the defaults rather than into a zero Config: a field
+	// the file omits must keep its default, not silently become the zero
+	// value. This mattered most for VerifySignatures — a config file
+	// written before the field existed (or one that simply omits it)
+	// downgraded signature verification from the default true to false
+	// without anyone choosing that.
+	cfg := DefaultConfig()
+	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 // Save writes the configuration to disk

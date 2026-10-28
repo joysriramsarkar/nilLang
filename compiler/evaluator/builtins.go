@@ -95,7 +95,7 @@ var Builtins = map[string]*object.Builtin{
 			case *object.String:
 				return &object.Integer{Value: int64(utf8.RuneCountInString(arg.Value))}
 			case *object.Array:
-				return &object.Integer{Value: int64(len(arg.Elements))}
+				return &object.Integer{Value: int64(arg.Len())}
 			default:
 				return newError("argument to `len` not supported, got %s", args[0].Type())
 			}
@@ -148,8 +148,8 @@ var Builtins = map[string]*object.Builtin{
 				return newError("argument to `first` must be ARRAY, got %s", args[0].Type())
 			}
 			arr := args[0].(*object.Array)
-			if len(arr.Elements) > 0 {
-				return arr.Elements[0]
+			if element, ok := arr.Get(0); ok {
+				return element
 			}
 			return NULL
 		},
@@ -163,9 +163,10 @@ var Builtins = map[string]*object.Builtin{
 				return newError("argument to `last` must be ARRAY, got %s", args[0].Type())
 			}
 			arr := args[0].(*object.Array)
-			length := len(arr.Elements)
+			length := arr.Len()
 			if length > 0 {
-				return arr.Elements[length-1]
+				element, _ := arr.Get(int64(length - 1))
+				return element
 			}
 			return NULL
 		},
@@ -179,10 +180,10 @@ var Builtins = map[string]*object.Builtin{
 				return newError("argument to `rest` must be ARRAY, got %s", args[0].Type())
 			}
 			arr := args[0].(*object.Array)
-			length := len(arr.Elements)
-			if length > 0 {
-				newElements := make([]object.Object, length-1)
-				copy(newElements, arr.Elements[1:length])
+			elements := arr.Snapshot()
+			if len(elements) > 0 {
+				newElements := make([]object.Object, len(elements)-1)
+				copy(newElements, elements[1:])
 				return &object.Array{Elements: newElements}
 			}
 			return NULL
@@ -197,10 +198,10 @@ var Builtins = map[string]*object.Builtin{
 				return newError("argument to `push` must be ARRAY, got %s", args[0].Type())
 			}
 			arr := args[0].(*object.Array)
-			length := len(arr.Elements)
-			newElements := make([]object.Object, length+1)
-			copy(newElements, arr.Elements)
-			newElements[length] = args[1]
+			elements := arr.Snapshot()
+			newElements := make([]object.Object, len(elements)+1)
+			copy(newElements, elements)
+			newElements[len(elements)] = args[1]
 			return &object.Array{Elements: newElements}
 		},
 	},
@@ -213,10 +214,10 @@ var Builtins = map[string]*object.Builtin{
 				return newError("argument to `append` must be ARRAY, got %s", args[0].Type())
 			}
 			arr := args[0].(*object.Array)
-			length := len(arr.Elements)
-			newElements := make([]object.Object, length+1)
-			copy(newElements, arr.Elements)
-			newElements[length] = args[1]
+			elements := arr.Snapshot()
+			newElements := make([]object.Object, len(elements)+1)
+			copy(newElements, elements)
+			newElements[len(elements)] = args[1]
 			return &object.Array{Elements: newElements}
 		},
 	},
@@ -229,17 +230,19 @@ var Builtins = map[string]*object.Builtin{
 			if !ok {
 				return newError("first argument to `set` must be HASH, got %s", args[0].Type())
 			}
-			hashable, ok := args[1].(object.Hashable)
-			if !ok {
+			if _, ok := args[1].(object.Hashable); !ok {
 				return runtimeError(object.CategoryTypeError, "unusable as hash key: %s", args[1].Type())
 			}
-			newPairs := make(map[object.HashKey]object.HashPair)
-			for k, v := range hash.Pairs {
-				newPairs[k] = v
-			}
-			newPairs[hashable.HashKey()] = object.HashPair{Key: args[1], Value: args[2]}
-			hash.Pairs = newPairs
-			return hash
+			// Copy-on-write, like push/append above: `set` returns a new
+			// hash and leaves the argument untouched. Building the copy
+			// through Clone and SetPair keeps the two views of the hash —
+			// lookup table and insertion order — in step: the old body
+			// rebuilt only the table (and mutated the caller's hash to do
+			// it), so a key added with `set` could be looked up but never
+			// appeared in iteration or printing.
+			out := hash.Clone()
+			out.SetPair(args[1], args[2])
+			return out
 		},
 	},
 	"str": {
@@ -347,7 +350,7 @@ var Builtins = map[string]*object.Builtin{
 			}
 			sep := args[1].Inspect()
 			var parts []string
-			for _, e := range arr.Elements {
+			for _, e := range arr.Snapshot() {
 				parts = append(parts, e.Inspect())
 			}
 			return &object.String{Value: strings.Join(parts, sep)}

@@ -66,7 +66,7 @@ type reactiveEffect struct {
 }
 
 func reactiveHandleID(h *object.Hash) (int64, bool) {
-	pair, ok := h.Pairs[(&object.String{Value: "__sid"}).HashKey()]
+	pair, ok := h.Get(&object.String{Value: "__sid"})
 	if !ok {
 		return 0, false
 	}
@@ -78,7 +78,7 @@ func reactiveHandleID(h *object.Hash) (int64, bool) {
 }
 
 func reactiveHandleType(h *object.Hash) string {
-	pair, ok := h.Pairs[(&object.String{Value: "__type"}).HashKey()]
+	pair, ok := h.Get(&object.String{Value: "__type"})
 	if !ok {
 		return ""
 	}
@@ -98,7 +98,7 @@ func newReactiveHandle(typ string) (*object.Hash, int64) {
 }
 
 func hashField(h *object.Hash, key string) object.Object {
-	pair, ok := h.Pairs[(&object.String{Value: key}).HashKey()]
+	pair, ok := h.Get(&object.String{Value: key})
 	if !ok {
 		return NULL
 	}
@@ -560,11 +560,11 @@ func registerReactiveBuiltins() {
 		if arr == nil {
 			return newError("`ra_push` handle is corrupt (no items)")
 		}
-		arr.Elements = append(arr.Elements, args[1])
+		arr.Append(args[1])
 		bumpReactiveVersion(h)
 		id, _ := reactiveHandleID(h)
 		propagate([]int64{id})
-		return &object.Integer{Value: int64(len(arr.Elements))}
+		return &object.Integer{Value: int64(arr.Len())}
 	}}
 	Builtins["ra_len"] = &object.Builtin{Fn: func(args ...object.Object) object.Object {
 		if len(args) != 1 {
@@ -578,7 +578,7 @@ func registerReactiveBuiltins() {
 		if arr == nil {
 			return newError("`ra_len` handle is corrupt (no items)")
 		}
-		return &object.Integer{Value: int64(len(arr.Elements))}
+		return &object.Integer{Value: int64(arr.Len())}
 	}}
 	Builtins["ra_get"] = &object.Builtin{Fn: func(args ...object.Object) object.Object {
 		if len(args) != 2 {
@@ -593,10 +593,14 @@ func registerReactiveBuiltins() {
 			return newError("index for `ra_get` must be INTEGER, got %s", args[1].Type())
 		}
 		arr, _ := hashField(h, "items").(*object.Array)
-		if arr == nil || idx.Value < 0 || idx.Value >= int64(len(arr.Elements)) {
+		if arr == nil {
 			return NULL
 		}
-		return arr.Elements[idx.Value]
+		element, ok := arr.Get(idx.Value)
+		if !ok {
+			return NULL
+		}
+		return element
 	}}
 	Builtins["ra_set"] = &object.Builtin{Fn: func(args ...object.Object) object.Object {
 		if len(args) != 3 {
@@ -611,10 +615,9 @@ func registerReactiveBuiltins() {
 			return newError("index for `ra_set` must be INTEGER, got %s", args[1].Type())
 		}
 		arr, _ := hashField(h, "items").(*object.Array)
-		if arr == nil || idx.Value < 0 || idx.Value >= int64(len(arr.Elements)) {
+		if arr == nil || !arr.Set(idx.Value, args[2]) {
 			return newError("`ra_set` index out of bounds")
 		}
-		arr.Elements[idx.Value] = args[2]
 		bumpReactiveVersion(h)
 		id, _ := reactiveHandleID(h)
 		propagate([]int64{id})
@@ -631,7 +634,7 @@ func registerReactiveBuiltins() {
 		h, id := newReactiveHandle("Store")
 		setHashField(h, "version", &object.Integer{Value: 0})
 		// Copy pairs into the handle's data namespace.
-		for _, pair := range src.Pairs {
+		for _, pair := range src.OrderedPairs() {
 			h.SetPair(pair.Key, pair.Value)
 		}
 		reactiveMu.Lock()
@@ -653,7 +656,7 @@ func registerReactiveBuiltins() {
 		}
 		id, _ := reactiveHandleID(h)
 		recordDep(id)
-		pair, ok := h.Pairs[key.HashKey()]
+		pair, ok := h.Get(key)
 		if !ok {
 			return NULL
 		}

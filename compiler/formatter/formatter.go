@@ -260,7 +260,7 @@ func (f *ASTFormatter) formatStatement(stmt ast.Statement) {
 	case *ast.IndexAssignStatement:
 		f.writeIndent()
 		f.buf.WriteString(fmt.Sprintf("%s[%s] = %s;",
-			f.formatExpression(s.Left),
+			f.formatPostfixTarget(s.Left),
 			f.formatExpression(s.Index),
 			f.formatExpression(s.Value)))
 
@@ -381,6 +381,19 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 		return fmt.Sprintf("%s %s %s",
 			f.formatOperand(e.Left, prec, false), e.Operator, f.formatOperand(e.Right, prec, true))
 
+	case *ast.RangeExpression:
+		// The End is printed as-is: the parser reads it at LOWEST precedence
+		// (`0..n - 1` is `0..(n - 1)`), so whatever expression it holds
+		// re-reads into the same slot, operators and nested ranges included.
+		// The Start is only what bound tighter than `..` on the left, so it
+		// goes through formatOperand at range precedence, which keeps the
+		// parens on a nested range or a looser child.
+		op := ".."
+		if e.Inclusive {
+			op = "..="
+		}
+		return f.formatOperand(e.Start, precRange, false) + op + f.formatExpression(e.End)
+
 	case *ast.CallExpression:
 		var args []string
 		for _, a := range e.Arguments {
@@ -416,10 +429,10 @@ func (f *ASTFormatter) formatExpression(expr ast.Expression) string {
 		return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
 
 	case *ast.IndexExpression:
-		return fmt.Sprintf("%s[%s]", f.formatExpression(e.Left), f.formatExpression(e.Index))
+		return fmt.Sprintf("%s[%s]", f.formatPostfixTarget(e.Left), f.formatExpression(e.Index))
 
 	case *ast.DotExpression:
-		return fmt.Sprintf("%s.%s", f.formatExpression(e.Left), e.Member.Value)
+		return fmt.Sprintf("%s.%s", f.formatPostfixTarget(e.Left), e.Member.Value)
 
 	case *ast.IfExpression:
 		cond := f.formatExpression(e.Condition)
@@ -531,6 +544,27 @@ func (f *ASTFormatter) formatOperand(expr ast.Expression, parent int, right bool
 		if precPrefix < parent {
 			return "(" + s + ")"
 		}
+	case *ast.RangeExpression:
+		// A range binds looser than every operator on its left, because its
+		// End is read at LOWEST precedence: `1..5 + 2` re-reads as
+		// `1..(5 + 2)` and `x + 1..5` as `(x + 1)..5`. A range sitting as an
+		// operand of any operator — or as another range's Start, which is
+		// this same call at precRange — therefore keeps its parens.
+		if parent >= precRange {
+			return "(" + s + ")"
+		}
+	}
+	return s
+}
+
+// formatPostfixTarget prints the target of an index or member access. Those
+// bind to the whole expression on their left, so a range there keeps its
+// parens: `(1..=5)[0]` printed flat re-reads as `1..=(5[0])`, because the
+// range's End is parsed at LOWEST and swallows the index.
+func (f *ASTFormatter) formatPostfixTarget(expr ast.Expression) string {
+	s := f.formatExpression(expr)
+	if _, isRange := expr.(*ast.RangeExpression); isRange {
+		return "(" + s + ")"
 	}
 	return s
 }

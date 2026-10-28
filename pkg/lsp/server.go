@@ -21,6 +21,34 @@ import (
 // wire, so allocating it blindly lets one header exhaust memory.
 const maxMessageBytes = 8 << 20 // 8 MiB
 
+// maxHeaderLineBytes caps one header line. The body cap above does not
+// cover the header block: a peer that never sends '\n' would otherwise
+// make the reader buffer a "line" without bound. Legitimate LSP headers
+// are a few dozen bytes, so 64 KiB is generous headroom, in the same
+// spirit as the body cap.
+const maxHeaderLineBytes = 64 << 10 // 64 KiB
+
+// readHeaderLine reads one '\n'-terminated line with a hard length cap.
+// bufio's ReadString accumulates internally without a limit, so this
+// assembles ReadSlice fragments instead and refuses an over-long line.
+func readHeaderLine(br *bufio.Reader) (string, error) {
+	var line []byte
+	for {
+		frag, err := br.ReadSlice('\n')
+		line = append(line, frag...)
+		if len(line) > maxHeaderLineBytes {
+			return "", fmt.Errorf("header line exceeds the %d byte limit", maxHeaderLineBytes)
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return string(line), nil
+	}
+}
+
 type Document struct {
 	URI     string
 	Version int
@@ -60,7 +88,7 @@ func (s *Server) Serve() error {
 		// it would desynchronise every later message.
 		contentLength := -1
 		for {
-			line, err := br.ReadString('\n')
+			line, err := readHeaderLine(br)
 			if err != nil {
 				if err == io.EOF {
 					return s.stickyWriteErr()
@@ -158,6 +186,21 @@ func (s *Server) stickyWriteErr() error {
 }
 
 func (s *Server) dispatch(req Request) {
+	// A panicking handler (formatter, hover, typechecker over some
+	// pathological document) must not take the whole server down: the
+	// stream stays framed, so reporting an internal error for this one
+	// request and continuing is safe.
+	defer func() {
+		if r := recover(); r != nil {
+			if len(req.ID) > 0 {
+				s.sendResponse(req.ID, nil, &ResponseError{
+					Code:    -32603,
+					Message: fmt.Sprintf("Internal error: %v", r),
+				})
+			}
+		}
+	}()
+
 	// After shutdown only exit is answered; anything else is a protocol
 	// violation, reported rather than dispatched.
 	if req.Method != "exit" && s.isShutdownState() {
