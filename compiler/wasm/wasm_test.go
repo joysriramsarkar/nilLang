@@ -156,6 +156,64 @@ return r;
 	}
 }
 
+// TestWasmUnknownBuiltinErrors pins the safety rule that an unimplemented
+// builtin fails compilation instead of emitting a stub zero.
+func TestWasmUnknownBuiltinErrors(t *testing.T) {
+	prog := lowerSource(t, "frobnicate(42);")
+	if _, err := NewCompiler().Compile(prog); err == nil {
+		t.Fatal("Compile: unknown builtin must return an error, got nil")
+	} else if !strings.Contains(err.Error(), "frobnicate") {
+		t.Errorf("Compile error should name the builtin, got: %v", err)
+	}
+	if _, err := NewCompiler().CompileToWAT(prog); err == nil {
+		t.Error("CompileToWAT: unknown builtin must return an error, got nil")
+	}
+	if _, err := NewCompiler().CompileToBinary(prog); err == nil {
+		t.Error("CompileToBinary: unknown builtin must return an error, got nil")
+	}
+}
+
+// TestWasmAggregateErrors pins that list/hash aggregates fail compilation
+// instead of silently taking zero (no linear-memory ABI yet).
+func TestWasmAggregateErrors(t *testing.T) {
+	for _, src := range []string{
+		"let xs = [1, 2, 3]; return xs;",
+		"let h = {\"a\": 1}; return h;",
+	} {
+		if _, err := NewCompiler().Compile(lowerSource(t, src)); err == nil {
+			t.Errorf("Compile(%q): aggregate must return an error, got nil", src)
+		}
+	}
+}
+
+// unknownInst is a MIR instruction the WASM backend does not know.
+type unknownInst struct{}
+
+func (unknownInst) String() string { return "unknown-inst" }
+
+// TestWasmUnknownInstructionErrors pins that an unknown MIR instruction
+// fails compilation instead of being silently dropped.
+func TestWasmUnknownInstructionErrors(t *testing.T) {
+	prog := &mir.Program{
+		Main: &mir.Function{
+			Name: "main",
+			Blocks: []*mir.BasicBlock{
+				{
+					ID:           "entry",
+					Instructions: []mir.Instruction{unknownInst{}},
+					Terminator:   mir.ReturnTerminator{Value: mir.ConstOperand{Value: int64(0)}},
+				},
+			},
+		},
+	}
+	if _, err := NewCompiler().Compile(prog); err == nil {
+		t.Fatal("Compile: unknown MIR instruction must return an error, got nil")
+	}
+	if _, err := NewCompiler().CompileToBinary(prog); err == nil {
+		t.Error("CompileToBinary: unknown MIR instruction must return an error, got nil")
+	}
+}
+
 // TestWasmValTypeMapping pins L7.4: the Nilang-to-WASM type mapping covers
 // all four value types.
 func TestWasmValTypeMapping(t *testing.T) {

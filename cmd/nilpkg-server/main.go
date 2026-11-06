@@ -15,8 +15,10 @@ import (
 const authEnvVar = "NILANG_REGISTRY_AUTH"
 
 func main() {
-	// Parse command line flags
-	host := flag.String("host", "0.0.0.0", "Server host address")
+	// Parse command line flags. The default bind is loopback only:
+	// exposing a registry on all interfaces must be an explicit choice
+	// (-host 0.0.0.0), ideally with authentication configured below.
+	host := flag.String("host", "127.0.0.1", "Server host address")
 	port := flag.Int("port", 8080, "Server port")
 	dataDir := flag.String("data", "./registry-data", "Data directory")
 	maxUpload := flag.Int("max-upload", 100, "Max upload size in MB")
@@ -44,6 +46,21 @@ func main() {
 		MaxUploadMB: *maxUpload,
 		EnableAuth:  auth,
 		LogLevel:    "info",
+	}
+
+	// NILPKG_API_KEY (static publish key) and NILPKG_USERS
+	// (comma-separated username:password pairs) turn authentication on.
+	if err := registry.ApplyEnvAuth(config); err != nil {
+		log.Fatalf("❌ invalid registry auth environment: %v", err)
+	}
+
+	if !config.EnableAuth && config.APIKey == "" && len(config.SeedUsers) == 0 {
+		log.Printf("==================================================================")
+		log.Printf("WARNING: NO AUTHENTICATION CONFIGURED for nilpkg-server on %s:%d", *host, *port)
+		log.Printf("WARNING: publish/delete are UNAUTHENTICATED until the first user registers.")
+		log.Printf("WARNING: set NILPKG_API_KEY or NILPKG_USERS (username:password,...) to require auth,")
+		log.Printf("WARNING: and keep the default -host 127.0.0.1 unless you intend public exposure.")
+		log.Printf("==================================================================")
 	}
 
 	server, err := registry.NewServer(config)

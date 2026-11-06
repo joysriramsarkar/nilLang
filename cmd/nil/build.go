@@ -831,9 +831,9 @@ func buildWASM(cfg *config.ProjectConfig, projectDir string) {
 	htmlContent := wasm.GenerateBrowserHarness(cfg.Name, "app.wasm")
 	_ = os.WriteFile(htmlFile, []byte(htmlContent), 0644)
 
-	// WASM stays labelled experimental per ADR-0004: the backend runs real
-	// programs now, but aggregates have no linear-memory ABI yet and host
-	// builtins beyond puts are stubs.
+	// WASM stays labelled experimental per ADR-0004: aggregates have no
+	// linear-memory ABI yet and host builtins beyond puts are unimplemented;
+	// both now fail compilation above instead of emitting a stub zero.
 	fmt.Println("✅ WebAssembly বিল্ড সফল হয়েছে (experimental — ADR-0004):")
 	fmt.Printf("  • WASM বাইনারি: %s (%d bytes)\n", wasmFile, len(mod.Binary))
 	fmt.Printf("  • WAT টেক্সট:   %s\n", watFile)

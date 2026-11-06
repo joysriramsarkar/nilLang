@@ -1,7 +1,7 @@
 # 🌟 Nilang (নীলাং) Programming Language
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go)](https://golang.org)
 [![Platform](https://img.shields.io/badge/Platform-Onuron%20OS%20%7C%20Linux%20%7C%20Windows-blue)](#)
 [![Ecosystem](https://img.shields.io/badge/Ecosystem-Alap%20Framework-005A9C)](#)
 
@@ -243,11 +243,11 @@ Engine workflow-তে `.nilax` bundle-টাই portable game-logic artifact:
 Ed25519 ক্রিপ্টোগ্রাফিক কী জেনারেট এবং বান্ডিল সাইন করুন:
 
 ```bash
-# ডেভেলপার কি-পেয়ার তৈরি করুন
-nilkey generate -name="Joyshriram" -email="joy@onuron.org" -password="secretpassword"
+# ডেভেলপার কি-পেয়ার তৈরি করুন (পাসওয়ার্ড ইন্টারঅ্যাক্টিভ প্রম্পটে দিতে হবে; কমান্ড লাইনে -password=... দেবেন না)
+nilkey generate -name="Joyshriram" -email="joy@onuron.org"
 
-# .nilax প্যাকেজ সাইন করুন
-nilkey sign build/hello-onuron-1.0.0.nilax -password="secretpassword"
+# .nilax প্যাকেজ সাইন করুন (পাসওয়ার্ড ইন্টারঅ্যাক্টিভ প্রম্পটে দিতে হবে)
+nilkey sign build/hello-onuron-1.0.0.nilax
 
 # সাইন ভেরিফাই করুন
 nilkey verify build/hello-onuron-1.0.0.nilax

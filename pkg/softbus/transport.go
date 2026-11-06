@@ -39,15 +39,35 @@ type TransportConfig struct {
 	KeyFile           string
 }
 
-// DefaultTransportConfig returns default transport configuration
+// DefaultTransportConfig returns default transport configuration. TLS is
+// off by default: it must be requested explicitly (EnableTLS with CertFile
+// and KeyFile), because a default that claims TLS while speaking plain TCP
+// is a silent downgrade.
 func DefaultTransportConfig() *TransportConfig {
 	return &TransportConfig{
 		MaxConnections:    16,
 		ConnectionTimeout: 10 * time.Second,
 		KeepAliveInterval: 30 * time.Second,
-		EnableTLS:         true,
+		EnableTLS:         false,
 		EnableQUIC:        true,
 	}
+}
+
+// tlsServerConfig builds the listener TLS config when certificates are
+// configured, and otherwise reports that TLS cannot be provided. It never
+// falls back to plain TCP.
+func (t *Transport) tlsServerConfig() (*tls.Config, error) {
+	if t.config.CertFile == "" || t.config.KeyFile == "" {
+		return nil, fmt.Errorf("softbus: TLS not implemented without CertFile/KeyFile: EnableTLS=true requires TLS certificates; refusing to fall back to plain TCP")
+	}
+	cert, err := tls.LoadX509KeyPair(t.config.CertFile, t.config.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("softbus: TLS not implemented: failed to load CertFile/KeyFile: %w", err)
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
 }
 
 // Transport handles network communication
@@ -95,15 +115,27 @@ func NewTransport(deviceID string, config *TransportConfig) *Transport {
 
 // Listen starts listening for incoming connections.
 //
-// SECURITY: the wire is plaintext TCP with no peer authentication. The
-// EnableTLS config flag exists, but TLS is NOT implemented — Listen warns
-// loudly either way so the plaintext state can never be mistaken for a
-// secure one. Do not expose this listener on an untrusted network.
+// SECURITY: without TLS the wire is plaintext TCP with no peer
+// authentication, and Listen warns loudly so that state can never be
+// mistaken for a secure one. With EnableTLS, certificates must load or
+// Listen fails — it never silently downgrades to plaintext. Do not
+// expose a plaintext listener on an untrusted network.
 func (t *Transport) Listen(port int) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	var listener net.Listener
+	var err error
+
+	if t.config.EnableTLS {
+		tlsConfig, tlsErr := t.tlsServerConfig()
+		if tlsErr != nil {
+			return tlsErr
+		}
+		listener, err = tls.Listen("tcp", fmt.Sprintf(":%d", port), tlsConfig)
+	} else {
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", port))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
@@ -113,9 +145,9 @@ func (t *Transport) Listen(port int) error {
 
 	fmt.Printf("🌐 SoftBus Transport listening on port %d\n", port)
 	if t.config.EnableTLS {
-		fmt.Println("⚠️  WARNING: EnableTLS is set but TLS is not implemented — SoftBus traffic is PLAINTEXT and unauthenticated. Trusted networks only.")
+		fmt.Println("🔒 SoftBus TLS enabled (peer identity is the TLS handshake; system roots verify outbound peers).")
 	} else {
-		fmt.Println("⚠️  WARNING: SoftBus traffic is PLAINTEXT and unauthenticated (TLS disabled and not implemented). Trusted networks only.")
+		fmt.Println("⚠️  WARNING: SoftBus traffic is PLAINTEXT and unauthenticated (TLS disabled). Trusted networks only.")
 	}
 
 	// Accept connections in background
@@ -257,7 +289,25 @@ func (t *Transport) Connect(address string, deviceID string) (*Connection, error
 	}
 	t.mu.RUnlock()
 
-	conn, err := net.DialTimeout("tcp", address, t.config.ConnectionTimeout)
+	var conn net.Conn
+	var err error
+	if t.config.EnableTLS {
+		// Outbound TLS verifies the peer against the system roots using
+		// the address host as ServerName. Without a dialable address host
+		// there is nothing to verify against, so refuse rather than
+		// silently speaking plain TCP.
+		host, _, splitErr := net.SplitHostPort(address)
+		if splitErr != nil || host == "" {
+			return nil, fmt.Errorf("softbus: TLS not implemented for address %q without a host to verify; refusing to fall back to plain TCP", address)
+		}
+		dialer := &net.Dialer{Timeout: t.config.ConnectionTimeout}
+		conn, err = tls.DialWithDialer(dialer, "tcp", address, &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ServerName: host,
+		})
+	} else {
+		conn, err = net.DialTimeout("tcp", address, t.config.ConnectionTimeout)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", address, err)
 	}
