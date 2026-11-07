@@ -5,7 +5,7 @@ echo ===================================================
 
 where go >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Go is not installed or not in PATH. Please install Go 1.22+ first.
+    echo [ERROR] Go is not installed or not in PATH. Please install Go 1.25+ first.
     exit /b 1
 )
 

@@ -25,8 +25,8 @@
     {
       "path": "compatibility/matrix.json",
       "status": "stable",
-      "sha256": "061bd9080245aeba8bfc13f9c215590c188124704c766389062996f0411ea2f2",
-      "bytes": 10419
+      "sha256": "13f88218ad02cbda209583ff4dccee89e065aab6edffcece5eb4f430b613c061",
+      "bytes": 9991
     },
     {
       "path": "nilax/manifest-v1.schema.json",

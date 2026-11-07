@@ -30,8 +30,8 @@
 | `onuronOS/runtime` | `partial` | Rust mini-VM subset; unsupported constructs must explicitly fail |
 | `nilos-emulator` | `partial` | Not a second language runtime; uses canonical `.nilax` |
 | `alap-framework` | `partial` | Own compiler/stdlib not canonical reference; must delegate |
-| `capability_gate` (evaluator) | `implemented` | Direct and indirect builtin calls gated via `checkBuiltinCall` (`evaluator.go:1151`) |
-| `capability_gate` (VM) | `implemented` | Direct `OpNativeCall` (`vm.go:1079`) and indirect `callBuiltin` (`vm.go:1656`) gated |
+| `capability_gate` (evaluator) | `implemented` | Direct and indirect builtin calls gated via `checkBuiltinCall` (`evaluator.go:1154`) |
+| `capability_gate` (VM) | `implemented` | Direct `OpNativeCall` (`vm.go:1272`) and indirect `callBuiltin` (`vm.go:1903`) gated |
 | `tasks_futures` | `partial` | Explicit cancellation (`cancel()`) not implemented; timeout only route |
 | `aot` | `experimental` | Not full conformance; GPU submit unsupported |
 | `llvm` | `experimental` | Not conformance-tested against canonical |

@@ -34,6 +34,14 @@ type Server struct {
 	mux     *http.ServeMux
 }
 
+// SeededUser is one pre-registered account supplied via configuration
+// (see NILPKG_USERS). The password is hashed at server creation; the
+// account receives a generated API key it can retrieve by logging in.
+type SeededUser struct {
+	Username string `json:"username"`
+	Password string `json:"-"`
+}
+
 // ServerConfig holds server configuration
 type ServerConfig struct {
 	Host        string `json:"host"`
@@ -42,18 +50,80 @@ type ServerConfig struct {
 	MaxUploadMB int    `json:"max_upload_mb"`
 	EnableAuth  bool   `json:"enable_auth"`
 	LogLevel    string `json:"log_level"`
+	// APIKey, when set, is a static key accepted via X-API-Key or Bearer
+	// token (see NILPKG_API_KEY). It is never serialised.
+	APIKey string `json:"-"`
+	// SeedUsers are accounts created at startup (see NILPKG_USERS).
+	SeedUsers []SeededUser `json:"-"`
 }
 
-// DefaultServerConfig returns default server configuration
+// DefaultServerConfig returns default server configuration. The default
+// bind is loopback: publishing a registry on all interfaces must be an
+// explicit choice, not the default.
 func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
-		Host:        "0.0.0.0",
+		Host:        "127.0.0.1",
 		Port:        8080,
 		DataDir:     "./registry-data",
 		MaxUploadMB: 100,
 		EnableAuth:  false,
 		LogLevel:    "info",
 	}
+}
+
+// ParseSeedUsers parses the NILPKG_USERS format: comma-separated
+// "username:password" pairs, e.g. "alice:s3cret,bob:hunter2".
+func ParseSeedUsers(spec string) ([]SeededUser, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil, nil
+	}
+	var users []SeededUser
+	for _, pair := range strings.Split(spec, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		username, password, ok := strings.Cut(pair, ":")
+		username = strings.TrimSpace(username)
+		if !ok || username == "" || password == "" {
+			return nil, fmt.Errorf("invalid NILPKG_USERS entry %q: want username:password", pair)
+		}
+		if !validPackageName(username) {
+			return nil, fmt.Errorf("invalid NILPKG_USERS username %q", username)
+		}
+		users = append(users, SeededUser{Username: username, Password: password})
+	}
+	return users, nil
+}
+
+// ApplyEnvAuth applies NILPKG_API_KEY and NILPKG_USERS from the process
+// environment to config. When either is set, authentication is required.
+func ApplyEnvAuth(config *ServerConfig) error {
+	if key := strings.TrimSpace(os.Getenv("NILPKG_API_KEY")); key != "" {
+		config.APIKey = key
+		config.EnableAuth = true
+	}
+	if spec := os.Getenv("NILPKG_USERS"); strings.TrimSpace(spec) != "" {
+		users, err := ParseSeedUsers(spec)
+		if err != nil {
+			return err
+		}
+		config.SeedUsers = append(config.SeedUsers, users...)
+		if len(users) > 0 {
+			config.EnableAuth = true
+		}
+	}
+	return nil
+}
+
+// AuthConfigured reports whether any authentication is in force: auth
+// explicitly enabled, a static API key, or seeded/registered users.
+func (s *Server) AuthConfigured() bool {
+	if s.config.EnableAuth || s.config.APIKey != "" || len(s.config.SeedUsers) > 0 {
+		return true
+	}
+	return s.storage.UserCount() > 0
 }
 
 // NewServer creates a new registry server
@@ -63,10 +133,37 @@ func NewServer(config *ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
+	if config.APIKey != "" || len(config.SeedUsers) > 0 {
+		config.EnableAuth = true
+	}
+
 	server := &Server{
 		config:  config,
 		storage: storage,
 		mux:     http.NewServeMux(),
+	}
+
+	for _, seed := range config.SeedUsers {
+		if _, exists := storage.GetUser(seed.Username); exists {
+			continue
+		}
+		apiKey, err := newAPIKey()
+		if err != nil {
+			return nil, fmt.Errorf("failed to issue API key for seeded user %q: %w", seed.Username, err)
+		}
+		salt := newSalt()
+		// RegisterUser persists the account and makes the first-ever
+		// user admin, matching the registration path.
+		if _, err := storage.RegisterUser(&User{
+			ID:           fmt.Sprintf("usr-%d", time.Now().UnixMilli()),
+			Username:     seed.Username,
+			APIKey:       apiKey,
+			PasswordSalt: salt,
+			PasswordHash: hashPassword(salt, seed.Password),
+			CreatedAt:    time.Now(),
+		}); err != nil {
+			return nil, fmt.Errorf("failed to seed user %q: %w", seed.Username, err)
+		}
 	}
 
 	server.setupRoutes()
@@ -101,6 +198,9 @@ func (s *Server) Start() error {
 	log.Printf("🚀 Nilang Registry Server starting on %s", addr)
 	log.Printf("📦 Data directory: %s", s.config.DataDir)
 	log.Printf("🔐 Authentication: %v", s.config.EnableAuth)
+	if !s.AuthConfigured() {
+		log.Printf("WARNING: registry running WITHOUT authentication on %s: publish/delete are open until the first user registers; set NILPKG_API_KEY or NILPKG_USERS, or bind to 127.0.0.1 only", addr)
+	}
 
 	server := &http.Server{
 		Addr:         addr,
@@ -541,6 +641,12 @@ func (s *Server) authenticate(r *http.Request) (*User, bool) {
 		// Fresh server with no users yet and auth not enforced: allow the
 		// bootstrap publish. Once the first user registers, keys are required.
 		return nil, true
+	}
+	// A configured static key (NILPKG_API_KEY) acts as an admin
+	// credential independent of registered accounts.
+	if s.config.APIKey != "" && key != "" &&
+		subtle.ConstantTimeCompare([]byte(s.config.APIKey), []byte(key)) == 1 {
+		return &User{Username: "api-key", IsAdmin: true}, true
 	}
 	user, ok := s.storage.UserForAPIKey(key)
 	if !ok {

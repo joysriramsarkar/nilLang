@@ -3,6 +3,7 @@ package softbus
 import (
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -139,5 +140,61 @@ func TestTransportEnforcesMaxConnections(t *testing.T) {
 	buf := make([]byte, 1)
 	if _, err := c3.Read(buf); err == nil {
 		t.Fatal("over-limit connection was not refused")
+	}
+}
+
+func TestListenTLSWithoutCertsFails(t *testing.T) {
+	tr := NewTransport("dev-tls", &TransportConfig{
+		EnableTLS:         true,
+		ConnectionTimeout: time.Second,
+	})
+	err := tr.Listen(0)
+	if err == nil {
+		tr.Stop()
+		t.Fatal("Listen with EnableTLS and no certificates must error, got nil (silent plain-TCP downgrade)")
+	}
+	if !strings.Contains(err.Error(), "TLS not implemented") {
+		t.Errorf("error should say TLS not implemented, got: %v", err)
+	}
+}
+
+func TestListenTLSWithBadCertPathFails(t *testing.T) {
+	tr := NewTransport("dev-tls-bad", &TransportConfig{
+		EnableTLS: true,
+		CertFile:  "does-not-exist-cert.pem",
+		KeyFile:   "does-not-exist-key.pem",
+	})
+	if err := tr.Listen(0); err == nil {
+		tr.Stop()
+		t.Fatal("Listen with unloadable certificates must error, got nil")
+	}
+}
+
+func TestListenPlainWhenTLSDisabled(t *testing.T) {
+	tr := NewTransport("dev-plain", &TransportConfig{
+		EnableTLS:         false,
+		ConnectionTimeout: time.Second,
+	})
+	if err := tr.Listen(0); err != nil {
+		t.Fatalf("plain Listen: %v", err)
+	}
+	tr.Stop()
+}
+
+func TestDefaultTransportConfigDoesNotClaimTLS(t *testing.T) {
+	if DefaultTransportConfig().EnableTLS {
+		t.Error("default config must not claim TLS it cannot provide without certificates")
+	}
+}
+
+func TestConnectTLSDoesNotSilentlyDowngrade(t *testing.T) {
+	tr := NewTransport("dev-connect", &TransportConfig{
+		EnableTLS:         true,
+		ConnectionTimeout: time.Second,
+	})
+	// No TLS peer is listening; the attempt must fail rather than
+	// succeed over plain TCP.
+	if _, err := tr.Connect("127.0.0.1:1", "peer"); err == nil {
+		t.Fatal("Connect with EnableTLS to a non-TLS endpoint must error, got nil")
 	}
 }

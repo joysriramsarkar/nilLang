@@ -145,6 +145,97 @@ func TestLoginVerifiesPassword(t *testing.T) {
 	}
 }
 
+func TestEnvAuthRequiresStaticKey(t *testing.T) {
+	t.Setenv("NILPKG_API_KEY", "test-static-key")
+	t.Setenv("NILPKG_USERS", "")
+
+	cfg := &ServerConfig{
+		Host:        "127.0.0.1",
+		Port:        0,
+		DataDir:     t.TempDir(),
+		MaxUploadMB: 5,
+	}
+	if err := ApplyEnvAuth(cfg); err != nil {
+		t.Fatalf("ApplyEnvAuth: %v", err)
+	}
+	if !cfg.EnableAuth {
+		t.Fatal("NILPKG_API_KEY must enable auth")
+	}
+	s, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	if !s.AuthConfigured() {
+		t.Fatal("server with a static key must report auth configured")
+	}
+
+	// Anonymous publish is refused once env auth is configured.
+	if code := publishPackage(t, s, "", "envpkg", "1.0.0"); code != http.StatusUnauthorized {
+		t.Fatalf("anonymous publish with env auth: got %d, want 401", code)
+	}
+	// Wrong key is refused.
+	if code := publishPackage(t, s, "wrong-key", "envpkg", "1.0.0"); code != http.StatusUnauthorized {
+		t.Fatalf("wrong-key publish with env auth: got %d, want 401", code)
+	}
+	// The static key succeeds.
+	if code := publishPackage(t, s, "test-static-key", "envpkg", "1.0.0"); code != http.StatusCreated {
+		t.Fatalf("static-key publish: got %d, want 201", code)
+	}
+}
+
+func TestEnvSeedUsersRequireAuthAndCanLogin(t *testing.T) {
+	t.Setenv("NILPKG_API_KEY", "")
+	t.Setenv("NILPKG_USERS", "alice:seed-password")
+
+	cfg := &ServerConfig{
+		Host:        "127.0.0.1",
+		Port:        0,
+		DataDir:     t.TempDir(),
+		MaxUploadMB: 5,
+	}
+	if err := ApplyEnvAuth(cfg); err != nil {
+		t.Fatalf("ApplyEnvAuth: %v", err)
+	}
+	s, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	// Seeded users exist, so the anonymous bootstrap publish is closed.
+	if code := publishPackage(t, s, "", "seedpkg", "1.0.0"); code != http.StatusUnauthorized {
+		t.Fatalf("anonymous publish with seeded users: got %d, want 401", code)
+	}
+
+	// The seeded account can log in with its password and publish with
+	// the API key login returns.
+	body, _ := json.Marshal(map[string]string{"username": "alice", "password": "seed-password"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/login", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	s.handleLogin(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("seeded login: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	key, _ := resp["api_key"].(string)
+	if key == "" {
+		t.Fatal("seeded login returned no api_key")
+	}
+	if code := publishPackage(t, s, key, "seedpkg", "1.0.0"); code != http.StatusCreated {
+		t.Fatalf("seeded-key publish: got %d, want 201", code)
+	}
+}
+
+func TestParseSeedUsersRejectsMalformed(t *testing.T) {
+	for _, spec := range []string{"alice", ":pass", "alice:", "bad name:pass"} {
+		if _, err := ParseSeedUsers(spec); err == nil {
+			t.Errorf("ParseSeedUsers(%q) must error, got nil", spec)
+		}
+	}
+}
+
 func TestDeleteRequiresKey(t *testing.T) {
 	s := newTestServer(t)
 	key := registerUser(t, s, "dave", "dave-password")

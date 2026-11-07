@@ -739,6 +739,9 @@ func compileFuncWAT(fn *mir.Function, watName string, funcIndex map[string]int, 
 	e := &watEmitter{view: newFnView(fn), loc: loc, funcIndex: funcIndex, strings: strtab, visited: map[string]bool{}, labels: map[string]string{}}
 	if len(fn.Blocks) > 0 {
 		e.emitSeq(fn.Blocks[0].ID)
+		if e.err != nil {
+			return "", e.err
+		}
 		b.WriteString(e.out.String())
 	}
 	// Every path must leave an i64: a function that falls off the end
@@ -757,6 +760,15 @@ type watEmitter struct {
 	out       strings.Builder
 	visited   map[string]bool
 	labels    map[string]string
+	err       error
+}
+
+// fail records the first compile error; emission that cannot represent its
+// input must fail rather than emit a stub zero (experimental backend).
+func (e *watEmitter) fail(format string, args ...interface{}) {
+	if e.err == nil {
+		e.err = fmt.Errorf(format, args...)
+	}
 }
 
 // emitSeq emits a block and whatever linearly follows it.
@@ -1050,22 +1062,14 @@ func (e *watEmitter) emitInstruction(inst mir.Instruction) {
 	case mir.CallInst:
 		e.emitCall(i)
 	case mir.AggregateInst:
-		// L7.5 stub: lists and hashes have no ABI in linear memory yet, so
-		// the elements are evaluated for their side effects and the slot
-		// takes zero. Memory and the data section below are real; aggregate
-		// allocation is the documented gap.
-		for _, elem := range i.Elems {
-			e.emitOperand(elem)
-			e.out.WriteString("    drop\n")
-		}
+		// Lists and hashes have no ABI in linear memory yet (experimental
+		// backend). Emitting zero would silently produce a wrong program,
+		// so compilation fails instead.
 		kind := "list"
 		if i.Hash {
 			kind = "hash"
 		}
-		fmt.Fprintf(&e.out, "    ;; aggregate %s: no linear-memory ABI yet\n", kind)
-		e.out.WriteString("    i64.const 0\n")
-		fmt.Fprintf(&e.out, "    local.set %s\n", e.loc.watName(i.Dest))
-		e.loc.setKind(i.Dest, false)
+		e.fail("wasm: unsupported %s aggregate: no linear-memory ABI yet (experimental backend)", kind)
 	case mir.SetIndexInst:
 		// L7.5 stub: no container ABI yet, so the address and key are
 		// discarded and the slot takes the stored value. The tee keeps the
@@ -1081,7 +1085,7 @@ func (e *watEmitter) emitInstruction(inst mir.Instruction) {
 		}
 		e.out.WriteString("    drop\n")
 	default:
-		fmt.Fprintf(&e.out, "    ;; unsupported %T\n", inst)
+		e.fail("wasm: unsupported MIR instruction %T (experimental backend)", inst)
 	}
 }
 
@@ -1171,8 +1175,8 @@ func (e *watEmitter) emitUnaryOp(i mir.UnaryOpInst) {
 
 // emitCall renders args and a call (L7.3). Known user functions call by
 // index; console output calls the puts import with an i32 wrap; anything
-// else is a stub zero with a comment, because inventing a result would be
-// worse than admitting the builtin is unimplemented.
+// else is an unimplemented builtin and fails compilation rather than
+// inventing a stub-zero result.
 func (e *watEmitter) emitCall(i mir.CallInst) {
 	if idx, ok := e.funcIndex[i.Callee]; ok {
 		for _, arg := range i.Args {
@@ -1197,16 +1201,7 @@ func (e *watEmitter) emitCall(i mir.CallInst) {
 			e.loc.setKind(i.Dest, false)
 		}
 	default:
-		for _, arg := range i.Args {
-			e.emitOperand(arg)
-			e.out.WriteString("    drop\n")
-		}
-		fmt.Fprintf(&e.out, "    ;; unimplemented builtin %q: stub zero\n", i.Callee)
-		if i.Dest != nil {
-			e.out.WriteString("    i64.const 0\n")
-			fmt.Fprintf(&e.out, "    local.set %s\n", e.loc.watName(i.Dest))
-			e.loc.setKind(i.Dest, false)
-		}
+		e.fail("wasm: unimplemented builtin %q (experimental backend)", i.Callee)
 	}
 }
 
@@ -1380,15 +1375,22 @@ func (c *Compiler) CompileToBinary(prog *mir.Program) ([]byte, error) {
 	})
 	buf.Write(exportSec)
 
-	// Code section (ID 10).
+	// Code section (ID 10). Bodies are emitted first so a compile error
+	// aborts the whole binary instead of producing a truncated section.
+	var bodies bytes.Buffer
+	for _, name := range userNames {
+		if err := emitFuncBody(&bodies, prog.Functions[name], funcIndex, strtab); err != nil {
+			return nil, err
+		}
+	}
+	if hasMain {
+		if err := emitFuncBody(&bodies, prog.Main, funcIndex, strtab); err != nil {
+			return nil, err
+		}
+	}
 	codeSec := encodeSection(10, func(b *bytes.Buffer) {
 		writeVarUint(b, uint64(len(userNames)+boolCount(hasMain)))
-		for _, name := range userNames {
-			emitFuncBody(b, prog.Functions[name], funcIndex, strtab)
-		}
-		if hasMain {
-			emitFuncBody(b, prog.Main, funcIndex, strtab)
-		}
+		b.Write(bodies.Bytes())
 	})
 	buf.Write(codeSec)
 
@@ -1439,7 +1441,7 @@ func boolCount(b bool) int {
 
 // emitFuncBody writes one code entry: locals followed by the region
 // expression and end.
-func emitFuncBody(b *bytes.Buffer, fn *mir.Function, funcIndex map[string]int, strtab *strTable) {
+func emitFuncBody(b *bytes.Buffer, fn *mir.Function, funcIndex map[string]int, strtab *strTable) error {
 	loc := newLocals()
 	loc.allocate(fn)
 	var body bytes.Buffer
@@ -1453,6 +1455,9 @@ func emitFuncBody(b *bytes.Buffer, fn *mir.Function, funcIndex map[string]int, s
 	e := &binEmitter{view: newFnView(fn), loc: loc, funcIndex: funcIndex, strings: strtab, visited: map[string]bool{}, labels: map[string]uint32{}, depths: map[string]uint32{}}
 	if len(fn.Blocks) > 0 {
 		e.emitSeq(fn.Blocks[0].ID)
+		if e.err != nil {
+			return e.err
+		}
 	}
 	body.Write(e.out.Bytes())
 	// Fall-off-the-end zero, mirroring the WAT emitter.
@@ -1462,6 +1467,7 @@ func emitFuncBody(b *bytes.Buffer, fn *mir.Function, funcIndex map[string]int, s
 
 	writeVarUint(b, uint64(body.Len()))
 	b.Write(body.Bytes())
+	return nil
 }
 
 // binEmitter mirrors watEmitter into opcodes. Labels map block IDs to the
@@ -1477,6 +1483,14 @@ type binEmitter struct {
 	labels    map[string]uint32
 	depths    map[string]uint32
 	stack     []string
+	err       error
+}
+
+// fail records the first compile error (see watEmitter.fail).
+func (e *binEmitter) fail(format string, args ...interface{}) {
+	if e.err == nil {
+		e.err = fmt.Errorf(format, args...)
+	}
 }
 
 // pushLabel opens a block/loop scope for id.
@@ -1755,15 +1769,11 @@ func (e *binEmitter) emitInstruction(inst mir.Instruction) {
 	case mir.CallInst:
 		e.emitCall(i)
 	case mir.AggregateInst:
-		for _, elem := range i.Elems {
-			e.emitOperand(elem)
-			e.out.WriteByte(opDrop)
+		kind := "list"
+		if i.Hash {
+			kind = "hash"
 		}
-		e.out.WriteByte(opI64Const)
-		writeVarInt(&e.out, 0)
-		e.out.WriteByte(opLocalSet)
-		writeVarUint(&e.out, e.loc.binIndex(i.Dest))
-		e.loc.setKind(i.Dest, false)
+		e.fail("wasm: unsupported %s aggregate: no linear-memory ABI yet (experimental backend)", kind)
 	case mir.SetIndexInst:
 		e.emitOperand(i.Container)
 		e.out.WriteByte(opDrop)
@@ -1777,9 +1787,7 @@ func (e *binEmitter) emitInstruction(inst mir.Instruction) {
 		}
 		e.out.WriteByte(opDrop)
 	default:
-		e.out.WriteByte(opI64Const)
-		writeVarInt(&e.out, 0)
-		e.out.WriteByte(opDrop)
+		e.fail("wasm: unsupported MIR instruction %T (experimental backend)", inst)
 	}
 }
 
@@ -1890,19 +1898,7 @@ func (e *binEmitter) emitCall(i mir.CallInst) {
 			e.loc.setKind(i.Dest, false)
 		}
 	default:
-		for _, arg := range i.Args {
-			e.emitOperand(arg)
-			e.out.WriteByte(opDrop)
-		}
-		e.out.WriteByte(opI64Const)
-		writeVarInt(&e.out, 0)
-		if i.Dest != nil {
-			e.out.WriteByte(opLocalSet)
-			writeVarUint(&e.out, e.loc.binIndex(i.Dest))
-			e.loc.setKind(i.Dest, false)
-		} else {
-			e.out.WriteByte(opDrop)
-		}
+		e.fail("wasm: unimplemented builtin %q (experimental backend)", i.Callee)
 	}
 }
 

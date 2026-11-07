@@ -495,11 +495,24 @@ func TestCompatibilityMatrixHasNoUnsupportedClaims(t *testing.T) {
 	if !ok {
 		t.Fatal("the VM's capability_gate cell is missing from the matrix")
 	}
-	if vm.Status != "partial" {
-		t.Errorf("vm/capability_gate is %q; the matrix must not claim more than the spec admits", vm.Status)
+	// Direct (OpNativeCall, vm.go) and indirect (callBuiltin via a function
+	// value) calls are both gated in the VM, and applyFunction gates both
+	// forms in the evaluator; the matrix must say so.
+	if vm.Status != "stable" {
+		t.Errorf("vm/capability_gate is %q; both direct and indirect calls are gated, want stable", vm.Status)
 	}
-	if !strings.Contains(vm.Limitations, "Indirect") {
-		t.Error("vm/capability_gate must record that indirect calls are not gated")
+	if strings.Contains(vm.Limitations, "not gated") {
+		t.Error("vm/capability_gate must not claim indirect calls are not gated; callBuiltin gates them")
+	}
+	evalGate, ok := compat.FeatureStatus("evaluator", "capability_gate")
+	if !ok {
+		t.Fatal("the evaluator's capability_gate cell is missing from the matrix")
+	}
+	if evalGate.Status != "stable" {
+		t.Errorf("evaluator/capability_gate is %q; applyFunction gates direct and indirect calls, want stable", evalGate.Status)
+	}
+	if strings.Contains(evalGate.Limitations, "not gate indirect") {
+		t.Error("evaluator/capability_gate must not claim indirect calls are not gated; applyFunction gates them")
 	}
 }
 
