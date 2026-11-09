@@ -143,6 +143,9 @@ func runAgainstGeneratedHeader(t *testing.T, source, headerName, implementation,
 	t.Helper()
 
 	tc := toolchain.DiscoverToolchain(llvm.TargetHost)
+	if _, hasAssembler := tc.Assembler(); !hasAssembler {
+		t.Skipf("no LLVM assembler (clang/llc) available for %s; skipping header execution", llvm.TargetHost.ID)
+	}
 	if _, hasLinker := tc.Linker(); !hasLinker {
 		t.Skipf("no linker on this machine: %s", tc.LinkAdvice())
 	}

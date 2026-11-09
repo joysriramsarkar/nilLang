@@ -229,7 +229,7 @@ nil build android
 
 Engine workflow-তে `.nilax` bundle-টাই portable game-logic artifact:
 
-- **Android**: `nil build android` সরাসরি APK তৈরি করে।
+- **Android**: `nil build android` সরাসরি APK তৈরি করে (সিস্টেমে Android SDK `apksigner` থাকলে স্বয়ংক্রিয়ভাবে Debug-Signed হয়, অন্যথায় আনসাইন্ড হিসেবে তৈরি হয়)।
 - **Godot**: `engine/godot/` GDExtension seed ও `nilang_bridge.gd` দেয়।
 - **Unity**: `engine/unity/` package seed, `NilangBehaviour.cs`, এবং bridge boundary দেয়।
 - **Unreal**: `engine/unreal/` plugin descriptor, module, এবং bridge header/source দেয়।
@@ -317,11 +317,12 @@ nil hir examples/hello-onuron/src/main.nil
 nil mir examples/hello-onuron/src/main.nil
 ```
 
-### ৩. WebAssembly (WASM) ব্রাউজার বিল্ড
+### ৩. WebAssembly (WASM) ব্রাউজার বিল্ড (Experimental)
 সরাসরি ব্রাউজারে রানযোগ্য `.wasm` বাইনারি, `.wat` টেক্সট রিপ্রেজেন্টেশন এবং আধুনিক HTML টেস্ট-হারনেস তৈরি করতে:
 ```bash
 nil build wasm
 ```
+> **নোট:** WASM ব্যাকএন্ড বর্তমানে পরীক্ষামূলক (`experimental`)। প্রিমোটিভ সংখ্যা, স্ট্রিং ও বেসিক কন্ট্রোল-ফ্লো সমর্থিত; জটিল তালিকা/কালেকশনের জন্য লিনিয়ার-মেমরি ABI উন্নয়নাধীন।
 
 ### ৪. AI ওরাকল ও হ্যালুসিনেশন প্রতিরোধ
 AI মডেল ও ডেভেলপারদের নির্ভুল গ্রাউন্ড-ট্রুথ টাইপ ও সিম্বল রিফ্লেকশন প্রদান করতে:
@@ -356,7 +357,9 @@ nil verify
 go test ./...
 ```
 
-সবগুলো মডিউল (Lexer, Parser, Evaluator, VM, Bundle, Signing, Animation) ১০০% টেস্ট পাস করে।
+সবগুলো কোর মডিউল (Lexer, Parser, Evaluator, VM, Bundle, Signing, Animation) ১০০% টেস্ট পাস করে।
+
+> **টুলচেইন নির্ভরতা নোট:** AOT কম্পাইলার ও FFI টেস্টগুলো (`compiler/aot`, `tests/ffi`, `tests/conformance`) সিস্টেমের `clang`/`llc` (LLVM অ্যাসেম্বলার) এবং সি লিঙ্কার ব্যবহার করে। যে মেশিনে Clang ইনস্টল নেই, সেখানে টেস্ট রানার স্বয়ংক্রিয়ভাবে ওই টেস্টগুলোকে স্কিপ (`SKIP`) করবে। સંપૂર્ણ AOT টেস্ট চালাতে Clang (LLVM 15+) ইনস্টল করুন।
 
 ---
 

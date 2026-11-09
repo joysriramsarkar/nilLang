@@ -30,7 +30,14 @@ func hostToolchain(t *testing.T) (llvm.Target, toolchain.Toolchain) {
 	if target.ID == "" {
 		t.Fatal("no host target is registered; the target table is empty")
 	}
-	return target, toolchain.DiscoverToolchain(target)
+	tc := toolchain.DiscoverToolchain(target)
+	if _, ok := tc.Assembler(); !ok {
+		t.Skipf("skipping AOT test: no LLVM assembler (clang/llc) available for %s", target.ID)
+	}
+	if _, ok := tc.Linker(); !ok {
+		t.Skipf("skipping AOT test: no linker available for %s: %s", target.ID, tc.LinkAdvice())
+	}
+	return target, tc
 }
 
 // build compiles IR and returns the path to the executable.

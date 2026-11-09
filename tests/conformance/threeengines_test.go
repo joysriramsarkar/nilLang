@@ -24,6 +24,11 @@ func hostLinker(t *testing.T) (toolchain.Tool, bool) {
 	return toolchain.DiscoverToolchain(llvm.TargetHost).Linker()
 }
 
+func hostAssembler(t *testing.T) (toolchain.Tool, bool) {
+	t.Helper()
+	return toolchain.DiscoverToolchain(llvm.TargetHost).Assembler()
+}
+
 // knownUnsupported names what the ahead-of-time backend cannot compile yet, and why.
 //
 // # Why this list is a ratchet rather than a comment
@@ -111,6 +116,9 @@ func unsupportedReason(source string) string {
 func TestThreeEnginesAgree(t *testing.T) {
 	if testing.Short() {
 		t.Skip("the ahead-of-time engine builds a binary per case; skipped in -short")
+	}
+	if _, ok := hostAssembler(t); !ok {
+		t.Skip("no LLVM assembler (clang/llc) on this machine, so no program can be compiled ahead of time")
 	}
 	if _, ok := hostLinker(t); !ok {
 		t.Skip("no linker on this machine, so no program can be compiled ahead of time")
