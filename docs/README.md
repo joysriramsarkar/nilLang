@@ -36,5 +36,6 @@ Welcome to the technical documentation repository for **NilLang**, the **Alap Fr
 | `nil mir [file.nil]` | Inspect Mid-Level Intermediate Representation & Control-Flow Graph |
 | `nil oracle [subcommand]` | Query compiler oracle for types, symbols, signatures, and static safety |
 | `nil check [path]` | Verify profile capability boundaries & AI guard contracts |
+| `nil fmt [path]` | Pretty-print `.nil` sources. Comments are preserved — each is re-emitted at the indentation of the statement it precedes; comments at end of file stay at the end. `--check` verifies without rewriting (exit 1 when unformatted) |
 | `nil verify [component]` | Run formal 6-stage Verified Novelty pipeline |
 | `nil render [file.nil]` | Render declarative Alap UI components to ANSI / HTML |
