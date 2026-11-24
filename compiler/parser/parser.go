@@ -101,6 +101,14 @@ type Parser struct {
 	// depth at one precedence level.
 	depth int
 
+	// leadingComments maps each statement to the comments that appeared
+	// before it in the source. The formatter reads this to preserve comments:
+	// the AST printer cannot see them, so without this map `nil fmt` would
+	// silently delete documentation. commentMark is how many comments have
+	// been handed out so far; the ones past the mark are pending.
+	leadingComments map[ast.Statement][]lexer.Comment
+	commentMark     int
+
 	prefixParseFns map[token.TokenType]prefixParseFn
 	infixParseFns  map[token.TokenType]infixParseFn
 }
@@ -399,6 +407,18 @@ func (p *Parser) leaveDepth() {
 	p.depth--
 }
 
+// LeadingComments returns the comments anchored to each parsed statement, in
+// the order the statements appear. Callers that do not care about comments
+// (the compiler backends) can ignore it.
+func (p *Parser) LeadingComments() map[ast.Statement][]lexer.Comment {
+	return p.leadingComments
+}
+
+// CommentMark reports how many recorded comments have been anchored to
+// statements. Comments past this mark trail the last statement (or the whole
+// file) and belong to the end of the output.
+func (p *Parser) CommentMark() int { return p.commentMark }
+
 func (p *Parser) parseStatement() ast.Statement {
 	if !p.enterDepth() {
 		p.recordError(CodeSyntaxError, p.curToken,
@@ -407,6 +427,34 @@ func (p *Parser) parseStatement() ast.Statement {
 		return nil
 	}
 	defer p.leaveDepth()
+
+	// Comments before this statement were recorded while the lexer produced
+	// curToken. Hand them out once: the inner parseStatement calls made while
+	// building this statement (export wrappers, blocks) see none left.
+	pending := p.takePendingComments()
+	stmt := p.parseStatementDispatch()
+	if len(pending) > 0 && !isNilStatement(stmt) {
+		if p.leadingComments == nil {
+			p.leadingComments = map[ast.Statement][]lexer.Comment{}
+		}
+		p.leadingComments[stmt] = pending
+	}
+	return stmt
+}
+
+// takePendingComments drains the comments recorded since the last statement
+// was anchored.
+func (p *Parser) takePendingComments() []lexer.Comment {
+	all := p.l.Comments()
+	if p.commentMark >= len(all) {
+		return nil
+	}
+	pending := append([]lexer.Comment(nil), all[p.commentMark:]...)
+	p.commentMark = len(all)
+	return pending
+}
+
+func (p *Parser) parseStatementDispatch() ast.Statement {
 	switch p.curToken.Type {
 	case token.EXPORT, token.PRIVATE:
 		return p.parseExportStatement()

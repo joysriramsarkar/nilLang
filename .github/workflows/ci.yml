@@ -101,6 +101,16 @@ jobs:
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
 
+    # A capacity-cancelled macOS leg must not fail the whole run. GitHub's
+    # macOS arm64 pool is oversubscribed and cancels queued jobs outright
+    # (observed three runs in a row on 2026-11-24: the job never received a
+    # runner and was cancelled before its first step). The macOS platform is
+    # still gated by the blocking Test (macos) and Conformance Matrix (macos)
+    # jobs — this leg only repeats "build binaries and run the hello example"
+    # on a third OS, so an infra cancellation here is noise, not a failed
+    # gate. A real failure on this leg still shows red on the job itself.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -242,14 +252,26 @@ jobs:
   # The fuzz seed corpus already runs inside `go test ./...` on every OS;
   # this job additionally fuzzes each target briefly to catch instant
   # crashers (a `struct A{`-class input must never panic the toolchain).
+  #
+  # The gate builds its own nil/nilc binaries below and consumes nothing from
+  # the build job, so it waits only on the test job. Gating it on `build`
+  # meant a capacity-cancelled macOS build leg (see the comment there) could
+  # keep the substantive gate from ever running.
   dx-gate:
     name: DX Gate (${{ matrix.os }})
-    needs: build
+    needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    # Same capacity reasoning as the build job: the macOS arm64 pool can
+    # cancel this leg before it starts. The checks are OS-independent (the
+    # formatter is byte-deterministic and the rejection smoke tests the
+    # parser, not the platform), so ubuntu and windows remain the binding
+    # legs; a real failure on the macOS leg still shows red on the job.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
 
     steps:
       - name: Checkout code

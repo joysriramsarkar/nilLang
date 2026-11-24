@@ -5,6 +5,91 @@ import (
 	"testing"
 )
 
+func TestFormatterPreservesComments(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want []string // substrings that must all appear, in order
+		drop []string // substrings that must not appear
+	}{
+		{
+			name: "own-line comments at every level",
+			src: `// Program banner
+let x = 1;
+let y = fn(a) {
+    // inner note
+    if (a > 0) {
+        return a;
+    }
+    return 0 - a;
+};
+`,
+			want: []string{"// Program banner\nlet x = 1;", "// inner note\n    if (a > 0) {"},
+		},
+		{
+			name: "multi-line block comment keeps its body",
+			src: `/* one
+   two */
+let z = 1;
+`,
+			want: []string{"/* one\n   two */\nlet z = 1;"},
+		},
+		{
+			name: "comment at end of file is kept",
+			src: `let a = 1;
+// trailing banner
+`,
+			want: []string{"let a = 1;\n// trailing banner\n"},
+		},
+		{
+			name: "same-line trailing comment moves to its own line",
+			src: `let a = 1; // note
+let b = a;
+`,
+			want: []string{"let a = 1;\n// note\nlet b = a;"},
+			drop: []string{"let a = 1; // note"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Format(tc.src)
+			if err != nil {
+				t.Fatalf("Format failed: %v", err)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(got, w) {
+					t.Fatalf("formatted output lost %q:\n%s", w, got)
+				}
+			}
+			for _, d := range tc.drop {
+				if strings.Contains(got, d) {
+					t.Fatalf("formatted output unexpectedly kept %q:\n%s", d, got)
+				}
+			}
+			// Preservation must be stable: formatting the formatted text
+			// again cannot move or drop a comment.
+			again, err := Format(got)
+			if err != nil {
+				t.Fatalf("re-format failed: %v", err)
+			}
+			if again != got {
+				t.Fatalf("comment preservation is not idempotent:\n--- Pass 1 ---\n%s\n--- Pass 2 ---\n%s", got, again)
+			}
+		})
+	}
+}
+
+func TestFormatterCommentOnlyFile(t *testing.T) {
+	got, err := Format("// just a note\n")
+	if err != nil {
+		t.Fatalf("Format failed on comment-only file: %v", err)
+	}
+	if got != "// just a note\n" {
+		t.Fatalf("comment-only file must round-trip, got %q", got)
+	}
+}
+
 func TestFormatterIdempotency(t *testing.T) {
 	sources := []string{
 		`let x = 10;

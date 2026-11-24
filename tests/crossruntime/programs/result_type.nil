@@ -5,6 +5,7 @@ fn divide(a, b) {
     }
     return Ok(a / b);
 }
+
 let r1 = divide(10, 2);
 println(isOk(r1));
 let r2 = divide(10, 0);

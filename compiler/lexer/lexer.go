@@ -16,7 +16,25 @@ type Lexer struct {
 	ch           rune // current rune under examination
 	line         int
 	col          int
+
+	// comments records every comment skipped while producing tokens, in
+	// source order. Comments are not tokens — the parser never sees them —
+	// but tooling (the formatter) reads the list to preserve them.
+	comments []Comment
 }
+
+// Comment is one source comment, single-line (`// ...`) or multi-line
+// (`/* ... */`, possibly nested). Text holds the raw source including the
+// delimiters; Line..EndLine give its source span. Line/EndLine are
+// informational: the formatter anchors comments to statements, not lines.
+type Comment struct {
+	Text    string
+	Line    int
+	EndLine int
+}
+
+// Comments returns every comment seen so far, in source order.
+func (l *Lexer) Comments() []Comment { return l.comments }
 
 func New(input string) *Lexer {
 	input = strings.TrimPrefix(input, "\xef\xbb\xbf")
@@ -259,14 +277,24 @@ func (l *Lexer) skipWhitespaceAndComments() {
 
 		// check single-line comment
 		if l.ch == '/' && l.peekChar() == '/' {
+			start := l.position
+			startLine := l.line
 			for l.ch != '\n' && l.ch != 0 {
 				l.readChar()
 			}
+			l.comments = append(l.comments, Comment{
+				Text:    l.input[start:l.position],
+				Line:    startLine,
+				EndLine: startLine,
+			})
 			continue
 		}
 
 		// check multi-line comment (supports nesting)
 		if l.ch == '/' && l.peekChar() == '*' {
+			start := l.position
+			startLine := l.line
+			end := len(l.input)
 			l.readChar() // eat /
 			l.readChar() // eat *
 			depth := 1
@@ -285,10 +313,18 @@ func (l *Lexer) skipWhitespaceAndComments() {
 					l.readChar() // eat *
 					l.readChar() // eat /
 					depth--
+					if depth == 0 {
+						end = l.position
+					}
 					continue
 				}
 				l.readChar()
 			}
+			l.comments = append(l.comments, Comment{
+				Text:    l.input[start:end],
+				Line:    startLine,
+				EndLine: l.line,
+			})
 			continue
 		}
 

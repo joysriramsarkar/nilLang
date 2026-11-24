@@ -11,7 +11,9 @@ import (
 	"github.com/joysriramsarkar/nilLang/compiler/parser"
 )
 
-// Format parses and pretty-prints Nilang source code into standard format
+// Format parses and pretty-prints Nilang source code into standard format.
+// Comments are preserved: they are anchored to the statement that follows
+// them and re-emitted at that statement's indentation.
 func Format(source string) (string, error) {
 	l := lexer.New(source)
 	p := parser.New(l)
@@ -20,17 +22,40 @@ func Format(source string) (string, error) {
 		return "", fmt.Errorf("formatter parse error: %s", strings.Join(p.Errors(), "; "))
 	}
 
-	f := &ASTFormatter{indent: 0}
-	return f.FormatProgram(prog), nil
+	f := &ASTFormatter{indent: 0, leading: p.LeadingComments()}
+	f.FormatProgram(prog)
+	// Comments that trail the final statement have no following statement to
+	// anchor to; keep them at the end of the file rather than dropping them.
+	for _, c := range l.Comments()[p.CommentMark():] {
+		f.writeCommentLines(c.Text)
+		f.buf.WriteByte('\n')
+	}
+	// Ensure single trailing newline
+	return strings.TrimRight(f.buf.String(), " \t\r\n") + "\n", nil
 }
 
 type ASTFormatter struct {
 	buf    bytes.Buffer
 	indent int
+	// leading holds the comments anchored before each statement, keyed by the
+	// parsed statement itself (the parser and the formatter walk the same
+	// nodes).
+	leading map[ast.Statement][]lexer.Comment
 }
 
 func (f *ASTFormatter) writeIndent() {
 	f.buf.WriteString(strings.Repeat("    ", f.indent))
+}
+
+// writeCommentLines emits a raw comment at the current indentation, one line
+// at a time. Multi-line comments keep every line of their body; trailing
+// whitespace is dropped.
+func (f *ASTFormatter) writeCommentLines(text string) {
+	for _, line := range strings.Split(strings.Trim(text, "\r\n"), "\n") {
+		f.writeIndent()
+		f.buf.WriteString(strings.TrimRight(line, " \t\r"))
+		f.buf.WriteByte('\n')
+	}
 }
 
 func (f *ASTFormatter) FormatProgram(prog *ast.Program) string {
@@ -51,14 +76,17 @@ func (f *ASTFormatter) FormatProgram(prog *ast.Program) string {
 			}
 		}
 	}
-	res := f.buf.String()
-	// Ensure single trailing newline
-	return strings.TrimRight(res, " \t\r\n") + "\n"
+	return f.buf.String()
 }
 
 func (f *ASTFormatter) formatStatement(stmt ast.Statement) {
 	if stmt == nil {
 		return
+	}
+
+	// Comments anchored before this statement come first, at its indentation.
+	for _, c := range f.leading[stmt] {
+		f.writeCommentLines(c.Text)
 	}
 
 	switch s := stmt.(type) {

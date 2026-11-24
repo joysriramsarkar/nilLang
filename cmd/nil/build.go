@@ -550,6 +550,8 @@ func cmdBuild() {
 				signLabel := "Unsigned"
 				if res.Signed {
 					signLabel = "Signed Debug"
+				} else {
+					fmt.Fprintf(os.Stderr, "   ℹ️ দ্রষ্টব্য: সিস্টেমে apksigner বা debug.keystore না থাকায় APK-টি [Unsigned] হিসেবে তৈরি হয়েছে। আসল ফোনে adb install করতে apksigner দিয়ে সাইন করুন।\n")
 				}
 
 				artifacts = append(artifacts, BuiltArtifact{
@@ -640,7 +642,11 @@ func cmdBuild() {
 		relPath := filepath.Join(cfg.Build.OutputDir, filepath.Base(art.Path))
 		switch art.Type {
 		case "Android APK":
-			fmt.Printf("  • Android Device : adb install %s (অথবা ফোনে ট্রান্সফার করে সরাসরি ইনস্টল করুন)\n", relPath)
+			if strings.Contains(art.Name, "Signed") {
+				fmt.Printf("  • Android Device : adb install %s (অথবা ফোনে ট্রান্সফার করে সরাসরি ইনস্টল করুন)\n", relPath)
+			} else {
+				fmt.Printf("  • Android Device : %s (সতর্কতা: আনসাইন্ড APK আসল ডিভাইসে adb install করার পূর্বে apksigner দিয়ে সাইন করতে হবে)\n", relPath)
+			}
 		case "Windows Executable":
 			fmt.Printf("  • Windows PS     : .\\%s (PowerShell-এ .\\ দিয়ে চালান)\n", relPath)
 			fmt.Printf("  • Windows CMD    : %s\n", relPath)
